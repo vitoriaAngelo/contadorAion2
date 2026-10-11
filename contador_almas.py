@@ -25,6 +25,84 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
+VERSAO = "1.5.0"
+REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
+# arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
+# menos o programa, que e obrigatorio)
+ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt"]
+
+
+def versao_tupla(v):
+    n = [int(x) for x in re.findall(r"\d+", str(v))[:3]]
+    return tuple(n + [0] * (3 - len(n)))
+
+
+def baixar_texto(url, timeout=20):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "ContadorDeAlmas/" + VERSAO,
+                                               "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def versao_remota():
+    """Le a VERSAO do contador_almas.py que esta no GitHub. (versao, bytes)"""
+    dados = baixar_texto(REPO_RAW + "contador_almas.py")
+    m = re.search(rb'^VERSAO\s*=\s*"([^"]+)"', dados, re.M)
+    if not m:
+        raise RuntimeError("n\u00e3o achei a vers\u00e3o no arquivo do GitHub")
+    return m.group(1).decode(), dados
+
+
+def aplicar_atualizacao(dados_py, pasta):
+    """Troca os arquivos do programa pela versao nova. Valida antes (o arquivo
+    precisa compilar) e guarda a versao anterior em contador_almas.py.bak."""
+    compile(dados_py, "contador_almas.py", "exec")  # erro aqui = nao troca nada
+    extras = {}
+    for nome in ARQUIVOS_ATUALIZAR[1:]:
+        if os.path.exists(os.path.join(pasta, nome)):
+            try:
+                extras[nome] = baixar_texto(REPO_RAW + nome)
+            except Exception:
+                pass
+    alvo = os.path.join(pasta, "contador_almas.py")
+    if os.path.exists(alvo):
+        with open(alvo, "rb") as f:
+            antigo = f.read()
+        with open(alvo + ".bak", "wb") as f:
+            f.write(antigo)
+    req_antes = b""
+    cam_req = os.path.join(pasta, "requirements.txt")
+    if os.path.exists(cam_req):
+        with open(cam_req, "rb") as f:
+            req_antes = f.read()
+    for nome, dados in [("contador_almas.py", dados_py)] + list(extras.items()):
+        tmp = os.path.join(pasta, nome + ".novo")
+        with open(tmp, "wb") as f:
+            f.write(dados)
+        os.replace(tmp, os.path.join(pasta, nome))
+    return extras.get("requirements.txt", req_antes) != req_antes
+
+
+def esperar_processo(pid, limite=15.0):
+    """A versao nova espera a antiga fechar antes de abrir a janela."""
+    fim = time.time() + limite
+    if sys.platform == "win32":
+        try:
+            k = ctypes.windll.kernel32
+            h = k.OpenProcess(0x00100000, False, int(pid))  # SYNCHRONIZE
+            if h:
+                k.WaitForSingleObject(h, int(limite * 1000))
+                k.CloseHandle(h)
+            return
+        except Exception:
+            pass
+    while time.time() < fim:
+        try:
+            os.kill(int(pid), 0)
+        except Exception:
+            return
+        time.sleep(0.2)
 
 
 def pasta_base():
@@ -1443,6 +1521,11 @@ COR = {
 
 
 def main():
+    if "--esperar" in sys.argv:
+        try:
+            esperar_processo(sys.argv[sys.argv.index("--esperar") + 1])
+        except Exception:
+            pass
     if sys.platform == "win32":
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
@@ -1503,6 +1586,7 @@ def main():
             self.root.after(200, self.virar_janela_normal)
             self.root.after(100, self.atualizar_areas_proprias)
             self.root.after(500, self.atualizar_evento)
+            self.root.after(4000, self.checar_atualizacao_em_segundo_plano)
 
         # ---------------- util ----------------
         def esconder_da_captura(self, janela):
@@ -1680,6 +1764,11 @@ def main():
             t.pack(side="left")
             self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
+            # aparece so quando tem versao nova no GitHub
+            self.lbl_atualizar = tk.Label(h, text="", fg=COR["ouro"], bg=COR["fundo"],
+                                          font=("Segoe UI", 9, "bold"), cursor="hand2")
+            self.lbl_atualizar.pack(side="left", padx=(self.px(6), 0))
+            self.lbl_atualizar.bind("<Button-1>", lambda e: self.procurar_atualizacao())
 
             self.botao(h, "\u2715", lambda e: self.sair()).pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar()).pack(side="right")
@@ -2076,6 +2165,8 @@ def main():
             menu.add_command(label="Zerar todos os contadores\u2026", command=self.zerar)
             menu.add_command(label="Abrir pasta dos dados", command=self.abrir_pasta)
             menu.add_command(label="Gerar relat\u00f3rio para suporte", command=self.gerar_relatorio)
+            menu.add_command(label=f"Procurar atualiza\u00e7\u00e3o (vers\u00e3o {VERSAO})\u2026",
+                             command=self.procurar_atualizacao)
             menu.add_separator()
             menu.add_checkbutton(label="Captura DirectX (use se o chat n\u00e3o aparecer na leitura)",
                                  onvalue=True, offvalue=False,
@@ -2138,6 +2229,95 @@ def main():
                             "Zerar TODOS os contadores? Isso n\u00e3o pode ser desfeito."):
                 self.prog.zerar_tudo()
                 self.render()
+
+        def checar_atualizacao_em_segundo_plano(self):
+            """Ao abrir: olha no GitHub se tem versao nova (sem perguntar nada)."""
+            def tarefa():
+                try:
+                    v, _ = versao_remota()
+                    if versao_tupla(v) > versao_tupla(VERSAO):
+                        self.root.after(0, lambda: self.lbl_atualizar.configure(
+                            text=f"\u2b06 {v}"))
+                        registrar(f"ATUALIZACAO disponivel: {v}")
+                except Exception as e:
+                    registrar(f"ATUALIZACAO: nao consegui verificar ({e})")
+            threading.Thread(target=tarefa, daemon=True).start()
+
+        def procurar_atualizacao(self):
+            self.status_extra = "procurando atualiza\u00e7\u00e3o\u2026"
+            self.atualizar_status()
+
+            def tarefa():
+                try:
+                    v, dados = versao_remota()
+                    self.root.after(0, lambda: self._resposta_atualizacao(v, dados, None))
+                except Exception as e:
+                    self.root.after(0, lambda: self._resposta_atualizacao(None, None, e))
+            threading.Thread(target=tarefa, daemon=True).start()
+
+        def _resposta_atualizacao(self, v, dados, erro):
+            self.status_extra = None
+            self.atualizar_status()
+            if erro is not None:
+                self.dialogo(messagebox.showerror, APP_NOME,
+                             f"N\u00e3o consegui verificar a atualiza\u00e7\u00e3o.\n\n{erro}\n\n"
+                             "Confira a internet e tente de novo.")
+                return
+            if versao_tupla(v) <= versao_tupla(VERSAO):
+                self.lbl_atualizar.configure(text="")
+                self.dialogo(messagebox.showinfo, APP_NOME,
+                             f"Voc\u00ea j\u00e1 est\u00e1 na vers\u00e3o mais nova ({VERSAO}).")
+                return
+            if not self.dialogo(messagebox.askyesno, APP_NOME,
+                                f"Tem vers\u00e3o nova: {v} (voc\u00ea est\u00e1 na {VERSAO}).\n\n"
+                                "Atualizar agora? O contador fecha e abre de novo sozinho, "
+                                "e o seu progresso continua salvo."):
+                return
+            try:
+                self.prog.salvar()
+                self.salvar_cfg()
+                mudou_req = aplicar_atualizacao(dados, BASE)
+                registrar(f"ATUALIZADO: {VERSAO} -> {v}")
+                if mudou_req:
+                    import subprocess
+                    exe = sys.executable
+                    if exe.lower().endswith("pythonw.exe"):
+                        exe = exe[:-len("pythonw.exe")] + "python.exe"
+                    subprocess.run([exe, "-m", "pip", "install", "--user", "-q",
+                                    "--disable-pip-version-check", "-r",
+                                    os.path.join(BASE, "requirements.txt")],
+                                   capture_output=True, timeout=600,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                self._atualizar_registro_windows(v)
+            except Exception as e:
+                registrar(f"ATUALIZACAO falhou: {e}")
+                self.dialogo(messagebox.showerror, APP_NOME,
+                             f"A atualiza\u00e7\u00e3o falhou e nada foi trocado.\n\n{e}")
+                return
+            self.reiniciar_programa()
+
+        def _atualizar_registro_windows(self, v):
+            if sys.platform != "win32":
+                return
+            try:
+                import winreg
+                caminho = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, caminho, 0, winreg.KEY_SET_VALUE) as k:
+                    winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, v)
+            except Exception:
+                pass  # versao da Area de Trabalho (sem instalador): nao tem registro
+
+        def reiniciar_programa(self):
+            """Abre a versao nova (que espera esta fechar) e fecha esta."""
+            import subprocess
+            script = os.path.join(BASE, "contador_almas.py")
+            flags = 0
+            if sys.platform == "win32":
+                flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | \
+                    getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+            subprocess.Popen([sys.executable, script, "--esperar", str(os.getpid())],
+                             cwd=BASE, close_fds=True, creationflags=flags)
+            self.sair()
 
         def alternar_captura(self):
             if self.cfg.get("captura") == "directx":
@@ -2558,7 +2738,7 @@ def main():
             self.root.mainloop()
 
     try:
-        registrar("INICIO versao 1.4.2 (3a estrela 74)")
+        registrar(f"INICIO versao {VERSAO}")
         App().rodar()
     except Exception:
         import traceback

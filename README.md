@@ -74,7 +74,7 @@ Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Traba
 - **A imagem da esquerda em "Ver leitura" mostra o jogo, mas o chat não aparece nela** (pode acontecer com tela cheia, HDR ou "Otimizações para jogos em janela" do Windows 11) → ⚙ → *Captura DirectX*.
 - **Contou errado** → use − / + ou a caixinha **tenho**.
 - **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
-- **Atualizar:** baixe o ZIP de novo e rode o `INSTALAR.bat` — o progresso é mantido.
+- **Atualizar:** ⚙ → *Procurar atualização*. Ele baixa a versão nova daqui do GitHub, fecha e abre de novo sozinho, mantendo o progresso. Quando tem versão nova, aparece **⬆** no topo do overlay (clique nele). Versões antigas (antes da 1.5.0) não têm essa opção: baixe o ZIP de novo e rode o `INSTALAR.bat` uma vez.
 
 ## Requisitos
 
