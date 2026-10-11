@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.4"
+VERSAO = "1.5.5"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -350,6 +350,20 @@ _CORTE_FIM = re.compile(
 _MINUSC = {"de", "da", "do", "das", "dos", "e", "of", "the"}
 
 
+def corrigir_acentos(palavra):
+    """O OCR erra o 'ção'/'ções' do portugues em letra pequena:
+    'Aberracaéo' / 'Aberracao' / 'Aberracão' -> 'Aberração'."""
+    if len(palavra) < 5:
+        return palavra
+    w = re.sub(r"(?<=\w)[c\u00e7][a\u00e3\u00e1\u00e2\u00e0][e\u00e9\u00ea\u00f3\u00f4\u00f5]?[o\u00f3\u00f4\u00f50]$", "\u00e7\u00e3o", palavra)
+    w = re.sub(r"(?<=\w)[c\u00e7][o\u00f3\u00f4\u00f5][e\u00e9]s$", "\u00e7\u00f5es", w)
+    if w != palavra and re.search(r"[aeiou]rr?a\u00e7\u00e3o$|[aeiou]rr?a\u00e7\u00f5es$", w) is None \
+            and not re.search(r"[aeiou]\u00e7(\u00e3o|\u00f5es)$", w):
+        return palavra  # so corrige quando fica com cara de palavra (vogal + ção)
+    # 'Aberracão' -> 'Aberração' (rr seguido de ç e comum: aberração, corrida...)
+    return w
+
+
 def limpar_nome(nome):
     nome = _CORTE_INICIO.sub("", nome or "")
     nome = _CORTE_FIM.sub("", nome)
@@ -375,7 +389,7 @@ def limpar_nome(nome):
     nome = re.sub(r"\s+", " ", nome).strip(" -_")
     if len(normalizar(nome)) < 3:
         return ""
-    partes = nome.split(" ")
+    partes = [corrigir_acentos(p) for p in nome.split(" ")]
     out = []
     for i, p in enumerate(partes):
         if i > 0 and p.lower() in _MINUSC:
@@ -906,6 +920,13 @@ class Progresso:
             m.setdefault("qtd", 0)
             m.setdefault("apelidos", [])
             m.setdefault("atualizado", 0)
+            if not m.get("fixo"):
+                # nomes salvos com o erro de OCR do 'ção' (ex.: 'Aberracaéo')
+                novo = " ".join(corrigir_acentos(p) for p in m["nome"].split(" "))
+                if novo != m["nome"]:
+                    m["apelidos"].append(normalizar(m["nome"]))
+                    m["nome"] = novo
+                    m.pop("votos", None)
 
     def salvar(self):
         try:
