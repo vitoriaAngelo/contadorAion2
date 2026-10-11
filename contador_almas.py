@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.3"
+VERSAO = "1.5.4"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -481,10 +481,12 @@ class Rastreador:
     """Recebe as linhas lidas a cada quadro e devolve os nomes de almas NOVAS."""
     JANELA_MEMORIA = 90.0  # segundos
 
-    def __init__(self, padroes, canon=None):
+    def __init__(self, padroes, canon=None, completar=None):
         self.extrator = Extrator(padroes)
         # nome lido -> nome do monstro ja cadastrado (None se desconhecido)
         self.canon = canon or (lambda n: None)
+        # pedaco do comeco do nome -> monstro cadastrado que comeca assim
+        self.completar = completar or (lambda n: None)
         self.ant = None
         self.memoria = deque()  # (tempo, Counter de linhas de alma normalizadas)
 
@@ -568,7 +570,16 @@ class Rastreador:
             return None
         n = self.extrator.nome_em(raw)
         if n:
-            c = self.canon(n)
+            if _TEM_X1.search(raw):
+                c = self.canon(n)
+            else:
+                # sem o "x1." no fim: o nome quebrou de linha e o resto nao foi
+                # lido ("...Alma Kalgolem de" / "Drakana x1."). So conta se der
+                # para completar com um monstro que voce ja tem; nunca cria um
+                # monstro novo com o nome cortado.
+                c = self.completar(n) or self.canon(n)
+                if c is None:
+                    return ("alma " + compacto(n), None)
             if c is None:
                 nitida = re.search(r"pontos\s+da\s+alma\s+\S", raw, re.I) or \
                     re.search(r"(alma\s+d[eoa]s?|soul\s+of)\s+\S", raw, re.I)
@@ -835,6 +846,7 @@ def _trecho_util(k):
     return " ".join(tok[i + 1:i + 4])
 
 
+_TEM_X1 = re.compile(r"[x\u00d7]\s*[\d1lIi|\u00b9]{1,3}\s*[.,:;]?(\s|$)", re.I)
 _FIM_ALMA = re.compile(r"[x\u00d7]\s*[\d1lIi|]{1,3}\s*[.,:;]?\s*\S{0,6}\s*$", re.I)
 
 
@@ -919,6 +931,22 @@ class Progresso:
     def canonico(self, nome):
         m = self.achar(nome)
         return m["nome"] if m else None
+
+    def completar(self, pedaco):
+        """'Kalgolem de' -> 'Kalgolem de Drakana' (o monstro cadastrado mais
+        recente cujo nome comeca com esse pedaco e e mais comprido que ele)."""
+        k = compacto(pedaco)
+        if len(k) < 5:
+            return None
+        achados = []
+        for m in self.monstros:
+            for c in [compacto(m["nome"])] + [a.replace(" ", "") for a in m["apelidos"]]:
+                if len(c) > len(k) and (c.startswith(k) or parecido(c[:len(k)], k) >= 0.88):
+                    achados.append(m)
+                    break
+        if not achados:
+            return None
+        return max(achados, key=lambda m: m.get("atualizado", 0))["nome"]
 
     def somar(self, nome, n=1, salvar=True):
         m = self.achar(nome)
@@ -1547,7 +1575,7 @@ def main():
         def __init__(self):
             self.cfg = carregar_config()
             self.prog = Progresso(ARQ_DADOS)
-            self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico)
+            self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar)
             self.destaque = {}
             self.motor_nome = "iniciando OCR..."
             self.erro = None
