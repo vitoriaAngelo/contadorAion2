@@ -1,0 +1,17 @@
+# dados pessoais de quem usa (cada um gera os seus)
+progresso.json
+config.json
+*.tmp
+diagnostico.log
+diagnostico.log.old
+captura_original.png
+captura_tratada.png
+tessdata/
+
+# python / build
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+*.exe
