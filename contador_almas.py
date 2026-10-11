@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.2"
+VERSAO = "1.5.3"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1554,6 +1554,14 @@ def main():
             self.debug = None
             self.ultimas_linhas = []
 
+            if sys.platform == "win32":
+                # identidade propria na barra de tarefas (senao o Windows agrupa
+                # com o Python e mostra o icone dele)
+                try:
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                        "vitoriaAngelo.ContadorDeAlmas")
+                except Exception:
+                    pass
             self.root = tk.Tk()
             self.root.title(APP_NOME)
             try:
