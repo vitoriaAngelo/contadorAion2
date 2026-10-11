@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.1"
+VERSAO = "1.5.2"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -279,6 +279,11 @@ def salvar_json(caminho, dados):
         json.dump(dados, f, ensure_ascii=False, indent=2)
     os.replace(tmp, caminho)
 
+
+
+def abrir_mss(mss):
+    """mss novo usa mss.MSS; o antigo, mss.mss (que agora avisa que vai sair)."""
+    return mss.MSS() if hasattr(mss, "MSS") else mss.mss()
 
 def carregar_config():
     cfg = dict(CONFIG_PADRAO)
@@ -1423,7 +1428,7 @@ class Leitor(threading.Thread):
         else:
             pool = _ExecutorDireto()  # OCR do Windows: roda na propria thread
         pendentes = deque()
-        with mss.mss() as sct_normal:
+        with abrir_mss(mss) as sct_normal:
             modo_cap = self.cfg.get("captura", "normal")
             sct = nova_captura(self.cfg, sct_normal, lambda t: self.fila.put(("aviso", t)))
             if not self.cfg.get("regiao"):
@@ -2395,7 +2400,7 @@ def main():
                 try:
                     import mss
                     from PIL import Image
-                    with mss.mss() as sct:
+                    with abrir_mss(mss) as sct:
                         for i, mon in enumerate(sct.monitors[1:], 1):
                             g = sct.grab(mon)
                             im = Image.frombytes("RGB", g.size, g.bgra, "raw", "BGRX")
@@ -2453,7 +2458,7 @@ def main():
             self.root.update()
             time.sleep(0.25)
             try:
-                with mss.mss() as s:
+                with abrir_mss(mss) as s:
                     v = s.monitors[0]
                     shot = s.grab(v)
                 print_tela = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
