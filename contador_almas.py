@@ -507,7 +507,7 @@ class Rastreador:
         fq = self._quadro
 
         cur = []
-        for t, y, h in itens:
+        for t, y, h in juntar_quebradas(itens):
             c = self._classificar(t)
             if c:
                 cur.append({"y": float(y), "h": h, "chave": c[0], "nome": c[1]})
@@ -743,6 +743,31 @@ def _trecho_util(k):
     if i is None:
         return " ".join(tok[:4])
     return " ".join(tok[i + 1:i + 4])
+
+
+_FIM_ALMA = re.compile(r"[x\u00d7]\s*[\d1lIi|]{1,3}\s*[.,:;]?\s*\S{0,6}\s*$", re.I)
+
+
+def juntar_quebradas(itens):
+    """Nome de monstro comprido quebra a mensagem em duas linhas:
+    'Obteve Pontos da Alma Kalgolem de' / 'Drakana x1.'. Junta as duas."""
+    itens = sorted(itens, key=lambda x: x[1])
+    out, usados = [], set()
+    for i, (t, y, h) in enumerate(itens):
+        if i in usados:
+            continue
+        if contem_aprox(t, "pontosdaalma", 0.8) and not _FIM_ALMA.search(t):
+            for j in range(i + 1, min(i + 3, len(itens))):
+                t2, y2, h2 = itens[j]
+                if y2 - y > max(h, h2) * 2.6:
+                    break
+                if _FIM_ALMA.search(t2) and len(normalizar(t2)) <= 30 and \
+                        not contem_aprox(t2, "obteve", 0.8):
+                    t = t.rstrip() + " " + t2.strip()
+                    usados.add(j)
+                    break
+        out.append((t, y, h))
+    return out
 
 
 def _diferenca_linhas(a, b):
@@ -1924,6 +1949,7 @@ def main():
             menu.add_separator()
             menu.add_command(label="Zerar todos os contadores\u2026", command=self.zerar)
             menu.add_command(label="Abrir pasta dos dados", command=self.abrir_pasta)
+            menu.add_command(label="Gerar relat\u00f3rio para suporte", command=self.gerar_relatorio)
             menu.add_command(label="Sair", command=self.sair)
             menu.tk_popup(e.x_root, e.y_root)
 
@@ -1962,6 +1988,52 @@ def main():
                             "Zerar TODOS os contadores? Isso n\u00e3o pode ser desfeito."):
                 self.prog.zerar_tudo()
                 self.render()
+
+        def gerar_relatorio(self):
+            """Junta log, capturas e configuracao num .zip na Area de Trabalho,
+            para mandar a quem esta ajudando."""
+            import zipfile, platform
+            try:
+                if self.leitor.ultima:
+                    self.leitor.ultima[0].save(os.path.join(BASE, "captura_original.png"))
+                    self.leitor.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
+                # print da tela inteira (onde o chat deveria estar)
+                try:
+                    import mss
+                    from PIL import Image
+                    with mss.mss() as sct:
+                        for i, mon in enumerate(sct.monitors[1:], 1):
+                            g = sct.grab(mon)
+                            im = Image.frombytes("RGB", g.size, g.bgra, "raw", "BGRX")
+                            im.thumbnail((1600, 1600))
+                            im.save(os.path.join(BASE, f"tela_monitor{i}.jpg"), quality=80)
+                except Exception as e:
+                    registrar(f"RELATORIO: sem print da tela ({e})")
+                registrar(f"RELATORIO: python {sys.version.split()[0]}, {platform.platform()}, "
+                          f"motor={self.motor_nome}, regiao={self.cfg.get('regiao')}, "
+                          f"monstros={len(self.prog.monstros)}")
+                desk = os.path.join(os.path.expanduser("~"), "Desktop")
+                try:
+                    import ctypes.wintypes
+                    buf = ctypes.create_unicode_buffer(260)
+                    ctypes.windll.shell32.SHGetFolderPathW(None, 0, None, 0, buf)
+                    if buf.value:
+                        desk = buf.value
+                except Exception:
+                    pass
+                destino = os.path.join(desk, "ContadorDeAlmas-relatorio.zip")
+                with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
+                    for nome in ("diagnostico.log", "diagnostico.log.old", "config.json",
+                                 "captura_original.png", "captura_tratada.png",
+                                 "tela_monitor1.jpg", "tela_monitor2.jpg", "tela_monitor3.jpg"):
+                        cam = os.path.join(BASE, nome)
+                        if os.path.exists(cam):
+                            z.write(cam, nome)
+                self.dialogo(messagebox.showinfo, APP_NOME,
+                             "Relat\u00f3rio salvo na \u00c1rea de Trabalho:\n"
+                             "ContadorDeAlmas-relatorio.zip\n\nMande esse arquivo para quem est\u00e1 te ajudando.")
+            except Exception as e:
+                self.dialogo(messagebox.showerror, APP_NOME, f"N\u00e3o consegui gerar o relat\u00f3rio: {e}")
 
         def abrir_pasta(self):
             try:
@@ -2041,6 +2113,8 @@ def main():
                 sel.destroy()
                 self.cfg["regiao"] = {"left": v["left"] + l, "top": v["top"] + t,
                                       "width": w, "height": h}
+                self.status_extra = None
+                registrar(f"AREA ESCOLHIDA NA MAO: {self.cfg['regiao']}")
                 self.salvar_cfg()
                 self.rastreador.reiniciar()
                 self.atualizar_status()
@@ -2265,7 +2339,7 @@ def main():
             self.root.mainloop()
 
     try:
-        registrar("INICIO versao 1.3.0 (relogio do evento)")
+        registrar("INICIO versao 1.3.1")
         App().rodar()
     except Exception:
         import traceback

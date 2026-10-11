@@ -72,7 +72,8 @@ Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Traba
 - **"Não consegui iniciar o OCR"** → o Tesseract não está instalado. Instale por <https://github.com/UB-Mannheim/tesseract/wiki> e abra o contador de novo.
 - **Não conta nada** → ⚙ → *Detectar o chat automaticamente*, com o chat visível. Se não achar, ⚙ → *Selecionar área do chat na mão*.
 - **Contou errado** → use − / + ou a caixinha **tenho**.
-- O programa grava `diagnostico.log` e `captura_*.png` na pasta de instalação (`%LOCALAPPDATA%\ContadorDeAlmas`). Ajudam a entender o que aconteceu.
+- **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
+- **Atualizar:** baixe o ZIP de novo e rode o `INSTALAR.bat` — o progresso é mantido.
 
 ## Requisitos
 
