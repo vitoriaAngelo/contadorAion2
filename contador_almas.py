@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.0"
+VERSAO = "1.5.1"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -127,8 +127,8 @@ PADROES_PADRAO = [
 ]
 
 CONFIG_PADRAO = {
-    "meta": 104,
-    "tiers": [5, 25, 74],
+    "meta": 105,
+    "tiers": [5, 25, 75],
     # proximo evento do jogo, no horario de Brasilia do servidor SA
     # (agenda de referencia: https://www.animoria.com.br/#agenda).
     # "horas": null = toda hora. "dias": 0=segunda ... 6=domingo (opcional).
@@ -293,15 +293,15 @@ def carregar_config():
         salvo.pop("intervalo", None)
     if salvo.get("versao_cfg", 0) < 5:
         salvo.pop("eventos", None)  # agenda nova (Kairah e Nahma)
-    if salvo.get("versao_cfg", 0) < 6 and salvo.get("tiers") in (None, [5, 25, 75]):
-        salvo["tiers"] = [5, 25, 74]  # no jogo a 3a estrela fecha com 74
+    if salvo.get("versao_cfg", 0) < 7 and salvo.get("tiers") in (None, [5, 25, 75]):
+        salvo["tiers"] = [5, 25, 75]  # a 3a estrela vai ate 75
     cfg.update(salvo)
-    cfg["versao_cfg"] = 6
+    cfg["versao_cfg"] = 7
     # a meta e sempre a soma das estrelas
     try:
         cfg["meta"] = sum(int(t) for t in cfg["tiers"])
     except Exception:
-        cfg["tiers"], cfg["meta"] = [5, 25, 74], 104
+        cfg["tiers"], cfg["meta"] = [5, 25, 75], 105
     # garante que padroes novos de versoes novas entrem, mantendo os do usuario
     salvos = list(cfg.get("padroes") or [])
     cfg["padroes"] = [p for p in PADROES_PADRAO if p not in salvos] + salvos
@@ -1936,10 +1936,10 @@ def main():
                 self.root.after(500, self.atualizar_evento)
 
         def _atualizar_linha(self, m, meta, w):
-            feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 74]))
+            feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 75]))
             completo = feitas >= n_tiers
             # contador e barra mostram a estrela atual (ex.: 3a estrela 70/75)
-            _tiers = self.cfg.get("tiers", [5, 25, 74])
+            _tiers = self.cfg.get("tiers", [5, 25, 75])
             est_t, faltam_t = tier_atual(m["qtd"], _tiers)
             tamanho_t = _tiers[est_t - 1]
             cor_barra = COR["ouro"] if completo else COR["alma"]
@@ -1988,7 +1988,7 @@ def main():
             w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
             w["nome"].pack(side="left")
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
-            tiers = self.cfg.get("tiers", [5, 25, 74])
+            tiers = self.cfg.get("tiers", [5, 25, 75])
             w["estrelas"] = []
             for i in range(1, len(tiers) + 1):
                 st = tk.Label(topo, text="\u2606", fg="#5a6070", bg=bg,
@@ -2038,7 +2038,7 @@ def main():
                 self.editando = None
                 txt = re.sub(r"[^0-9]", "", cx.get())
                 if txt:
-                    tiers = self.cfg.get("tiers", [5, 25, 74])
+                    tiers = self.cfg.get("tiers", [5, 25, 75])
                     estrela = getattr(self, "_estrela_escolhida", {}).pop(id(m), None) \
                         or tier_atual(m["qtd"], tiers)[0]
                     tamanho = tiers[estrela - 1]
@@ -2068,7 +2068,7 @@ def main():
         def escolher_estrela(self, m, i):
             """Clicou na estrela i: o monstro passa a estar no comeco dessa
             estrela e a caixinha 'faltam' ja fica pronta para digitar."""
-            tiers = self.cfg.get("tiers", [5, 25, 74])
+            tiers = self.cfg.get("tiers", [5, 25, 75])
             atual, faltam = tier_atual(m["qtd"], tiers)
             if i != atual or m["qtd"] >= sum(tiers):
                 self.prog.definir(m, sum(tiers[:i - 1]))
@@ -2207,7 +2207,7 @@ def main():
                 return
             nums = [int(x) for x in re.findall(r"\d+", v)]
             if not nums or any(n <= 0 for n in nums):
-                self.dialogo(messagebox.showerror, APP_NOME, "Use n\u00fameros, por exemplo: 5 / 25 / 74")
+                self.dialogo(messagebox.showerror, APP_NOME, "Use n\u00fameros, por exemplo: 5 / 25 / 75")
                 return
             # mantem a estrela e o 'tenho' de cada monstro ao mudar os tamanhos
             antigos = self.cfg["tiers"]

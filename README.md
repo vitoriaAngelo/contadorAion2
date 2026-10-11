@@ -1,6 +1,6 @@
 # ✦ Contador de Almas — Aion 2
 
-Overlay para **Aion 2** que conta sozinho as almas de cada monstro que você farma e mostra o progresso de cada estrela (5 → 25 → 74 almas, dá para mudar em ⚙ → Almas por estrela), sem precisar abrir o menu de monstros.
+Overlay para **Aion 2** que conta sozinho as almas de cada monstro que você farma e mostra o progresso de cada estrela (5 → 25 → 75 almas, dá para mudar em ⚙ → Almas por estrela), sem precisar abrir o menu de monstros.
 
 ![Overlay](docs/overlay.png)
 
@@ -39,12 +39,12 @@ Em cada monstro:
 | | |
 |---|---|
 | ★★☆ | estrelas: douradas = completas, contorno dourado = a que você está fazendo. **Clique numa estrela** para dizer em qual você está. |
-| `71/74` | almas da estrela atual |
+| `71/75` | almas da estrela atual |
 | **tenho** [ ] | digite quantas almas você já tem **naquela estrela** e aperte Enter |
 | − + | corrigir na mão |
 | ✕ | tirar o monstro da lista |
 
-Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/74`.
+Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
 
 No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
 (fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,
