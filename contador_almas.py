@@ -293,7 +293,7 @@ def carregar_config():
         salvo.pop("intervalo", None)
     if salvo.get("versao_cfg", 0) < 5:
         salvo.pop("eventos", None)  # agenda nova (Kairah e Nahma)
-    if salvo.get("versao_cfg", 0) < 7 and salvo.get("tiers") in (None, [5, 25, 75]):
+    if salvo.get("versao_cfg", 0) < 7 and salvo.get("tiers") in (None, [5, 25, 74]):
         salvo["tiers"] = [5, 25, 75]  # a 3a estrela vai ate 75
     cfg.update(salvo)
     cfg["versao_cfg"] = 7
