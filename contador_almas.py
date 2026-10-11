@@ -967,20 +967,48 @@ class OcrTesseract:
         if achado:
             pytesseract.pytesseract.tesseract_cmd = achado
         self.pt = pytesseract
-        # pacote de portugues que o instalador baixa para a pasta do programa.
-        # Se nao tiver, usa os idiomas do proprio Tesseract.
-        extra = ""
+        # nao tentar ler texto invertido: ~40% mais rapido, mesmo resultado
+        self.cfg_rapida = "-c tessedit_do_invert=0"
+        self.paralelo = True  # cada leitura e um processo separado
+        # Pacote de portugues que o instalador baixa para a pasta do programa.
+        # A pasta vai pela variavel TESSDATA_PREFIX (e nao por --tessdata-dir):
+        # no Windows o pytesseract passaria o caminho COM as aspas e o
+        # Tesseract nao acha o arquivo ("Error opening data file").
         pasta_td = os.path.join(BASE, "tessdata")
-        if os.path.exists(os.path.join(pasta_td, "por.traineddata")):
-            extra = f'--tessdata-dir "{pasta_td}" '
-        disp = pytesseract.get_languages(config=extra)
+        arq_por = os.path.join(pasta_td, "por.traineddata")
+        usou_pasta = False
+        if os.path.exists(arq_por) and os.path.getsize(arq_por) > 500_000:
+            os.environ["TESSDATA_PREFIX"] = pasta_td
+            usou_pasta = True
+        try:
+            self._escolher_idioma()
+            self._testar()
+        except Exception as e:
+            if not usou_pasta:
+                raise
+            # o pacote da pasta deu problema: volta para o do proprio Tesseract
+            registrar(f"AVISO: pacote de portugues da pasta falhou ({e}); usando o do Tesseract")
+            os.environ.pop("TESSDATA_PREFIX", None)
+            self._escolher_idioma()
+            self._testar()
+        origem = "pasta do programa" if os.environ.get("TESSDATA_PREFIX") else "Tesseract"
+        self.nome = f"Tesseract ({self.lang}, {origem})"
+
+    def _escolher_idioma(self):
+        disp = self.pt.get_languages(config="")
         # um idioma so e bem mais rapido; o jogo esta em portugues
         quer = [l for l in ("por", "eng") if l in disp][:1] or disp[:1]
-        self.lang = "+".join(quer) or "eng"
-        self.nome = f"Tesseract ({self.lang})"
-        # nao tentar ler texto invertido: ~40% mais rapido, mesmo resultado
-        self.cfg_rapida = extra + "-c tessedit_do_invert=0"
-        self.paralelo = True  # cada leitura e um processo separado
+        if not quer:
+            raise RuntimeError("Tesseract sem nenhum idioma instalado")
+        self.lang = quer[0]
+
+    def _testar(self):
+        """Le uma imagem pequena na abertura: se o Tesseract nao funcionar, o
+        erro aparece agora (com a mensagem certa) e nao a cada leitura."""
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (220, 40), "white")
+        ImageDraw.Draw(img).text((8, 12), "Obteve 123", fill="black")
+        self.pt.image_to_string(img, lang=self.lang, config="--psm 7 " + self.cfg_rapida)
 
     def ler(self, img):
         from PIL import ImageOps, ImageStat
@@ -1170,6 +1198,90 @@ def preparar_imagem(img, cfg):
     return ImageChops.invert(letras).convert("RGB")
 
 
+class _Foto:
+    """Mesmo formato do resultado do mss (size + bgra)."""
+    def __init__(self, w, h, bgra):
+        self.size = (w, h)
+        self.bgra = bgra
+
+
+class CapturaDirectX:
+    """Captura pela Duplicacao de Area de Trabalho do DirectX (DXGI). Pega a
+    imagem ja composta que vai para o monitor, com todas as camadas. Serve
+    quando a captura normal mostra o jogo mas nao mostra o chat (tela cheia,
+    HDR, 'Otimizacoes para jogos em janela' do Windows 11...)."""
+
+    def __init__(self, sct_normal):
+        import dxcam
+        self.normal = sct_normal
+        self.monitors = sct_normal.monitors
+        self.saidas = []   # (left, top, right, bottom, camera)
+        self.ultimo = {}
+        for dev in range(4):
+            for out in range(8):
+                try:
+                    cam = dxcam.create(device_idx=dev, output_idx=out, output_color="BGRA")
+                except Exception:
+                    continue
+                if cam is None:
+                    continue
+                ret = self._retangulo(cam)
+                if ret:
+                    self.saidas.append(ret + (cam,))
+        if not self.saidas:
+            raise RuntimeError("DirectX nao encontrou nenhum monitor")
+
+    def _retangulo(self, cam):
+        try:
+            r = cam._output.desc.DesktopCoordinates
+            return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+        except Exception:
+            pass
+        try:  # sem posicao: casa pelo tamanho com os monitores do mss
+            w, h = cam.width, cam.height
+            for m in self.monitors[1:]:
+                if m["width"] == w and m["height"] == h:
+                    return (m["left"], m["top"], m["left"] + w, m["top"] + h)
+        except Exception:
+            pass
+        return None
+
+    def grab(self, reg):
+        cx = reg["left"] + reg["width"] // 2
+        cy = reg["top"] + reg["height"] // 2
+        for l, t, r, b, cam in self.saidas:
+            if l <= cx < r and t <= cy < b:
+                x0 = max(0, reg["left"] - l)
+                y0 = max(0, reg["top"] - t)
+                x1 = min(r - l, reg["left"] + reg["width"] - l)
+                y1 = min(b - t, reg["top"] + reg["height"] - t)
+                chave = (x0, y0, x1, y1)
+                try:
+                    quadro = cam.grab(region=chave)
+                except Exception:
+                    quadro = None
+                if quadro is None:
+                    # DirectX so entrega quadro quando a tela muda: repete o ultimo
+                    if chave in self.ultimo:
+                        return self.ultimo[chave]
+                    break
+                foto = _Foto(x1 - x0, y1 - y0, quadro.tobytes())
+                self.ultimo[chave] = foto
+                return foto
+        return self.normal.grab(reg)
+
+
+def nova_captura(cfg, sct_normal, avisar=lambda t: None):
+    if cfg.get("captura", "normal") == "directx":
+        try:
+            cap = CapturaDirectX(sct_normal)
+            avisar("CAPTURA: DirectX")
+            return cap
+        except Exception as e:
+            avisar(f"CAPTURA: DirectX falhou ({e}); usando a normal")
+    return sct_normal
+
+
 class _ExecutorDireto:
     """Mesmo jeito de usar do ThreadPoolExecutor, mas roda na hora."""
     def submit(self, fn, *a):
@@ -1226,10 +1338,16 @@ class Leitor(threading.Thread):
         else:
             pool = _ExecutorDireto()  # OCR do Windows: roda na propria thread
         pendentes = deque()
-        with mss.mss() as sct:
+        with mss.mss() as sct_normal:
+            modo_cap = self.cfg.get("captura", "normal")
+            sct = nova_captura(self.cfg, sct_normal, lambda t: self.fila.put(("aviso", t)))
             if not self.cfg.get("regiao"):
                 self.pedir_deteccao.set()
             while not self.parar.is_set():
+                if self.cfg.get("captura", "normal") != modo_cap:
+                    modo_cap = self.cfg.get("captura", "normal")
+                    sct = nova_captura(self.cfg, sct_normal, lambda t: self.fila.put(("aviso", t)))
+                    self._mini = None
                 if self.pedir_deteccao.is_set():
                     self.pedir_deteccao.clear()
                     while pendentes:
@@ -1950,6 +2068,11 @@ def main():
             menu.add_command(label="Zerar todos os contadores\u2026", command=self.zerar)
             menu.add_command(label="Abrir pasta dos dados", command=self.abrir_pasta)
             menu.add_command(label="Gerar relat\u00f3rio para suporte", command=self.gerar_relatorio)
+            menu.add_separator()
+            menu.add_checkbutton(label="Captura DirectX (use se o chat n\u00e3o aparecer na leitura)",
+                                 onvalue=True, offvalue=False,
+                                 variable=tk.BooleanVar(value=self.cfg.get("captura") == "directx"),
+                                 command=self.alternar_captura)
             menu.add_command(label="Sair", command=self.sair)
             menu.tk_popup(e.x_root, e.y_root)
 
@@ -1988,6 +2111,70 @@ def main():
                             "Zerar TODOS os contadores? Isso n\u00e3o pode ser desfeito."):
                 self.prog.zerar_tudo()
                 self.render()
+
+        def alternar_captura(self):
+            if self.cfg.get("captura") == "directx":
+                self.cfg["captura"] = "normal"
+                self.salvar_cfg()
+                registrar("CAPTURA: normal (escolhida no menu)")
+                return
+            try:
+                import dxcam  # noqa: F401
+            except Exception:
+                if not self.dialogo(messagebox.askyesno, APP_NOME,
+                                    "A captura DirectX precisa de um complemento (dxcam).\n"
+                                    "Instalar agora? Leva alguns segundos."):
+                    return
+                self.status_extra = "instalando captura DirectX\u2026"
+                self.atualizar_status()
+                threading.Thread(target=self._instalar_dxcam, daemon=True).start()
+                return
+            self._ligar_directx()
+
+        def _instalar_dxcam(self):
+            import subprocess
+            exe = sys.executable
+            if exe.lower().endswith("pythonw.exe"):
+                exe = exe[:-len("pythonw.exe")] + "python.exe"
+            try:
+                r = subprocess.run([exe, "-m", "pip", "install", "--user", "-q",
+                                    "--disable-pip-version-check", "dxcam"],
+                                   capture_output=True, text=True, timeout=600,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                ok = r.returncode == 0
+                registrar(f"INSTALAR dxcam: codigo {r.returncode} {r.stderr[-300:]}")
+            except Exception as e:
+                ok = False
+                registrar(f"INSTALAR dxcam: falhou {e}")
+            self.root.after(0, lambda: self._fim_instalar_dxcam(ok))
+
+        def _fim_instalar_dxcam(self, ok):
+            self.status_extra = None
+            self.atualizar_status()
+            if ok:
+                import importlib, site
+                try:
+                    importlib.invalidate_caches()
+                    p = site.getusersitepackages()
+                    if p not in sys.path:
+                        sys.path.append(p)
+                except Exception:
+                    pass
+                self._ligar_directx()
+            else:
+                self.dialogo(messagebox.showerror, APP_NOME,
+                             "N\u00e3o consegui instalar o complemento da captura DirectX.\n"
+                             "Gere o relat\u00f3rio de suporte (menu \u2699) e mande para quem est\u00e1 ajudando.")
+
+        def _ligar_directx(self):
+            self.cfg["captura"] = "directx"
+            self.salvar_cfg()
+            registrar("CAPTURA: DirectX (escolhida no menu)")
+            self.rastreador.reiniciar()
+            self.dialogo(messagebox.showinfo, APP_NOME,
+                         "Captura DirectX ligada.\n\nAbra \u2699 \u2192 Ver leitura e confira se o chat "
+                         "aparece na imagem da esquerda. Se n\u00e3o achar o chat, use "
+                         "\u2699 \u2192 Detectar o chat automaticamente.")
 
         def gerar_relatorio(self):
             """Junta log, capturas e configuracao num .zip na Area de Trabalho,
@@ -2259,8 +2446,13 @@ def main():
                         self.dialogo(messagebox.showerror, APP_NOME, dado +
                                      "\n\nVerifique se o Tesseract est\u00e1 instalado (veja o README, se\u00e7\u00e3o Problemas).")
                     elif tipo == "aviso":
-                        registrar("AVISO: " + str(dado))
+                        agora_av = time.time()
+                        if agora_av - getattr(self, "_ult_aviso", 0) > 10 or \
+                                str(dado) != getattr(self, "_txt_aviso", ""):
+                            registrar("AVISO: " + str(dado))
+                            self._ult_aviso, self._txt_aviso = agora_av, str(dado)
                         self.motor_nome = dado
+                        self.mostrar_debug(self.ultimas_linhas, [])  # previa nao trava
                     elif tipo == "status":
                         self.status_extra = "procurando o chat…"
                         self.atualizar_status()
@@ -2339,7 +2531,7 @@ def main():
             self.root.mainloop()
 
     try:
-        registrar("INICIO versao 1.3.1")
+        registrar("INICIO versao 1.4.1")
         App().rodar()
     except Exception:
         import traceback
