@@ -46,6 +46,15 @@ Em cada monstro:
 
 Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
 
+No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
+(fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,
+com base em <https://www.animoria.com.br/#agenda>: Shugo (toda hora :00), Invasão Dimensional (:30),
+Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e Senhor Guardião Nahma
+(21h, sexta e domingo). Dá para mudar a lista em `config.json` → `eventos`.
+
+Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
+continua contando; clique no ícone dele para voltar) · ✕ fechar.
+
 Menu ⚙: detectar o chat de novo, escolher a área na mão, opacidade, mostrar concluídos, aparecer ou não na stream.
 
 ## OBS

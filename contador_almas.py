@@ -50,7 +50,19 @@ PADROES_PADRAO = [
 
 CONFIG_PADRAO = {
     "meta": 105,
-    "tiers": [5, 25, 75],      # almas para cada estrela (somam a meta: 5+25+75=105)
+    "tiers": [5, 25, 75],
+    # proximo evento do jogo, no horario de Brasilia do servidor SA
+    # (agenda de referencia: https://www.animoria.com.br/#agenda).
+    # "horas": null = toda hora. "dias": 0=segunda ... 6=domingo (opcional).
+    "eventos": [
+        {"nome": "Shugo", "minuto": 0, "horas": None, "duracao": 10},
+        {"nome": "Invas\u00e3o", "minuto": 30, "horas": None, "duracao": 3},
+        {"nome": "Fenda", "minuto": 0,
+         "horas": [2, 5, 8, 11, 14, 17, 20, 23], "duracao": 10},
+        {"nome": "Kairah", "minuto": 0,
+         "horas": [1, 4, 7, 10, 13, 16, 19, 22], "duracao": 30},
+        {"nome": "Nahma", "minuto": 0, "horas": [21], "dias": [4, 6], "duracao": 30},
+    ],      # almas para cada estrela (somam a meta: 5+25+75=105)
     "regiao": None,            # {"left","top","width","height"} em pixels reais
     "intervalo": 0.3,          # segundos entre capturas
     "motor_ocr": "auto",       # auto | windows | tesseract
@@ -94,6 +106,67 @@ def estrelas(qtd, tiers):
         else:
             return feitas, acum - qtd, len(tiers)
     return feitas, 0, len(tiers)
+
+
+def evento_info(eventos, agora=None):
+    """Proximo evento da lista (horario local): (nomes, inicio, fim, em_andamento)
+    ou None. Se dois comecam na mesma hora, junta os nomes."""
+    import datetime as dt
+    agora = agora or dt.datetime.now()
+    melhor = None  # [inicio, [nomes], andando, fim]
+    for ev in eventos or []:
+        try:
+            minuto = int(ev.get("minuto", 0))
+            horas = ev.get("horas")
+            dias = ev.get("dias")
+            dur = int(ev.get("duracao", 0))
+            nome = str(ev.get("nome", "Evento"))
+        except Exception:
+            continue
+        base = agora.replace(second=0, microsecond=0)
+        for passo in range(-dur - 1, 60 * 24 * 8):
+            t = base + dt.timedelta(minutes=passo)
+            if t.minute != minuto:
+                continue
+            if horas is not None and t.hour not in horas:
+                continue
+            if dias is not None and t.weekday() not in dias:
+                continue
+            fim = t + dt.timedelta(minutes=max(dur, 1))
+            if fim <= agora:
+                continue
+            andando = t <= agora < fim
+            if melhor is None or (andando and not melhor[2]) or \
+                    (andando == melhor[2] and t < melhor[0]):
+                melhor = [t, [nome], andando, fim]
+            elif t == melhor[0] and andando == melhor[2] and nome not in melhor[1]:
+                melhor[1].append(nome)
+                melhor[3] = max(melhor[3], fim)
+            break
+    if not melhor:
+        return None
+    t, nomes, andando, fim = melhor
+    return " + ".join(nomes), t, fim, andando
+
+
+def formatar_relogio(segundos):
+    segundos = max(0, int(segundos))
+    h, resto = divmod(segundos, 3600)
+    m, s_ = divmod(resto, 60)
+    return f"{h}:{m:02d}:{s_:02d}" if h else f"{m:02d}:{s_:02d}"
+
+
+def proximo_evento(eventos, agora=None):
+    """Texto curto do proximo evento (usado nos testes)."""
+    import datetime as dt
+    agora = agora or dt.datetime.now()
+    info = evento_info(eventos, agora)
+    if not info:
+        return "", False
+    nomes, t, fim, andando = info
+    if andando:
+        return f"\u25cf {nomes} agora", True
+    return f"\u25b8 {nomes} {formatar_relogio((t - agora).total_seconds())}", False
 
 
 def tier_atual(qtd, tiers):
@@ -140,8 +213,10 @@ def carregar_config():
         # leitura mais rapida: escala 2 le igual e custa menos
         salvo.pop("escala_ocr", None)
         salvo.pop("intervalo", None)
+    if salvo.get("versao_cfg", 0) < 5:
+        salvo.pop("eventos", None)  # agenda nova (Kairah e Nahma)
     cfg.update(salvo)
-    cfg["versao_cfg"] = 4
+    cfg["versao_cfg"] = 5
     # garante que padroes novos de versoes novas entrem, mantendo os do usuario
     salvos = list(cfg.get("padroes") or [])
     cfg["padroes"] = [p for p in PADROES_PADRAO if p not in salvos] + salvos
@@ -1277,6 +1352,7 @@ def main():
             self.root.after(300, lambda: self.esconder_da_captura(self.root))
             self.root.after(200, self.virar_janela_normal)
             self.root.after(100, self.atualizar_areas_proprias)
+            self.root.after(500, self.atualizar_evento)
 
         # ---------------- util ----------------
         def esconder_da_captura(self, janela):
@@ -1376,11 +1452,57 @@ def main():
 
         def reforcar_topo(self):
             try:
-                self.root.attributes("-topmost", True)
-                self.root.lift()
+                # minimizado fica minimizado: nao traz de volta para cima
+                if not getattr(self, "minimizado", False) and self.root.state() != "iconic":
+                    self.root.attributes("-topmost", True)
+                    self.root.lift()
             except Exception:
                 pass
             self.root.after(3000, self.reforcar_topo)
+
+        def minimizar(self):
+            """Manda o overlay para a barra de tarefas. Ele continua contando e so
+            volta quando voce clica nele na barra de tarefas."""
+            if getattr(self, "minimizado", False):
+                return
+            self.minimizado = True
+            self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
+            self.salvar_cfg()
+            # janela sem borda nao pode ser minimizada no Windows: tira a
+            # "falta de borda" so enquanto estiver minimizada
+            r = self.root
+            r.attributes("-topmost", False)
+            r.withdraw()
+            r.overrideredirect(False)
+            r.update_idletasks()
+            r.deiconify()
+
+            def baixar():
+                r.iconify()
+                # so comeca a vigiar a volta depois que ja minimizou
+                r.after(300, lambda: r.bind("<Map>", self._ao_restaurar))
+            r.after(60, baixar)
+
+        def _ao_restaurar(self, e=None):
+            if not getattr(self, "minimizado", False) or e is None or e.widget is not self.root:
+                return
+            if self.root.state() == "iconic":
+                return
+            self.minimizado = False
+            self.root.unbind("<Map>")
+            self.root.after(10, self._voltar_ao_normal)
+
+        def _voltar_ao_normal(self):
+            self.root.withdraw()
+            self.root.overrideredirect(True)
+            self.root.update_idletasks()
+            self.root.deiconify()
+            x, y = self.cfg.get("posicao", [40, 200])
+            self.root.geometry(f"+{int(x)}+{int(y)}")
+            self.root.attributes("-topmost", True)
+            self.root.lift()
+            self.esconder_da_captura(self.root)
+            self.virar_janela_normal()
 
         def dialogo(self, fn, *a, **kw):
             self.root.attributes("-topmost", False)
@@ -1410,6 +1532,7 @@ def main():
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
 
             self.botao(h, "\u2715", lambda e: self.sair()).pack(side="right")
+            self.botao(h, "\u2013", lambda e: self.minimizar()).pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
@@ -1481,7 +1604,8 @@ def main():
             visiveis, ocultos = lista[:limite], max(0, len(lista) - limite)
 
             rodape = ""
-            if todos and not self.cfg.get("recolhido"):
+            mostra_rodape = not self.cfg.get("recolhido")
+            if todos and mostra_rodape:
                 rodape = f"{len(concl)}/{len(todos)} conclu\u00eddos"
                 if ocultos:
                     rodape += f"  \u00b7  +{ocultos} ocultos"
@@ -1492,7 +1616,7 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            estrutura = (tuple(id(m) for m in visiveis), bool(rodape), vazio,
+            estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")))
             if estrutura == getattr(self, "_estrutura", None):
                 # so atualiza os numeros (sem apagar nada)
@@ -1500,7 +1624,7 @@ def main():
                     w = self._ui.get(id(m))
                     if w:
                         self._atualizar_linha(m, meta, w)
-                if rodape and getattr(self, "_lbl_rodape", None):
+                if getattr(self, "_lbl_rodape", None) and self._lbl_rodape.cget("text") != rodape:
                     self._lbl_rodape.configure(text=rodape)
                 return
 
@@ -1520,12 +1644,57 @@ def main():
                          justify="left").pack(anchor="w", pady=self.px(4))
             for m in visiveis:
                 self._ui[id(m)] = self._linha(m, meta)
-            if rodape:
+            self._lbl_evento = None
+            if mostra_rodape:
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
                 rod.pack(fill="x", pady=(self.px(4), 0))
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
                                             bg=COR["fundo"], font=self.f_peq)
                 self._lbl_rodape.pack(side="left")
+                self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
+                                             font=("Consolas", 9, "bold"), width=7, anchor="e")
+                self._lbl_relogio.pack(side="right")
+                self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
+                                            bg=COR["fundo"], font=("Segoe UI", 8, "bold"))
+                self._lbl_evento.pack(side="right")
+                self._ev_cache = None
+                self.atualizar_evento(agendar=False)
+
+        def atualizar_evento(self, agendar=True):
+            """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
+            minuto fica vermelho e piscando. So mexe nesses dois textos."""
+            import datetime as dt
+            lbl, rel = getattr(self, "_lbl_evento", None), getattr(self, "_lbl_relogio", None)
+            if lbl is not None and rel is not None:
+                try:
+                    agora = dt.datetime.now()
+                    info = getattr(self, "_ev_cache", None)
+                    # so recalcula a agenda quando o evento comeca/termina
+                    if info is None or agora >= (info[2] if info[3] else info[1]):
+                        info = evento_info(self.cfg.get("eventos", []), agora)
+                        self._ev_cache = info
+                    if info:
+                        nomes, t, fim_ev, andando = info
+                        if andando:
+                            txt_n, txt_r, cor = f"\u25cf {nomes}", "agora", COR["ouro"]
+                        else:
+                            falta = (t - agora).total_seconds()
+                            txt_n, txt_r = f"\u25b8 {nomes}", formatar_relogio(falta)
+                            cor = COR["ouro"]
+                            if falta <= 60:
+                                # ultimo minuto: vermelho piscando (2x por segundo)
+                                aceso = int(agora.timestamp() * 2) % 2 == 0
+                                cor = COR["erro"] if aceso else COR["fundo"]
+                        if lbl.cget("text") != txt_n:
+                            lbl.configure(text=txt_n)
+                        if rel.cget("text") != txt_r:
+                            rel.configure(text=txt_r)
+                        if rel.cget("fg") != cor:
+                            rel.configure(fg=cor)
+                except Exception:
+                    pass
+            if agendar:
+                self.root.after(500, self.atualizar_evento)
 
         def _atualizar_linha(self, m, meta, w):
             feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 75]))
@@ -2086,7 +2255,8 @@ def main():
 
         def sair(self):
             self.leitor.parar.set()
-            self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
+            if not getattr(self, "minimizado", False):
+                self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
             self.salvar_cfg()
             self.prog.salvar()
             self.root.destroy()
@@ -2095,7 +2265,7 @@ def main():
             self.root.mainloop()
 
     try:
-        registrar("INICIO versao 1.0.0")
+        registrar("INICIO versao 1.3.0 (relogio do evento)")
         App().rodar()
     except Exception:
         import traceback
