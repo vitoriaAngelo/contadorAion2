@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.5"
+VERSAO = "1.5.6"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -625,7 +625,8 @@ class Rastreador:
         for t, y, h in juntar_quebradas(itens):
             c = self._classificar(t)
             if c:
-                cur.append({"y": float(y), "h": h, "chave": c[0], "nome": c[1]})
+                cur.append({"y": float(y), "h": h, "chave": c[0], "nome": c[1],
+                            "qtd": quantidade_alma(t) if c[1] else 1, "cont": 0})
         if not cur:
             if getattr(self, "mem", None) is None:
                 self._vazio_no_inicio = getattr(self, "_vazio_no_inicio", 0) + 1
@@ -664,7 +665,8 @@ class Rastreador:
             # o chat estava escondido e apareceu: quem fez ele aparecer foi a
             # mensagem nova, que e a linha mais de baixo
             if getattr(self, "_vazio_no_inicio", 0) >= 2 and cur[-1]["nome"]:
-                return [cur[-1]["nome"]]
+                self.mem[-1]["cont"] = cur[-1]["qtd"]
+                return [cur[-1]["nome"]] * cur[-1]["qtd"]
             return []  # primeira vez: so referencia
 
         # ---- 1) candidatos de deslocamento (quanto o chat se mexeu) ----
@@ -737,15 +739,28 @@ class Rastreador:
                 self.lac = []
                 self._confuso = None
                 if abs(cur[-1]["y"] - fundo_mem) < tol:
-                    return [c["nome"] for c in reversed(cur) if c["nome"]]
+                    out = []
+                    for m in reversed(self.mem):
+                        if m["nome"]:
+                            m["cont"] = m["qtd"]
+                            out += [m["nome"]] * m["qtd"]
+                    return out
             return []
         self._confuso = None
 
         contados = []
+
+        def contar(c, ja=0):
+            # "x2" no fim = 2 almas de uma vez
+            n = c["qtd"] - ja
+            if n > 0:
+                contados.extend([c["nome"]] * n)
+                c["cont"] = c["qtd"]
+
         # almas novas (abaixo da ultima linha conhecida)
         for i in novos:
             if cur[i]["nome"]:
-                contados.append(cur[i]["nome"])
+                contar(cur[i])
         # almas novas que o OCR tinha perdido e agora apareceram no meio
         lac_rest = []
         usados_lac = set()
@@ -755,12 +770,19 @@ class Rastreador:
                 if k not in usados_lac and abs(ly - delta - c["y"]) < tol:
                     usados_lac.add(k)
                     if c["nome"]:
-                        contados.append(c["nome"])
+                        contar(c)
                     break
         # alma de monstro novo lida borrada que agora foi confirmada
         for i, j in pares:
-            if mem[j].get("pend") and cur[i]["nome"]:
-                contados.append(cur[i]["nome"])
+            m, c = mem[j], cur[i]
+            if m.get("pend") and c["nome"]:
+                contar(c)
+            elif c["nome"] and m.get("cont", 0) > 0:
+                # a mesma linha lida de novo: se antes o OCR viu "x1" e agora
+                # ve "x2", soma a diferenca (nunca diminui)
+                c["cont"] = m["cont"]
+                if c["qtd"] > m["cont"] and c["nome"] == m["nome"]:
+                    contar(c, m["cont"])
 
         # ---- 2) atualiza a memoria ----
         nova_mem = []
@@ -770,7 +792,9 @@ class Rastreador:
             nome = c["nome"] or m["nome"]
             pend = bool(m.get("pend") and not c["nome"])
             nova_mem.append({"y": c["y"], "h": c["h"], "chave": c["chave"] if c["nome"] or not m["nome"] else m["chave"],
-                             "nome": nome, "visto": fq, "pend": pend})
+                             "nome": nome, "visto": fq, "pend": pend,
+                             "qtd": max(c.get("qtd", 1), m.get("qtd", 1)),
+                             "cont": max(c.get("cont", 0), m.get("cont", 0))})
         for i in novos + meio:
             c = cur[i]
             pend = (i in novos) and c["nome"] is None and c["chave"].startswith("alma ")
@@ -858,6 +882,16 @@ def _trecho_util(k):
     if i is None:
         return " ".join(tok[:4])
     return " ".join(tok[i + 1:i + 4])
+
+
+_QTD_ALMA = re.compile(r"[x\u00d7]\s*([2-5])\s*[.,:;]?(\s|$)", re.I)
+
+
+def quantidade_alma(linha):
+    """'... Kalgolem x2.' -> 2. So aceita 2 a 5: o OCR le muito o 'x1' como
+    'x7', 'xl', 'xi', entao qualquer outra coisa vale 1."""
+    m = _QTD_ALMA.search(linha or "")
+    return int(m.group(1)) if m else 1
 
 
 _TEM_X1 = re.compile(r"[x\u00d7]\s*[\d1lIi|\u00b9]{1,3}\s*[.,:;]?(\s|$)", re.I)
