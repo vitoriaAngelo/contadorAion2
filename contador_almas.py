@@ -49,8 +49,8 @@ PADROES_PADRAO = [
 ]
 
 CONFIG_PADRAO = {
-    "meta": 105,
-    "tiers": [5, 25, 75],
+    "meta": 104,
+    "tiers": [5, 25, 74],
     # proximo evento do jogo, no horario de Brasilia do servidor SA
     # (agenda de referencia: https://www.animoria.com.br/#agenda).
     # "horas": null = toda hora. "dias": 0=segunda ... 6=domingo (opcional).
@@ -215,8 +215,15 @@ def carregar_config():
         salvo.pop("intervalo", None)
     if salvo.get("versao_cfg", 0) < 5:
         salvo.pop("eventos", None)  # agenda nova (Kairah e Nahma)
+    if salvo.get("versao_cfg", 0) < 6 and salvo.get("tiers") in (None, [5, 25, 75]):
+        salvo["tiers"] = [5, 25, 74]  # no jogo a 3a estrela fecha com 74
     cfg.update(salvo)
-    cfg["versao_cfg"] = 5
+    cfg["versao_cfg"] = 6
+    # a meta e sempre a soma das estrelas
+    try:
+        cfg["meta"] = sum(int(t) for t in cfg["tiers"])
+    except Exception:
+        cfg["tiers"], cfg["meta"] = [5, 25, 74], 104
     # garante que padroes novos de versoes novas entrem, mantendo os do usuario
     salvos = list(cfg.get("padroes") or [])
     cfg["padroes"] = [p for p in PADROES_PADRAO if p not in salvos] + salvos
@@ -1840,10 +1847,10 @@ def main():
                 self.root.after(500, self.atualizar_evento)
 
         def _atualizar_linha(self, m, meta, w):
-            feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 75]))
+            feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 74]))
             completo = feitas >= n_tiers
             # contador e barra mostram a estrela atual (ex.: 3a estrela 70/75)
-            _tiers = self.cfg.get("tiers", [5, 25, 75])
+            _tiers = self.cfg.get("tiers", [5, 25, 74])
             est_t, faltam_t = tier_atual(m["qtd"], _tiers)
             tamanho_t = _tiers[est_t - 1]
             cor_barra = COR["ouro"] if completo else COR["alma"]
@@ -1892,7 +1899,7 @@ def main():
             w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
             w["nome"].pack(side="left")
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
-            tiers = self.cfg.get("tiers", [5, 25, 75])
+            tiers = self.cfg.get("tiers", [5, 25, 74])
             w["estrelas"] = []
             for i in range(1, len(tiers) + 1):
                 st = tk.Label(topo, text="\u2606", fg="#5a6070", bg=bg,
@@ -1942,7 +1949,7 @@ def main():
                 self.editando = None
                 txt = re.sub(r"[^0-9]", "", cx.get())
                 if txt:
-                    tiers = self.cfg.get("tiers", [5, 25, 75])
+                    tiers = self.cfg.get("tiers", [5, 25, 74])
                     estrela = getattr(self, "_estrela_escolhida", {}).pop(id(m), None) \
                         or tier_atual(m["qtd"], tiers)[0]
                     tamanho = tiers[estrela - 1]
@@ -1972,7 +1979,7 @@ def main():
         def escolher_estrela(self, m, i):
             """Clicou na estrela i: o monstro passa a estar no comeco dessa
             estrela e a caixinha 'faltam' ja fica pronta para digitar."""
-            tiers = self.cfg.get("tiers", [5, 25, 75])
+            tiers = self.cfg.get("tiers", [5, 25, 74])
             atual, faltam = tier_atual(m["qtd"], tiers)
             if i != atual or m["qtd"] >= sum(tiers):
                 self.prog.definir(m, sum(tiers[:i - 1]))
@@ -2051,7 +2058,8 @@ def main():
             menu.add_command(label="Ver leitura / ajustar padr\u00f5es\u2026", command=self.abrir_debug)
             menu.add_separator()
             menu.add_command(label="Adicionar monstro\u2026", command=self.adicionar)
-            menu.add_command(label=f"Meta por monstro: {self.cfg['meta']}\u2026", command=self.mudar_meta)
+            menu.add_command(label="Almas por estrela: " + " / ".join(str(t) for t in self.cfg["tiers"]) + "\u2026",
+                             command=self.mudar_meta)
             menu.add_checkbutton(label="Mostrar conclu\u00eddos",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=self.cfg.get("mostrar_concluidos")),
@@ -2099,12 +2107,31 @@ def main():
             self.render()
 
         def mudar_meta(self):
-            v = self.dialogo(simpledialog.askinteger, APP_NOME, "Meta por monstro:",
-                             initialvalue=self.cfg["meta"], minvalue=1)
-            if v:
-                self.cfg["meta"] = v
-                self.salvar_cfg()
-                self.render()
+            atual = " / ".join(str(t) for t in self.cfg["tiers"])
+            v = self.dialogo(simpledialog.askstring, APP_NOME,
+                             "Quantas almas cada estrela precisa no jogo?\n"
+                             "(1\u00aa / 2\u00aa / 3\u00aa estrela, separadas por barra)",
+                             initialvalue=atual)
+            if not v:
+                return
+            nums = [int(x) for x in re.findall(r"\d+", v)]
+            if not nums or any(n <= 0 for n in nums):
+                self.dialogo(messagebox.showerror, APP_NOME, "Use n\u00fameros, por exemplo: 5 / 25 / 74")
+                return
+            # mantem a estrela e o 'tenho' de cada monstro ao mudar os tamanhos
+            antigos = self.cfg["tiers"]
+            for m in self.prog.monstros:
+                est, falta = tier_atual(m["qtd"], antigos)
+                tenho = antigos[est - 1] - falta
+                est = min(est, len(nums))
+                m["qtd"] = sum(nums[:est - 1]) + min(tenho, nums[est - 1])
+            self.prog.salvar()
+            self.cfg["tiers"] = nums
+            self.cfg["meta"] = sum(nums)
+            registrar(f"ESTRELAS: {nums}")
+            self.salvar_cfg()
+            self._estrutura = None  # numero de estrelas pode mudar: remonta a lista
+            self.render()
 
         def zerar(self):
             if self.dialogo(messagebox.askyesno, APP_NOME,
@@ -2531,7 +2558,7 @@ def main():
             self.root.mainloop()
 
     try:
-        registrar("INICIO versao 1.4.1")
+        registrar("INICIO versao 1.4.2 (3a estrela 74)")
         App().rodar()
     except Exception:
         import traceback
