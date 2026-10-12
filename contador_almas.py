@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.9"
+VERSAO = "1.6.0"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -917,6 +917,8 @@ def _peso_encaixe(a, b):
     alma_a, alma_b = a.startswith("alma "), b.startswith("alma ")
     if alma_a and alma_b:
         r = 1.0 if a == b else parecido(a, b)
+        if r < 0.75 and _comeco_do_mesmo(a, b):
+            return 0.3  # a mesma linha quebrada, com a 2a metade perdida
         return 0.6 if r == 1.0 else (0.4 if r >= 0.75 else -3.0)
     if alma_a != alma_b:
         return -3.0
@@ -964,6 +966,23 @@ _TEM_X1 = re.compile(r"[x\u00d7]\s*[\d1lIi|\u00b9]{1,3}\s*[.,:;]?(\s|$)", re.I)
 _FIM_ALMA = re.compile(r"[x\u00d7]\s*[\d1lIi|]{1,3}\s*[.,:;]?\s*\S{0,6}\s*$", re.I)
 
 
+def _sem_lixo_no_fim(t):
+    """Tira o lixo do cenario que o OCR pega no fim da 1a metade de uma linha
+    quebrada ('...Espirito do Fogo o' -> '...Espirito do Fogo'), mantendo
+    'de/da/do' (o nome continua na linha de baixo)."""
+    tok = t.rstrip().split()
+    while len(tok) > 1:
+        w = re.sub(r"[^\w]", "", tok[-1])
+        if w.lower() in ("de", "da", "do", "dos", "das"):
+            break
+        if len(w) <= 2 or not w[:1].isupper() or w.isupper() or re.search(r"\d", w) \
+                or re.search(r"[^\w\-]", tok[-1]):
+            tok.pop()
+            continue
+        break
+    return " ".join(tok)
+
+
 def juntar_quebradas(itens):
     """Nome de monstro comprido quebra a mensagem em duas linhas:
     'Obteve Pontos da Alma Kalgolem de' / 'Drakana x1.'. Junta as duas."""
@@ -979,11 +998,20 @@ def juntar_quebradas(itens):
                     break
                 if _FIM_ALMA.search(t2) and len(normalizar(t2)) <= 30 and \
                         not contem_aprox(t2, "obteve", 0.8):
-                    t = t.rstrip() + " " + t2.strip()
+                    t = _sem_lixo_no_fim(t) + " " + t2.strip()
                     usados.add(j)
                     break
         out.append((t, y, h))
     return out
+
+
+def _comeco_do_mesmo(a, b):
+    """'alma espiritodaterra' e 'alma espiritodaterraintermediario': a mesma
+    alma, uma lida inteira e a outra sem a 2a linha (nome quebrado)."""
+    a, b = a[5:], b[5:]
+    if len(a) > len(b):
+        a, b = b, a
+    return len(a) >= 8 and len(b) > len(a) and parecido(b[:len(a)], a) >= 0.9
 
 
 def _diferenca_linhas(a, b):
@@ -994,6 +1022,8 @@ def _diferenca_linhas(a, b):
     alma_a, alma_b = a.startswith("alma "), b.startswith("alma ")
     if alma_a and alma_b:
         r = parecido(a, b)
+        if r < 0.75 and _comeco_do_mesmo(a, b):
+            return 0.8
         return (1 - r) * 2 if r >= 0.75 else 10.0
     if alma_a != alma_b:
         return 6.0  # alma de um lado, outra mensagem do outro
@@ -1053,6 +1083,24 @@ class Progresso:
                     r = parecido(k, c.replace(" ", ""))
                     if r > nota:
                         melhor, nota = m, r
+        if melhor is None:
+            # lixo do cenario no MEIO do nome (linha quebrada):
+            # 'espirito do fogo eg intermediario' -> 'espirito do fogo intermediario'
+            pn = n.split()
+            for m in self.monstros:
+                for c in self._chaves(m):
+                    pc = c.split()
+                    if len(pn) - len(pc) not in (1, 2) or len(pc) < 2:
+                        continue
+                    if not mesmo_monstro(pn[-1], pc[-1]) or not mesmo_monstro(pn[0], pc[0]):
+                        continue
+                    i = j = 0
+                    while i < len(pn) and j < len(pc):
+                        if mesmo_monstro(pn[i], pc[j]):
+                            j += 1
+                        i += 1
+                    if j == len(pc):
+                        return m
         return melhor
 
     def canonico(self, nome):
@@ -1694,6 +1742,7 @@ COR = {
     "alma": "#5fd4c4",
     "ouro": "#e6c15a",
     "erro": "#e66a5a",
+    "novo": "#ffe27a",  # monstro que acabou de ganhar alma
 }
 
 
@@ -1773,6 +1822,7 @@ def main():
             self.root.after(100, self.atualizar_areas_proprias)
             self.root.after(500, self.atualizar_evento)
             self.root.after(4000, self.checar_atualizacao_em_segundo_plano)
+            self.root.after(20000, self.vigiar_arquivo)
 
         # ---------------- util ----------------
         def esconder_da_captura(self, janela):
@@ -1954,7 +2004,7 @@ def main():
             self.lbl_atualizar = tk.Label(h, text="", fg=COR["ouro"], bg=COR["fundo"],
                                           font=("Segoe UI", 9, "bold"), cursor="hand2")
             self.lbl_atualizar.pack(side="left", padx=(self.px(6), 0))
-            self.lbl_atualizar.bind("<Button-1>", lambda e: self.procurar_atualizacao())
+            self.lbl_atualizar.bind("<Button-1>", lambda e: self._clique_atualizar())
 
             self.botao(h, "\u2715", lambda e: self.sair()).pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar()).pack(side="right")
@@ -2149,8 +2199,18 @@ def main():
             for chave, txt in novo.items():
                 if w[chave].cget("text") != txt:
                     w[chave].configure(text=txt)
-            if w["cont"].cget("fg") != cor_barra:
-                w["cont"].configure(fg=cor_barra)
+            # acabou de ganhar alma: nome e numero ficam dourados por uns
+            # segundos (so troca a cor, nao redesenha nada)
+            t_alma = self.destaque.get(normalizar(m["nome"]), 0)
+            resta = 2.5 - (time.time() - t_alma)
+            cor_cont = COR["novo"] if resta > 0 else cor_barra
+            cor_nome = COR["novo"] if resta > 0 else COR["texto"]
+            if resta > 0:
+                self.root.after(int(resta * 1000) + 50, self.render_em_breve)
+            if w["cont"].cget("fg") != cor_cont:
+                w["cont"].configure(fg=cor_cont)
+            if w["nome"].cget("fg") != cor_nome:
+                w["nome"].configure(fg=cor_nome)
             cor_f = COR["ouro"] if completo else COR["suave"]
             if w["falta"].cget("fg") != cor_f:
                 w["falta"].configure(fg=cor_f)
@@ -2416,12 +2476,35 @@ def main():
                 self.prog.zerar_tudo()
                 self.render()
 
+        def _clique_atualizar(self):
+            if getattr(self, "_versao_no_disco", None):
+                self.prog.salvar()
+                self.reiniciar_programa()
+            else:
+                self.procurar_atualizacao()
+
+        def vigiar_arquivo(self):
+            """O arquivo do programa foi trocado por uma versao nova (pelo
+            GitHub ou na mao) com ele aberto? Avisa para reabrir."""
+            try:
+                with open(os.path.abspath(__file__), encoding="utf-8") as f:
+                    m = re.search(r'^VERSAO\s*=\s*"([^"]+)"', f.read(4000), re.M)
+                if m and versao_tupla(m.group(1)) > versao_tupla(VERSAO):
+                    if getattr(self, "_versao_no_disco", None) != m.group(1):
+                        self._versao_no_disco = m.group(1)
+                        self.lbl_atualizar.configure(text=f"\u27f3 reabrir ({m.group(1)})")
+                        registrar(f"ARQUIVO NOVO no disco: {m.group(1)}")
+            except Exception:
+                pass
+            self.root.after(20000, self.vigiar_arquivo)
+
         def checar_atualizacao_em_segundo_plano(self):
             """Ao abrir: olha no GitHub se tem versao nova (sem perguntar nada)."""
             def tarefa():
                 try:
                     v, _ = versao_remota()
-                    if versao_tupla(v) > versao_tupla(VERSAO):
+                    if versao_tupla(v) > versao_tupla(VERSAO) and \
+                            not getattr(self, "_versao_no_disco", None):
                         self.root.after(0, lambda: self.lbl_atualizar.configure(
                             text=f"\u2b06 {v}"))
                         registrar(f"ATUALIZACAO disponivel: {v}")
