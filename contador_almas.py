@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.4"
+VERSAO = "1.8.5"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2341,6 +2341,12 @@ def main():
                 elif not getattr(self, "minimizado", False) and self.root.state() != "iconic":
                     self.root.attributes("-topmost", True)
                     self.root.lift()
+                    dica = getattr(self, "_dica_aberta", None)
+                    if dica is not None:
+                        try:
+                            dica.lift()  # a dica fica por cima do contador
+                        except Exception:
+                            self._dica_aberta = None
             except Exception:
                 pass
             self.root.after(3000, self.reforcar_topo)
@@ -2412,6 +2418,8 @@ def main():
                         estado["jan"].destroy()
                     except Exception:
                         pass
+                    if getattr(self, "_dica_aberta", None) is estado["jan"]:
+                        self._dica_aberta = None
                     estado["jan"] = None
 
             def mostrar():
@@ -2434,9 +2442,33 @@ def main():
                     if y + jan.winfo_reqheight() > sh:
                         y = w.winfo_pointery() - jan.winfo_reqheight() - self.px(8)
                     jan.geometry(f"+{x}+{y}")
+                    jan.lift()
                     estado["jan"] = jan
+                    self._dica_aberta = jan
+                    estado["inicio"] = time.time()
+                    vigiar()
                 except Exception:
                     estado["jan"] = None
+
+            def vigiar():
+                # some se o mouse saiu do botao (o <Leave> as vezes nao chega)
+                # ou depois de 8 segundos
+                if estado["jan"] is None:
+                    return
+                try:
+                    px, py = w.winfo_pointerx(), w.winfo_pointery()
+                    x0, y0 = w.winfo_rootx(), w.winfo_rooty()
+                    dentro = x0 <= px < x0 + w.winfo_width() and y0 <= py < y0 + w.winfo_height()
+                except Exception:
+                    dentro = False
+                if not dentro or time.time() - estado.get("inicio", 0) > 8:
+                    esconder()
+                    return
+                try:
+                    estado["jan"].lift()
+                except Exception:
+                    pass
+                self.root.after(250, vigiar)
 
             def entrar(e=None):
                 esconder()
