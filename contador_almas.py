@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.5"
+VERSAO = "1.8.6"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2886,12 +2886,26 @@ def main():
             barra.pack(fill="x")
             self.botao(barra, "\u21ba Zerar ODs", lambda e: self.od_zerar(),
                        fonte=self.f_peq, dica="Zerar os 4 contadores de OD (pergunta antes)").pack(side="right")
+            # cronometro (para medir quanto OD voce faz por tempo)
+            tk.Label(barra, text="\u23f1", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="left")
+            self._lbl_crono = tk.Label(barra, text="", fg=COR["texto"], bg=COR["fundo"],
+                                       font=self.fontes["relogio"])
+            self._lbl_crono.pack(side="left", padx=(self.px(3), self.px(2)))
+            self._b_crono = self.botao(barra, "\u25b6", lambda e: self.crono_alternar(),
+                                       fonte=self.f_peq,
+                                       dica=lambda: "Pausar o cron\u00f4metro" if self._crono().get("inicio")
+                                       else "Come\u00e7ar o cron\u00f4metro")
+            self._b_crono.pack(side="left")
+            self.botao(barra, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
+                       dica="Zerar o cron\u00f4metro").pack(side="left")
             self._atualizar_od()
 
         def _atualizar_od(self):
             ui = getattr(self, "_od_ui", None)
             if not ui or self.cfg.get("aba") != "od":
                 return
+            self._atualizar_crono()
             agora = time.time()
             for tipo, (nome, n) in ui.items():
                 try:
@@ -2909,6 +2923,52 @@ def main():
                 cn = COR["novo"] if novo else COR["texto"]
                 if nome.cget("fg") != cn:
                     nome.configure(fg=cn)
+
+        # ---------------- cronometro da aba OD ----------------
+        def _crono(self):
+            return self.cfg.setdefault("cronometro", {"acum": 0.0, "inicio": None})
+
+        def crono_segundos(self):
+            c = self._crono()
+            return float(c.get("acum", 0)) + (time.time() - c["inicio"] if c.get("inicio") else 0)
+
+        def crono_alternar(self):
+            c = self._crono()
+            if c.get("inicio"):
+                c["acum"] = self.crono_segundos()
+                c["inicio"] = None
+            else:
+                c["inicio"] = time.time()
+            self.salvar_cfg()
+            self._atualizar_crono()
+
+        def crono_zerar(self):
+            c = self._crono()
+            c["acum"] = 0.0
+            if c.get("inicio"):
+                c["inicio"] = time.time()  # se estava rodando, continua do zero
+            self.salvar_cfg()
+            self._atualizar_crono()
+
+        def _atualizar_crono(self):
+            lbl = getattr(self, "_lbl_crono", None)
+            if lbl is None:
+                return
+            try:
+                if not lbl.winfo_exists():
+                    return
+            except Exception:
+                return
+            seg = int(self.crono_segundos())
+            h, r = divmod(seg, 3600)
+            txt = f"{h:02d}:{r // 60:02d}:{r % 60:02d}"
+            rodando = bool(self._crono().get("inicio"))
+            cor = COR["alma"] if rodando else COR["suave"]
+            if lbl.cget("text") != txt or lbl.cget("fg") != cor:
+                lbl.configure(text=txt, fg=cor)
+            ic = "\u2016" if rodando else "\u25b6"
+            if self._b_crono.cget("text") != ic:
+                self._b_crono.configure(text=ic)
 
         def od_ajustar(self, tipo, n):
             self.prog.od[tipo] = max(0, self.prog.od.get(tipo, 0) + n)
