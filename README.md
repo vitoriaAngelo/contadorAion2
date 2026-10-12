@@ -56,6 +56,8 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
 
+Botão ◆ no topo: aba **OD** — conta OD, OD Fino, OD Puro e OD Radiante lendo "Você obteve OD … x1/x2" no chat (o do grupo não conta). Clique no número para digitar; botão direito para zerar.
+
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
 
 Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho). Botão ♪: liga/desliga o som 1 minuto antes dos eventos (riscado = mudo).

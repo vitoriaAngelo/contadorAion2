@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.7.4"
+VERSAO = "1.8.0"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -674,6 +674,38 @@ def nome_mais_completo(novo, velho):
     return maior
 
 
+OD_TIPOS = ["OD", "OD Fino", "OD Puro", "OD Radiante"]
+OD_CORES = {"OD": "#c9ccd6", "OD Fino": "#7ddc7a", "OD Puro": "#6aa8ff", "OD Radiante": "#f2c94c"}
+
+
+def od_em(linha):
+    """'Voce obteve OD Fino x2.' -> ('OD Fino', 2). So o SEU drop (com 'Voce'),
+    nunca o de outra pessoa do grupo. Quantidade 1 ou 2 (x1, x2, 1x, 2x)."""
+    if not linha or alma_de_outro(linha):
+        return None
+    m = re.search(r"o[bp]t[eé]v[eé]\W{0,3}\s*([O0Q][D0O])(?![a-z])", linha, re.I)
+    if not m:
+        return None
+    antes = linha[:m.start()]
+    # alguem do grupo: 'Hagi obteve OD' (o seu e 'Voce obteve OD')
+    if re.search(r"[A-Za-z\u00c0-\u00ff]{3,}", antes) and not contem_aprox(antes, "voce", 0.6):
+        return None
+    resto = linha[m.end():]
+    tipo = "OD"
+    pal = re.match(r"\W*([A-Za-z\u00c0-\u00ff]{3,})", resto)
+    if pal:
+        w = sem_acento(pal.group(1)).lower()
+        for nome, alvo in (("OD Fino", "fino"), ("OD Puro", "puro"), ("OD Radiante", "radiante")):
+            if parecido(w, alvo) >= 0.7:
+                tipo = nome
+                break
+        else:
+            return None  # 'OD' seguido de outra palavra: nao e o item
+    q = re.search(r"(?:[x\u00d7]\s*([12])(?!\d)|(?<!\d)([12])\s*[x\u00d7](?![a-z]))", resto, re.I)
+    qtd = int(q.group(1) or q.group(2)) if q else 1
+    return tipo, qtd
+
+
 def alma_de_outro(linha):
     """Alma que caiu para OUTRA pessoa do grupo:
     'Hagi obteve Alma: Kerubian (Vinculado) atraves da distribuicao do grupo.'
@@ -846,6 +878,9 @@ class Rastreador:
         k = normalizar(raw)
         if len(k) < 3:
             return None
+        od = od_em(raw)
+        if od:
+            return ("alma od_" + od[0].lower().replace(" ", "_"), "\u00a7OD:" + od[0])
         n = self.extrator.nome_em(raw)
         if n:
             if _TEM_X1.search(raw):
@@ -946,7 +981,8 @@ class Rastreador:
             c = self._classificar(t)
             if c:
                 cur.append({"y": float(y), "h": h, "chave": c[0], "nome": c[1],
-                            "qtd": quantidade_alma(t) if c[1] else 1, "cont": 0,
+                            "qtd": (od_em(t) or (0, 1))[1] if (c[1] or "").startswith("\u00a7OD:")
+                            else (quantidade_alma(t) if c[1] else 1), "cont": 0,
                             "prov": c[2] if len(c) > 2 else None})
         if not cur:
             if getattr(self, "mem", None) is None:
@@ -1318,6 +1354,7 @@ class Progresso:
         self.arquivo = arquivo
         dados = carregar_json(arquivo, {"monstros": []})
         self.monstros = dados.get("monstros", [])
+        self.od = {t: int((dados.get("od") or {}).get(t, 0)) for t in OD_TIPOS}
         # almas por dia do jogo (o dia vira no reset das 04:00)
         self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
         for m in self.monstros:
@@ -1334,7 +1371,7 @@ class Progresso:
 
     def salvar(self):
         try:
-            salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias})
+            salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias, "od": self.od})
         except Exception:
             pass
 
@@ -2366,7 +2403,7 @@ def main():
             h = tk.Frame(self.root, bg=COR["fundo"])
             h.pack(fill="x", padx=self.px(8), pady=(self.px(6), self.px(4)))
             self.cab = h
-            t = tk.Label(h, text="\u25f7 Info" if self.cfg.get("aba") == "info" else "\u2726 Almas",
+            t = tk.Label(h, text=self._titulo_aba(),
                          fg=COR["alma"], bg=COR["fundo"], font=self.f_titulo)
             t.pack(side="left")
             self.lbl_titulo = t
@@ -2386,8 +2423,11 @@ def main():
             self.b_modo.pack(side="right")
             # aba de informacoes: resets e almas do dia/semana
             self.b_aba = self.botao(h, "\u2726" if self.cfg.get("aba") == "info" else "\u25f7",
-                                    lambda e: self.alternar_aba())
+                                    lambda e: self.alternar_aba("info"))
             self.b_aba.pack(side="right")
+            self.b_od = self.botao(h, "\u2726" if self.cfg.get("aba") == "od" else "\u25c6",
+                                   lambda e: self.alternar_aba("od"))
+            self.b_od.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
@@ -2485,13 +2525,15 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            if self.cfg.get("aba") == "info":
+            if self.cfg.get("aba") in ("info", "od"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"))
             if estrutura == getattr(self, "_estrutura", None):
                 if self.cfg.get("aba") == "info":
                     self._atualizar_info()
+                elif self.cfg.get("aba") == "od":
+                    self._atualizar_od()
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
@@ -2518,12 +2560,15 @@ def main():
             self._rolagem = None
             self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
-            if self.cfg.get("aba") == "info":
+            if self.cfg.get("aba") in ("info", "od"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
                 tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
-                self._montar_info()
+                if self.cfg.get("aba") == "od":
+                    self._montar_od()
+                else:
+                    self._montar_info()
             elif len(visiveis) > limite:
                 pai = self._montar_rolagem()
                 for m in visiveis:
@@ -2623,15 +2668,20 @@ def main():
                 cv.yview_moveto(max(0, topo + alt - cv.winfo_height()) / total)
 
         # ---------------- aba Info ----------------
-        def alternar_aba(self):
+        def _titulo_aba(self):
+            return {"info": "\u25f7 Info", "od": "\u25c6 OD"}.get(self.cfg.get("aba"), "\u2726 Almas")
+
+        def alternar_aba(self, destino="info"):
+            """Botao da aba: abre a aba; clicando de novo volta para as almas."""
             if getattr(self, "editando", None) is not None:
                 return
             self._medir_largura_almas()
-            self.cfg["aba"] = "almas" if self.cfg.get("aba") == "info" else "info"
+            self.cfg["aba"] = "almas" if self.cfg.get("aba") == destino else destino
             self.salvar_cfg()
-            info = self.cfg["aba"] == "info"
-            self.lbl_titulo.configure(text="\u25f7 Info" if info else "\u2726 Almas")
-            self.b_aba.configure(text="\u2726" if info else "\u25f7")
+            aba = self.cfg["aba"]
+            self.lbl_titulo.configure(text=self._titulo_aba())
+            self.b_aba.configure(text="\u2726" if aba == "info" else "\u25f7")
+            self.b_od.configure(text="\u2726" if aba == "od" else "\u25c6")
             self.render()
 
         def _medir_largura_almas(self):
@@ -2685,6 +2735,81 @@ def main():
                 if info[k].cget("text") != v:
                     info[k].configure(text=v)
 
+        # ---------------- aba OD ----------------
+        def _montar_od(self):
+            bg = COR["painel"]
+            self._od_ui = {}
+            for tipo in OD_TIPOS:
+                f = tk.Frame(self.corpo, bg=bg)
+                f.pack(fill="x", pady=(0, self.px(3)))
+                l = tk.Frame(f, bg=bg)
+                l.pack(fill="x", padx=self.px(8), pady=self.px(5))
+                tk.Label(l, text="\u25c6", fg=OD_CORES[tipo], bg=bg,
+                         font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(6)))
+                nome = tk.Label(l, text=tipo, fg=COR["texto"], bg=bg, font=self.f_nome)
+                nome.pack(side="left")
+                self.botao(l, "+", lambda e, t=tipo: self.od_ajustar(t, +1),
+                           fonte=self.fontes["botao_b"]).pack(side="right")
+                self.botao(l, "\u2212", lambda e, t=tipo: self.od_ajustar(t, -1),
+                           fonte=self.fontes["botao_b"]).pack(side="right")
+                n = tk.Label(l, text="", fg=COR["alma"], bg=bg, font=self.fontes["titulo"],
+                             cursor="hand2", width=6, anchor="e")
+                n.pack(side="right", padx=(0, self.px(6)))
+                n.bind("<Button-1>", lambda e, t=tipo: self.od_definir(t))
+                for x in (f, l, nome, n):
+                    x.bind("<Button-3>", lambda e: self.menu_od(e))
+                self._od_ui[tipo] = (nome, n)
+            self._atualizar_od()
+
+        def _atualizar_od(self):
+            ui = getattr(self, "_od_ui", None)
+            if not ui or self.cfg.get("aba") != "od":
+                return
+            agora = time.time()
+            for tipo, (nome, n) in ui.items():
+                try:
+                    if not n.winfo_exists():
+                        return
+                except Exception:
+                    return
+                txt = str(self.prog.od.get(tipo, 0))
+                novo = agora - self.destaque.get("\u00a7od:" + tipo, 0) < 2.5
+                cor = COR["novo"] if novo else COR["alma"]
+                if n.cget("text") != txt:
+                    n.configure(text=txt)
+                if n.cget("fg") != cor:
+                    n.configure(fg=cor)
+                cn = COR["novo"] if novo else COR["texto"]
+                if nome.cget("fg") != cn:
+                    nome.configure(fg=cn)
+
+        def od_ajustar(self, tipo, n):
+            self.prog.od[tipo] = max(0, self.prog.od.get(tipo, 0) + n)
+            self.prog.salvar()
+            self._atualizar_od()
+
+        def od_definir(self, tipo):
+            v = self.dialogo(simpledialog.askinteger, APP_NOME, f"Quantos {tipo} voc\u00ea tem?",
+                             initialvalue=self.prog.od.get(tipo, 0), minvalue=0)
+            if v is not None:
+                self.prog.od[tipo] = v
+                self.prog.salvar()
+                registrar(f"EDITADO PELO USUARIO: {tipo} -> {v}")
+                self._atualizar_od()
+
+        def menu_od(self, e):
+            menu = tk.Menu(self.root, tearoff=0)
+            menu.add_command(label="Zerar os contadores de OD\u2026", command=self.od_zerar)
+            self.abrir_menu(menu, e)
+
+        def od_zerar(self):
+            if self.dialogo(messagebox.askyesno, APP_NOME, "Zerar os 4 contadores de OD?"):
+                for t in OD_TIPOS:
+                    self.prog.od[t] = 0
+                self.prog.salvar()
+                registrar("OD ZERADO PELO USUARIO")
+                self._atualizar_od()
+
         def atualizar_evento(self, agendar=True):
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
             minuto fica vermelho e piscando. So mexe nesses dois textos."""
@@ -2733,11 +2858,13 @@ def main():
                 self._checar_aviso_som()
             except Exception:
                 pass
-            if self.cfg.get("aba") == "info":
-                try:
+            try:
+                if self.cfg.get("aba") == "info":
                     self._atualizar_info()
-                except Exception:
-                    pass
+                elif self.cfg.get("aba") == "od":
+                    self._atualizar_od()
+            except Exception:
+                pass
             if agendar:
                 self.root.after(500, self.atualizar_evento)
 
@@ -3860,6 +3987,11 @@ def main():
             else:
                 nomes = self.rastreador.quadro(linhas, t0)
             for n in nomes:
+                if n.startswith("\u00a7OD:"):
+                    tipo = n[4:]
+                    self.prog.od[tipo] = self.prog.od.get(tipo, 0) + 1
+                    self.destaque["\u00a7od:" + tipo] = time.time()
+                    continue
                 m = self.prog.somar(n, 1, salvar=False)
                 self.destaque[normalizar(m["nome"])] = time.time()
                 self._rolar_para = m
@@ -3874,7 +4006,7 @@ def main():
                     self.leitor.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
                 except Exception:
                     pass
-            almas = [l for l in linhas if self.rastreador.extrator.nome_em(l)]
+            almas = [l for l in linhas if self.rastreador.extrator.nome_em(l) or od_em(l)]
             if almas or nomes:
                 registrar("LEU " + " || ".join(almas) + "  =>  CONTOU " + str(nomes))
             if nomes:
