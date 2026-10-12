@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.7.0"
+VERSAO = "1.7.1"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2603,29 +2603,6 @@ def main():
             linha(b1, "diario", "Reset di\u00e1rio (04:00)", COR["ouro"], self.fontes["relogio"])
             linha(b1, "semanal", "Reset semanal (qua 04:00)", COR["ouro"], self.fontes["relogio"])
             tk.Frame(b1, bg=bg, height=self.px(3)).pack()
-            b2 = bloco()
-            tk.Frame(b2, bg=bg, height=self.px(3)).pack()
-            linha(b2, "hoje", "Almas hoje", COR["alma"])
-            linha(b2, "semana", "Almas nesta semana", COR["alma"])
-            linha(b2, "total", "Almas no contador", COR["texto"])
-            tk.Frame(b2, bg=bg, height=self.px(3)).pack()
-            b3 = bloco()
-            tk.Label(b3, text="Hoje por bicho", fg=COR["suave"], bg=bg,
-                     font=self.f_peq).pack(anchor="w", padx=self.px(8), pady=(self.px(4), 0))
-            self._info["top"] = []
-            for i in range(5):
-                l = tk.Frame(b3, bg=bg)
-                l.pack(fill="x", padx=self.px(8), pady=(0, self.px(1)))
-                caixa = tk.Frame(l, bg=bg, width=self._largura_nome(),
-                                 height=self.fontes["nome"].metrics("linespace") + self.px(2))
-                caixa.pack(side="left")
-                caixa.pack_propagate(False)
-                n = tk.Label(caixa, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
-                n.pack(side="left", fill="both", expand=True)
-                q = tk.Label(l, text="", fg=COR["alma"], bg=bg, font=self.f_nome)
-                q.pack(side="right")
-                self._info["top"].append((n, q))
-            tk.Frame(b3, bg=bg, height=self.px(4)).pack()
             self._atualizar_info()
 
         def _atualizar_info(self):
@@ -2634,26 +2611,13 @@ def main():
                 return
             import datetime as dt
             agora = dt.datetime.now()
-            st = self.prog.estatisticas(agora)
             val = {
                 "diario": formatar_longo((proximo_reset_diario(agora) - agora).total_seconds()),
                 "semanal": formatar_longo((proximo_reset_semanal(agora) - agora).total_seconds()),
-                "hoje": str(st["hoje"]), "semana": str(st["semana"]), "total": str(st["total"]),
             }
             for k, v in val.items():
                 if info[k].cget("text") != v:
                     info[k].configure(text=v)
-            top = st["top_hoje"]
-            for i, (n, q) in enumerate(info["top"]):
-                if i < len(top):
-                    nome = self._cabe(top[i][0], self._largura_nome())
-                    tn, tq = nome, str(top[i][1])
-                else:
-                    tn, tq = ("nenhuma alma ainda hoje" if i == 0 else ""), ""
-                if n.cget("text") != tn:
-                    n.configure(text=tn, fg=COR["texto"] if top else COR["suave"])
-                if q.cget("text") != tq:
-                    q.configure(text=tq)
 
         def atualizar_evento(self, agendar=True):
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
