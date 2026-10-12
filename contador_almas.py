@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.5"
+VERSAO = "1.6.6"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2204,6 +2204,10 @@ def main():
 
             self.botao(h, "\u2715", lambda e: self.sair()).pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar()).pack(side="right")
+            # alterna modo normal / compacto
+            self.b_modo = self.botao(h, "\u25a4" if self.cfg.get("compacto") else "\u2261",
+                                     lambda e: self.alternar_compacto())
+            self.b_modo.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
@@ -2551,8 +2555,8 @@ def main():
                 w["estrelas"].append(st)
 
         def _linha_compacta(self, m, meta, pai=None):
-            """Uma linha so: nome, estrelas e numero. O resto fica no botao
-            direito (tenho, +1, -1, renomear, tirar da lista)."""
+            """Uma linha so: nome, estrelas, numero (clique para editar), - + e x.
+            Renomear e juntar ficam no botao direito."""
             bg = COR["painel"]
             f = tk.Frame(pai or self.corpo, bg=bg)
             f.pack(fill="x", pady=(0, self.px(2)))
@@ -2562,6 +2566,12 @@ def main():
             w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
             w["nome"].pack(side="left")
             self._estrelas_na(topo, m, w, bg)
+            self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
+                       cor=COR["erro"], fonte=self.fontes["fechar"]).pack(side="right")
+            self.botao(topo, "+", lambda e, m=m: self.ajustar(m, +1),
+                       fonte=self.fontes["botao_b"]).pack(side="right")
+            self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
+                       fonte=self.fontes["botao_b"]).pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
                                  width=6, anchor="e", cursor="hand2")
             w["cont"].pack(side="right")
@@ -2723,8 +2733,12 @@ def main():
             self.render()
 
         def alternar_compacto(self):
+            if getattr(self, "editando", None) is not None:
+                return
             self.cfg["compacto"] = not self.cfg.get("compacto")
             self.salvar_cfg()
+            if getattr(self, "b_modo", None) is not None:
+                self.b_modo.configure(text="\u25a4" if self.cfg["compacto"] else "\u2261")
             self._estrutura = None
             self.render()
 
