@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.3"
+VERSAO = "1.6.4"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2082,10 +2082,44 @@ def main():
             except Exception:
                 pass
 
+        def abrir_menu(self, menu, e):
+            """Abre o menu na frente do overlay. O overlay fica 'sempre por
+            cima' e passava na frente do menu: tira isso enquanto o menu esta
+            aberto e devolve quando ele fecha."""
+            self._menu_aberto = True
+            try:
+                self.root.attributes("-topmost", False)
+            except Exception:
+                pass
+
+            def devolver():
+                try:
+                    if menu.winfo_exists() and menu.winfo_ismapped():
+                        self.root.after(200, devolver)  # ainda aberto
+                        return
+                except Exception:
+                    pass
+                self._menu_aberto = False
+                try:
+                    if not getattr(self, "minimizado", False):
+                        self.root.attributes("-topmost", True)
+                except Exception:
+                    pass
+            try:
+                menu.tk_popup(e.x_root, e.y_root)
+            finally:
+                try:
+                    menu.grab_release()
+                except Exception:
+                    pass
+                self.root.after(150, devolver)
+
         def reforcar_topo(self):
             try:
                 # minimizado fica minimizado: nao traz de volta para cima
-                if not getattr(self, "minimizado", False) and self.root.state() != "iconic":
+                if getattr(self, "_menu_aberto", False):
+                    pass  # menu aberto: nao passa na frente dele
+                elif not getattr(self, "minimizado", False) and self.root.state() != "iconic":
                     self.root.attributes("-topmost", True)
                     self.root.lift()
             except Exception:
@@ -2713,7 +2747,7 @@ def main():
                 menu.add_cascade(label="Juntar com (erro de leitura)", menu=sub)
             menu.add_separator()
             menu.add_command(label="Remover", command=lambda: self.remover(m))
-            menu.tk_popup(e.x_root, e.y_root)
+            self.abrir_menu(menu, e)
 
         def renomear(self, m):
             v = self.dialogo(simpledialog.askstring, APP_NOME, "Novo nome:",
@@ -2788,7 +2822,7 @@ def main():
                                  variable=tk.BooleanVar(value=self.cfg.get("captura") == "directx"),
                                  command=self.alternar_captura)
             menu.add_command(label="Sair", command=self.sair)
-            menu.tk_popup(e.x_root, e.y_root)
+            self.abrir_menu(menu, e)
 
         def alternar_concluidos(self):
             self.cfg["mostrar_concluidos"] = not self.cfg.get("mostrar_concluidos")
