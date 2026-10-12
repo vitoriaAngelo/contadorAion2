@@ -55,7 +55,9 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
 
-Menu ⚙: modo compacto (uma linha por bicho), tamanho da letra, som 1 minuto antes dos eventos (liga/desliga, volume e testar), detectar o chat de novo, escolher a área na mão, opacidade, mostrar concluídos, aparecer ou não na stream.
+Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho).
+
+Menu ⚙: tamanho da letra, som 1 minuto antes dos eventos (liga/desliga e volume — ao escolher o volume ele toca para você ouvir), detectar o chat de novo, escolher a área na mão, opacidade, aparecer ou não na stream.
 
 ## OBS
 

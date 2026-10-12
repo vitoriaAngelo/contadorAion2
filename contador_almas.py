@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.7"
+VERSAO = "1.6.8"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2903,12 +2903,6 @@ def main():
             menu.add_command(label="Ver leitura / ajustar padr\u00f5es\u2026", command=self.abrir_debug)
             menu.add_separator()
             menu.add_command(label="Adicionar monstro\u2026", command=self.adicionar)
-            menu.add_command(label="Almas por estrela: " + " / ".join(str(t) for t in self.cfg["tiers"]) + "\u2026",
-                             command=self.mudar_meta)
-            menu.add_checkbutton(label="Mostrar conclu\u00eddos",
-                                 onvalue=True, offvalue=False,
-                                 variable=tk.BooleanVar(value=self.cfg.get("mostrar_concluidos")),
-                                 command=self.alternar_concluidos)
             sub = tk.Menu(menu, tearoff=0)
             for v in (1.0, 0.9, 0.8, 0.7, 0.6):
                 sub.add_command(label=f"{int(v*100)}%", command=lambda v=v: self.opacidade(v))
@@ -2919,10 +2913,7 @@ def main():
                 sub_letra.add_command(label=("\u2713 " if nome == atual else "    ") + nome.capitalize(),
                                       command=lambda n=nome: self.mudar_tamanho_letra(n))
             menu.add_cascade(label="Tamanho da letra", menu=sub_letra)
-            menu.add_checkbutton(label="Modo compacto (uma linha por bicho)",
-                                 onvalue=True, offvalue=False,
-                                 variable=tk.BooleanVar(value=bool(self.cfg.get("compacto"))),
-                                 command=self.alternar_compacto)
+
             menu.add_checkbutton(label="Som 1 minuto antes dos eventos",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=self.cfg.get("aviso_som", True)),
@@ -2933,7 +2924,6 @@ def main():
                 sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + nome,
                                     command=lambda v=v: self.mudar_volume(v))
             menu.add_cascade(label="Volume do aviso", menu=sub_vol)
-            menu.add_command(label="Testar o som do aviso", command=lambda: tocar_aviso())
             menu.add_checkbutton(label="Aparecer na stream (OBS/Discord)",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=not self.cfg.get("esconder_da_captura", False)),
