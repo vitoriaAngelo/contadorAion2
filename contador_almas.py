@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.9"
+VERSAO = "1.6.10"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -222,7 +222,7 @@ def proximo_inicio(eventos, agora=None):
 
 def criar_som_aviso(caminho, volume=0.5):
     """Gera um 'plim' curto de dois tons (sino suave) em WAV.
-    volume de 0.1 a 1.0 (0.5 = o som original)."""
+    volume de 0.02 a 1.0 (0.5 = o som original)."""
     import math, struct, wave
     taxa = 22050
     amostras = []
@@ -250,7 +250,7 @@ def tocar_aviso(volume=None):
     """Toca o aviso sem travar o programa. Fora do Windows so registra."""
     try:
         vol = VOLUME_AVISO["v"] if volume is None else volume
-        vol = max(0.1, min(1.0, float(vol)))
+        vol = max(0.02, min(1.0, float(vol)))
         caminho = os.path.join(BASE, f"aviso_{int(round(vol * 100))}.wav")
         if not os.path.exists(caminho) or os.path.getsize(caminho) < 1000:
             criar_som_aviso(caminho, vol)
@@ -2944,7 +2944,8 @@ def main():
                                  command=self.alternar_som)
             sub_vol = tk.Menu(menu, tearoff=0)
             vol = float(self.cfg.get("volume_aviso", 0.5))
-            for nome, v in (("Baixo", 0.25), ("M\u00e9dio", 0.5), ("Alto", 0.75), ("M\u00e1ximo", 1.0)):
+            for nome, v in (("M\u00ednimo", 0.05), ("Muito baixo", 0.12), ("Baixo", 0.25),
+                            ("M\u00e9dio", 0.5), ("Alto", 0.75), ("M\u00e1ximo", 1.0)):
                 sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + nome,
                                     command=lambda v=v: self.mudar_volume(v))
             menu.add_cascade(label="Volume do aviso", menu=sub_vol)
