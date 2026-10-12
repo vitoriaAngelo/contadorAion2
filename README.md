@@ -55,7 +55,7 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
 
-Menu ⚙: detectar o chat de novo, escolher a área na mão, opacidade, mostrar concluídos, aparecer ou não na stream.
+Menu ⚙: som 1 minuto antes dos eventos (liga/desliga e testar), detectar o chat de novo, escolher a área na mão, opacidade, mostrar concluídos, aparecer ou não na stream.
 
 ## OBS
 

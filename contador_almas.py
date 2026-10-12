@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.1"
+VERSAO = "1.6.2"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -155,6 +155,7 @@ CONFIG_PADRAO = {
     "opacidade": 0.9,
     "posicao": [40, 200],
     "max_linhas": 6,  # acima disso a lista rola
+    "aviso_som": True,  # som 1 minuto antes dos eventos
     "mostrar_concluidos": False,
     "recolhido": False,
 }
@@ -184,6 +185,79 @@ def estrelas(qtd, tiers):
         else:
             return feitas, acum - qtd, len(tiers)
     return feitas, 0, len(tiers)
+
+
+def proximo_inicio(eventos, agora=None):
+    """Proximo evento que AINDA NAO comecou (mesmo que outro esteja rolando):
+    (nomes, inicio) ou None. Usado para o aviso sonoro."""
+    import datetime as dt
+    agora = agora or dt.datetime.now()
+    base = agora.replace(second=0, microsecond=0)
+    melhor, nomes = None, []
+    for ev in eventos or []:
+        try:
+            minuto = int(ev.get("minuto", 0))
+            horas, dias = ev.get("horas"), ev.get("dias")
+            nome = str(ev.get("nome", "Evento"))
+        except Exception:
+            continue
+        for passo in range(0, 60 * 24 * 8):
+            t = base + dt.timedelta(minutes=passo)
+            if t <= agora or t.minute != minuto:
+                continue
+            if horas is not None and t.hour not in horas:
+                continue
+            if dias is not None and t.weekday() not in dias:
+                continue
+            if melhor is None or t < melhor:
+                melhor, nomes = t, [nome]
+            elif t == melhor and nome not in nomes:
+                nomes.append(nome)
+            break
+    return (" + ".join(nomes), melhor) if melhor else None
+
+
+def criar_som_aviso(caminho):
+    """Gera um 'plim' curto de dois tons (sino suave) em WAV."""
+    import math, struct, wave
+    taxa = 22050
+    amostras = []
+    total = int(taxa * 0.95)
+    for i in range(total):
+        t = i / taxa
+        v = 0.0
+        for freq, ini, dur in ((880.0, 0.0, 0.55), (1318.5, 0.16, 0.75)):
+            if ini <= t < ini + dur:
+                x = t - ini
+                env = min(1.0, x / 0.008) * math.exp(-x * 5.5)
+                v += env * (math.sin(2 * math.pi * freq * x) + 0.25 * math.sin(4 * math.pi * freq * x))
+        amostras.append(int(max(-1.0, min(1.0, v * 0.38)) * 32767))
+    with wave.open(caminho, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(taxa)
+        w.writeframes(struct.pack("<%dh" % len(amostras), *amostras))
+
+
+def tocar_aviso():
+    """Toca o aviso sem travar o programa. Fora do Windows so registra."""
+    try:
+        caminho = os.path.join(BASE, "aviso.wav")
+        if not os.path.exists(caminho) or os.path.getsize(caminho) < 1000:
+            criar_som_aviso(caminho)
+        if sys.platform == "win32":
+            import winsound
+            winsound.PlaySound(caminho, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        return True
+    except Exception as e:
+        registrar(f"SOM: nao consegui tocar ({e})")
+        try:
+            if sys.platform == "win32":
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception:
+            pass
+        return False
 
 
 def evento_info(eventos, agora=None):
@@ -2313,8 +2387,40 @@ def main():
                             rel.configure(fg=cor)
                 except Exception:
                     pass
+            try:
+                self._checar_aviso_som()
+            except Exception:
+                pass
             if agendar:
                 self.root.after(500, self.atualizar_evento)
+
+        def _checar_aviso_som(self):
+            """1 minuto antes de cada evento comecar: toca o aviso (uma vez)."""
+            if not self.cfg.get("aviso_som", True):
+                return
+            import datetime as dt
+            agora = dt.datetime.now()
+            px = getattr(self, "_px_cache", None)
+            feito = getattr(self, "_px_quando", None)
+            # recalcula quando o evento chega ou se o relogio voltou (fuso, ajuste)
+            if px is None or feito is None or agora >= px[1] or agora < feito:
+                px = proximo_inicio(self.cfg.get("eventos", []), agora)
+                self._px_cache, self._px_quando = px, agora
+            if not px:
+                return
+            nomes, t = px
+            falta = (t - agora).total_seconds()
+            chave = (nomes, t)
+            if 0 < falta <= 60 and chave != getattr(self, "_avisado", None):
+                self._avisado = chave
+                tocar_aviso()
+                registrar(f"AVISO SONORO: {nomes} em {int(falta)}s")
+
+        def alternar_som(self):
+            self.cfg["aviso_som"] = not self.cfg.get("aviso_som", True)
+            self.salvar_cfg()
+            if self.cfg["aviso_som"]:
+                tocar_aviso()
 
         def _atualizar_linha(self, m, meta, w):
             feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 75]))
@@ -2548,6 +2654,11 @@ def main():
             for v in (1.0, 0.9, 0.8, 0.7, 0.6):
                 sub.add_command(label=f"{int(v*100)}%", command=lambda v=v: self.opacidade(v))
             menu.add_cascade(label="Opacidade", menu=sub)
+            menu.add_checkbutton(label="Som 1 minuto antes dos eventos",
+                                 onvalue=True, offvalue=False,
+                                 variable=tk.BooleanVar(value=self.cfg.get("aviso_som", True)),
+                                 command=self.alternar_som)
+            menu.add_command(label="Testar o som do aviso", command=tocar_aviso)
             menu.add_checkbutton(label="Aparecer na stream (OBS/Discord)",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=not self.cfg.get("esconder_da_captura", False)),
