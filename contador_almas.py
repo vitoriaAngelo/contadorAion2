@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.7"
+VERSAO = "1.5.8"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -430,6 +430,37 @@ class Extrator:
         return nome_aproximado(linha)
 
 
+def _edicoes(a, b):
+    """Quantas letras trocar/tirar/por para ir de a ate b (Levenshtein)."""
+    if len(a) < len(b):
+        a, b = b, a
+    ant = list(range(len(b) + 1))
+    for i, ca_ in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(ant[j] + 1, cur[j - 1] + 1, ant[j - 1] + (ca_ != cb)))
+        ant = cur
+    return ant[-1]
+
+
+def mesmo_monstro(a, b):
+    """a e b (normalizados) sao o mesmo monstro lido com erro de OCR?
+    Compara palavra por palavra: cada palavra pode ter poucas letras erradas,
+    mas uma palavra trocada ou a mais e outro monstro."""
+    pa, pb = a.split(), b.split()
+    if len(pa) != len(pb):
+        # OCR juntou/separou palavras: so aceita se for quase identico
+        ka, kb = "".join(pa), "".join(pb)
+        return abs(len(ka) - len(kb)) <= 1 and _edicoes(ka, kb) <= 1
+    total = 0
+    for x, y in zip(pa, pb):
+        e = _edicoes(x, y)
+        if e > max(1, len(max(x, y, key=len)) // 4) and not (len(x) <= 4 and e <= 2 and x[0] == y[0]):
+            return False
+        total += e
+    return total <= max(2, len("".join(pa)) // 6)
+
+
 def compacto(s):
     return normalizar(s).replace(" ", "")
 
@@ -502,12 +533,13 @@ class Rastreador:
     """Recebe as linhas lidas a cada quadro e devolve os nomes de almas NOVAS."""
     JANELA_MEMORIA = 90.0  # segundos
 
-    def __init__(self, padroes, canon=None, completar=None):
+    def __init__(self, padroes, canon=None, completar=None, comeco_de_outro=None):
         self.extrator = Extrator(padroes)
         # nome lido -> nome do monstro ja cadastrado (None se desconhecido)
         self.canon = canon or (lambda n: None)
         # pedaco do comeco do nome -> monstro cadastrado que comeca assim
         self.completar = completar or (lambda n: None)
+        self.comeco_de_outro = comeco_de_outro or (lambda n: False)
         self.ant = None
         self.memoria = deque()  # (tempo, Counter de linhas de alma normalizadas)
 
@@ -602,7 +634,8 @@ class Rastreador:
                 if c is None:
                     # se o resto nunca aparecer, conta com este nome depois
                     # de alguns quadros (o "x1." pode ter ficado fora da area)
-                    cortado = re.search(r"\s(de|da|do|dos|das|e)\W*$", raw.strip(), re.I)
+                    cortado = re.search(r"\s(de|da|do|dos|das|e)\W*$", raw.strip(), re.I) \
+                        or self.comeco_de_outro(n)
                     return ("alma " + compacto(n), None, None if cortado else n)
             if c is None:
                 nitida = re.search(r"pontos\s+da\s+alma\s+\S", raw, re.I) or \
@@ -984,28 +1017,35 @@ class Progresso:
         except Exception:
             pass
 
+    def _chaves(self, m):
+        return [normalizar(m["nome"])] + [normalizar(a) for a in m["apelidos"]]
+
     def achar(self, nome):
-        k = compacto(nome)
+        n = normalizar(nome)
+        k = n.replace(" ", "")
+        for m in self.monstros:
+            if k in [c.replace(" ", "") for c in self._chaves(m)]:
+                return m
+        # junta sozinho erros de OCR (ex.: "Zeit Mutante" -> "Zaif Mutante"),
+        # mas monstros parecidos com uma palavra diferente ("Espirito da Agua
+        # Superior" x "Espirito da Terra Superior") ficam separados
         melhor, nota = None, 0.0
         for m in self.monstros:
-            chaves = [compacto(m["nome"])] + [a.replace(" ", "") for a in m["apelidos"]]
-            if k in chaves:
-                return m
-            # compara inteiro e tambem so o comeco (lixo emendado no fim)
-            r = max(max(parecido(k, c), parecido(k[:len(c)], c) - 0.05) for c in chaves)
-            if r > nota:
-                melhor, nota = m, r
-        # junta sozinho erros de OCR (ex.: "Zeit Mutante" -> "Zaif Mutante");
-        # se juntar errado, o usuario separa/renomeia pelo menu
-        return melhor if nota >= 0.8 else None
+            for c in self._chaves(m):
+                if mesmo_monstro(n, c):
+                    r = parecido(k, c.replace(" ", ""))
+                    if r > nota:
+                        melhor, nota = m, r
+        return melhor
 
     def canonico(self, nome):
         m = self.achar(nome)
         return m["nome"] if m else None
 
     def completar(self, pedaco):
-        """'Kalgolem de' -> 'Kalgolem de Drakana' (o monstro cadastrado mais
-        recente cujo nome comeca com esse pedaco e e mais comprido que ele)."""
+        """'Kalgolem de' -> 'Kalgolem de Drakana' (o unico monstro cadastrado
+        cujo nome comeca com esse pedaco). Se houver varios ('Espirito da Agua
+        Superior' e '... Intermediario'), nao chuta: devolve None."""
         k = compacto(pedaco)
         if len(k) < 5:
             return None
@@ -1015,9 +1055,15 @@ class Progresso:
                 if len(c) > len(k) and (c.startswith(k) or parecido(c[:len(k)], k) >= 0.88):
                     achados.append(m)
                     break
-        if not achados:
+        if len(achados) != 1:
             return None
-        return max(achados, key=lambda m: m.get("atualizado", 0))["nome"]
+        return achados[0]["nome"]
+
+    def comeco_de_outro(self, pedaco):
+        """O pedaco e o comeco de algum monstro cadastrado (nome cortado)?"""
+        k = compacto(pedaco)
+        return any(c.replace(" ", "").startswith(k) and len(c.replace(" ", "")) > len(k)
+                   for m in self.monstros for c in self._chaves(m))
 
     def somar(self, nome, n=1, salvar=True):
         m = self.achar(nome)
@@ -1648,7 +1694,8 @@ def main():
         def __init__(self):
             self.cfg = carregar_config()
             self.prog = Progresso(ARQ_DADOS)
-            self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar)
+            self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
+                                         self.prog.comeco_de_outro)
             self.destaque = {}
             self.motor_nome = "iniciando OCR..."
             self.erro = None
