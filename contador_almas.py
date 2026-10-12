@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.0"
+VERSAO = "1.6.1"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -667,6 +667,58 @@ class Rastreador:
             return ("sis " + _trecho_util(k), None)
         return None
 
+    def _marcar_vistos(self, cur, agora, fq, passo):
+        """Impressao digital do chat: cada alma junto com as 2 mensagens com
+        numero acima dela ('Voce obteve 463 Kinah') e a distancia ate elas.
+        Se a mesma combinacao ja apareceu num quadro ANTERIOR, a alma e velha
+        (voce subiu o chat e voltou).
+        Devolve os indices de cur que sao velhos e guarda os deste quadro."""
+        vistos = getattr(self, "vistos", None)
+        if vistos is None:
+            vistos = self.vistos = {}
+
+        def fp(c):
+            k = c["chave"]
+            if k.startswith("sis "):
+                num = re.findall(r"\d{2,}", k)
+                return ("#" + num[0] + re.sub(r"[^a-z]", "", k[4:])[:6]) if num else k
+            return k
+
+        F = [fp(c) for c in cur]
+        ja, novos_fp = set(), []
+        for i in range(len(cur)):
+            if F[i].startswith("#"):
+                continue  # so interessam as almas
+            # as 2 linhas com numero mais proximas acima (ate 10 linhas) e a
+            # que distancia estao: aguenta o OCR perder linhas no meio. Um
+            # valor de Kinah sozinho se repete (farmando o mesmo bicho cai 463
+            # de novo); dois, na mesma distancia, nao.
+            marcas = []
+            for j in range(i - 1, -1, -1):
+                dist = (cur[i]["y"] - cur[j]["y"]) / passo
+                if dist > 12.5:
+                    break
+                if F[j].startswith("#"):
+                    marcas.append((int(round(dist)), F[j]))
+                    if len(marcas) == 3:
+                        break
+            # pares entre as 3 mais proximas: se o OCR perder uma, outro par
+            # ainda bate
+            for x in range(len(marcas)):
+                for y in range(x + 1, len(marcas)):
+                    seq = (F[i], marcas[x], marcas[y])
+                    if seq in vistos and vistos[seq][0] < fq:
+                        ja.add(i)
+                    novos_fp.append(seq)
+        for t in novos_fp:
+            if t not in vistos:
+                vistos[t] = (fq, agora)
+        if len(vistos) > 20000 or getattr(self, "_limpa_vistos", 0) < agora - 60:
+            self._limpa_vistos = agora
+            for t in [k for k, v in vistos.items() if v[1] < agora - 600]:
+                del vistos[t]
+        return ja
+
     def quadro_pos(self, itens, agora=None):
         """itens = [(texto, y_centro, altura_do_texto), ...] em pixels.
 
@@ -719,13 +771,23 @@ class Rastreador:
             limpo.append(c)
         cur = limpo
 
+        # Impressao digital: as mensagens com numero ("Voce obteve 463 Kinah")
+        # sao praticamente unicas. Se uma delas ja passou pela tela antes, o
+        # trecho em volta e velho (voce subiu o chat e voltou), nao e matanca.
+        ja_vi = self._marcar_vistos(cur, agora, fq, getattr(self, "passo", None) or
+                                    sorted(c["h"] for c in cur)[len(cur) // 2] * 1.8)
+
+        def velha(i, entre=None):
+            return i in ja_vi
+
         mem = getattr(self, "mem", None)
         if mem is None or not mem:
             self.mem = [dict(c, visto=fq, pend=False) for c in cur]
             self.lac = []
             # o chat estava escondido e apareceu: quem fez ele aparecer foi a
             # mensagem nova, que e a linha mais de baixo
-            if getattr(self, "_vazio_no_inicio", 0) >= 2 and cur[-1]["nome"]:
+            if getattr(self, "_vazio_no_inicio", 0) >= 2 and cur[-1]["nome"] \
+                    and not velha(len(cur) - 1):
                 self.mem[-1]["cont"] = cur[-1]["qtd"]
                 return [cur[-1]["nome"]] * cur[-1]["qtd"]
             return []  # primeira vez: so referencia
@@ -801,8 +863,9 @@ class Rastreador:
                 self._confuso = None
                 if abs(cur[-1]["y"] - fundo_mem) < tol:
                     out = []
-                    for m in reversed(self.mem):
-                        if m["nome"]:
+                    for i in range(len(self.mem) - 1, -1, -1):
+                        m = self.mem[i]
+                        if m["nome"] and not velha(i):
                             m["cont"] = m["qtd"]
                             out += [m["nome"]] * m["qtd"]
                     return out
@@ -819,8 +882,9 @@ class Rastreador:
                 c["cont"] = c["qtd"]
 
         # almas novas (abaixo da ultima linha conhecida)
+        novos_set = set(novos)
         for i in novos:
-            if cur[i]["nome"]:
+            if cur[i]["nome"] and not velha(i, novos_set):
                 contar(cur[i])
         # almas novas que o OCR tinha perdido e agora apareceram no meio
         lac_rest = []
@@ -830,7 +894,7 @@ class Rastreador:
             for k, (ly, ttl) in enumerate(lac):
                 if k not in usados_lac and abs(ly - delta - c["y"]) < tol:
                     usados_lac.add(k)
-                    if c["nome"]:
+                    if c["nome"] and not velha(i, novos_set | set(meio)):
                         contar(c)
                     break
         # alma de monstro novo lida borrada que agora foi confirmada

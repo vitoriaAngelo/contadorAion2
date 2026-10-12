@@ -73,6 +73,8 @@ Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Traba
 - **Não conta nada** → ⚙ → *Ver leitura*: a primeira linha mostra o motor de leitura e qualquer erro. Se a área estiver errada, ⚙ → *Detectar o chat automaticamente* (com o chat visível) ou *Selecionar área do chat na mão*.
 - **A imagem da esquerda em "Ver leitura" mostra o jogo, mas o chat não aparece nela** (pode acontecer com tela cheia, HDR ou "Otimizações para jogos em janela" do Windows 11) → ⚙ → *Captura DirectX*.
 - **Contou errado** → use − / + ou a caixinha **tenho**.
+- Pode subir o chat (scroll) e voltar: o contador reconhece as mensagens que já viu e não conta de novo. Mesmo assim, se puder, deixe o chat embaixo enquanto farma.
+- Matando muitos de uma vez: se aparecerem mais linhas do que cabem no chat, as primeiras somem antes de serem lidas. Aumente a altura do chat no jogo.
 - **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
 - **Atualizar:** ⚙ → *Procurar atualização*. Ele baixa a versão nova daqui do GitHub, fecha e abre de novo sozinho, mantendo o progresso. Quando tem versão nova, aparece **⬆** no topo do overlay (clique nele). Versões antigas (antes da 1.5.0) não têm essa opção: baixe o ZIP de novo e rode o `INSTALAR.bat` uma vez.
 
