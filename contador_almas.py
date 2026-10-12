@@ -154,7 +154,7 @@ CONFIG_PADRAO = {
     "padroes": PADROES_PADRAO,
     "opacidade": 0.9,
     "posicao": [40, 200],
-    "max_linhas": 8,
+    "max_linhas": 6,  # acima disso a lista rola
     "mostrar_concluidos": False,
     "recolhido": False,
 }
@@ -307,8 +307,10 @@ def carregar_config():
         r["left"] = int(r["left"]) - mais
         r["width"] = int(r["width"]) + mais
         salvo["regiao"] = r
+    if salvo.get("versao_cfg", 0) < 9:
+        salvo.pop("max_linhas", None)  # agora 6 com rolagem
     cfg.update(salvo)
-    cfg["versao_cfg"] = 8
+    cfg["versao_cfg"] = 9
     # a meta e sempre a soma das estrelas
     try:
         cfg["meta"] = sum(int(t) for t in cfg["tiers"])
@@ -2139,8 +2141,8 @@ def main():
             lista = pend + (concl if self.cfg.get("mostrar_concluidos") else [])
             if self.cfg.get("recolhido"):
                 lista = lista[:1]
-            limite = int(self.cfg.get("max_linhas", 8))
-            visiveis, ocultos = lista[:limite], max(0, len(lista) - limite)
+            # todos ficam na lista; acima de 6 aparece a rolagem
+            visiveis, ocultos = lista, 0
 
             rodape = ""
             mostra_rodape = not self.cfg.get("recolhido")
@@ -2181,8 +2183,16 @@ def main():
                 tk.Label(self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
                          font=self.f_peq, wraplength=self.px(240),
                          justify="left").pack(anchor="w", pady=self.px(4))
-            for m in visiveis:
-                self._ui[id(m)] = self._linha(m, meta)
+            self._rolagem = None
+            limite = max(1, int(self.cfg.get("max_linhas", 6)))
+            if len(visiveis) > limite:
+                pai = self._montar_rolagem()
+                for m in visiveis:
+                    self._ui[id(m)] = self._linha(m, meta, pai)
+                self._ajustar_rolagem(visiveis[:limite])
+            else:
+                for m in visiveis:
+                    self._ui[id(m)] = self._linha(m, meta)
             self._lbl_evento = None
             if mostra_rodape:
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -2198,6 +2208,77 @@ def main():
                 self._lbl_evento.pack(side="right")
                 self._ev_cache = None
                 self.atualizar_evento(agendar=False)
+
+        # ---------------- rolagem da lista ----------------
+        def _montar_rolagem(self):
+            caixa = tk.Frame(self.corpo, bg=COR["fundo"])
+            caixa.pack(fill="x")
+            cv = tk.Canvas(caixa, bg=COR["fundo"], highlightthickness=0, bd=0)
+            cv.pack(side="left", fill="both", expand=True)
+            barra = tk.Canvas(caixa, width=self.px(5), bg=COR["fundo"], highlightthickness=0, bd=0)
+            barra.pack(side="right", fill="y", padx=(self.px(3), 0))
+            dentro = tk.Frame(cv, bg=COR["fundo"])
+            cv.create_window((0, 0), window=dentro, anchor="nw", tags="dentro")
+            pino = barra.create_rectangle(0, 0, 0, 0, fill="#3a3f4c", outline="")
+
+            def pintar(a, b):
+                a, b = float(a), float(b)
+                H = barra.winfo_height()
+                barra.coords(pino, 0, int(a * H), barra.winfo_width(), max(int(a * H) + 8, int(b * H)))
+            cv.configure(yscrollcommand=pintar)
+            cv.bind("<Configure>", lambda e: cv.itemconfigure("dentro", width=e.width))
+
+            def roda(e):
+                passos = -1 if (getattr(e, "delta", 0) > 0 or getattr(e, "num", 0) == 4) else 1
+                cv.yview_scroll(passos, "units")
+                return "break"
+
+            def entrar(e):
+                self.root.bind_all("<MouseWheel>", roda)
+                self.root.bind_all("<Button-4>", roda)
+                self.root.bind_all("<Button-5>", roda)
+
+            def sair(e):
+                self.root.unbind_all("<MouseWheel>")
+                self.root.unbind_all("<Button-4>")
+                self.root.unbind_all("<Button-5>")
+            caixa.bind("<Enter>", entrar)
+            caixa.bind("<Leave>", sair)
+
+            def arrastar(e):
+                H = max(1, barra.winfo_height())
+                a, b = cv.yview()
+                cv.yview_moveto(max(0.0, min(1.0, e.y / H - (b - a) / 2)))
+            barra.bind("<Button-1>", arrastar)
+            barra.bind("<B1-Motion>", arrastar)
+            cv.configure(yscrollincrement=self.px(12))
+            self._rolagem = (cv, dentro)
+            return dentro
+
+        def _ajustar_rolagem(self, primeiros):
+            cv, dentro = self._rolagem
+            dentro.update_idletasks()
+            altura = sum(self._ui[id(m)]["frame"].winfo_reqheight() + self.px(4) for m in primeiros)
+            cv.configure(height=altura, width=dentro.winfo_reqwidth(),
+                         scrollregion=(0, 0, dentro.winfo_reqwidth(), dentro.winfo_reqheight()))
+            dentro.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+
+        def mostrar_linha(self, m):
+            """Rola a lista ate o monstro (ex.: ganhou alma e estava escondido)."""
+            rol = getattr(self, "_rolagem", None)
+            w = self._ui.get(id(m)) if hasattr(self, "_ui") else None
+            if not rol or not w:
+                return
+            cv, dentro = rol
+            f = w["frame"]
+            total = max(1, dentro.winfo_height())
+            topo, alt = f.winfo_y(), f.winfo_height()
+            vis_a = cv.canvasy(0)
+            vis_b = vis_a + cv.winfo_height()
+            if topo < vis_a:
+                cv.yview_moveto(topo / total)
+            elif topo + alt > vis_b:
+                cv.yview_moveto(max(0, topo + alt - cv.winfo_height()) / total)
 
         def atualizar_evento(self, agendar=True):
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
@@ -2288,13 +2369,13 @@ def main():
                 cx.delete(0, "end")
                 cx.insert(0, str(tenho_tier))
 
-        def _linha(self, m, meta):
+        def _linha(self, m, meta, pai=None):
             bg = COR["painel"]
-            f = tk.Frame(self.corpo, bg=bg)
+            f = tk.Frame(pai or self.corpo, bg=bg)
             f.pack(fill="x", pady=(0, self.px(4)))
             topo = tk.Frame(f, bg=bg)
             topo.pack(fill="x", padx=self.px(8), pady=(self.px(5), 0))
-            w = {}
+            w = {"frame": f}
             w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
             w["nome"].pack(side="left")
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
@@ -3030,6 +3111,7 @@ def main():
             for n in nomes:
                 m = self.prog.somar(n, 1, salvar=False)
                 self.destaque[normalizar(m["nome"])] = time.time()
+                self._rolar_para = m
             if nomes:
                 self.prog.salvar()  # grava uma vez so, mesmo com varias almas
             # diagnostico: captura a cada 10s e registro do que leu/contou
@@ -3057,6 +3139,10 @@ def main():
             def fazer():
                 self._render_agendado = False
                 self.render()
+                m = getattr(self, "_rolar_para", None)
+                if m is not None:
+                    self._rolar_para = None
+                    self.root.after(30, lambda: self.mostrar_linha(m))
             self.root.after(120, fazer)
 
         def sair(self):
