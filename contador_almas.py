@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.7.1"
+VERSAO = "1.7.2"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2003,6 +2003,19 @@ COR = {
     "novo": "#ffe27a",  # monstro que acabou de ganhar alma
 }
 
+# cor de destaque escolhida no menu (titulo, numeros, barras, som)
+CORES_DESTAQUE = [
+    ("Verde-\u00e1gua", "#5fd4c4"), ("Rosa", "#ff7eb6"), ("Roxo", "#b48cff"),
+    ("Azul", "#6aa8ff"), ("Dourado", "#f2c94c"), ("Laranja", "#ff9f5a"),
+    ("Vermelho", "#ff6b6b"), ("Verde", "#7ddc7a"),
+]
+
+
+def aplicar_cor_destaque(cor):
+    COR["alma"] = cor
+    # alma nova pisca em dourado; se o destaque ja e dourado, pisca em branco
+    COR["novo"] = "#ffffff" if cor.lower() in ("#f2c94c", "#e6c15a") else "#ffe27a"
+
 
 def main():
     if "--esperar" in sys.argv:
@@ -2026,6 +2039,7 @@ def main():
         def __init__(self):
             self.cfg = carregar_config()
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
+            aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.prog = Progresso(ARQ_DADOS)
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
@@ -2697,6 +2711,34 @@ def main():
                 tocar_aviso()
                 registrar(f"AVISO SONORO: {nomes} em {int(falta)}s")
 
+        def mudar_cor(self, cor):
+            antiga = COR["alma"]
+            aplicar_cor_destaque(cor)
+            self.cfg["cor_destaque"] = cor
+            self.salvar_cfg()
+
+            def recolorir(w):
+                for op in ("fg", "bg", "highlightcolor", "insertbackground"):
+                    try:
+                        if str(w.cget(op)).lower() == antiga.lower():
+                            w.configure(**{op: cor})
+                    except Exception:
+                        pass
+                if isinstance(w, tk.Canvas):
+                    for it in w.find_all():
+                        try:
+                            if str(w.itemcget(it, "fill")).lower() == antiga.lower():
+                                w.itemconfigure(it, fill=cor)
+                        except Exception:
+                            pass
+                for c in w.winfo_children():
+                    recolorir(c)
+            recolorir(self.root)
+            self._estrutura = None
+            self.render()
+            self._pintar_som()
+            self.atualizar_status()
+
         def mudar_volume(self, v):
             self.cfg["volume_aviso"] = v
             VOLUME_AVISO["v"] = v
@@ -3141,6 +3183,13 @@ def main():
             for v in (1.0, 0.9, 0.8, 0.7, 0.6):
                 sub.add_command(label=f"{int(v*100)}%", command=lambda v=v: self.opacidade(v))
             menu.add_cascade(label="Opacidade", menu=sub)
+            sub_cor = tk.Menu(menu, tearoff=0)
+            atual_cor = COR["alma"].lower()
+            for nome, cor in CORES_DESTAQUE:
+                sub_cor.add_command(label=("\u2713 " if cor.lower() == atual_cor else "    ") + "\u25cf " + nome,
+                                    foreground=cor, activeforeground=cor,
+                                    command=lambda c=cor: self.mudar_cor(c))
+            menu.add_cascade(label="Cor de destaque", menu=sub_cor)
             sub_letra = tk.Menu(menu, tearoff=0)
             atual = self.cfg.get("tamanho_letra", "normal")
             for nome in ("pequena", "normal", "grande", "muito grande"):

@@ -60,7 +60,7 @@ Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e
 
 Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho). Botão ♪: liga/desliga o som 1 minuto antes dos eventos (riscado = mudo).
 
-Menu ⚙: tamanho da letra, som 1 minuto antes dos eventos (liga/desliga e volume — ao escolher o volume ele toca para você ouvir), detectar o chat de novo, escolher a área na mão, opacidade, aparecer ou não na stream.
+Menu ⚙: cor de destaque (verde-água, rosa, roxo, azul, dourado, laranja, vermelho, verde), tamanho da letra, som 1 minuto antes dos eventos (liga/desliga e volume — ao escolher o volume ele toca para você ouvir), detectar o chat de novo, escolher a área na mão, opacidade, aparecer ou não na stream.
 
 ## OBS
 
