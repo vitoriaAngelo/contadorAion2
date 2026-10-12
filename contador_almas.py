@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.15"
+VERSAO = "1.7.0"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -190,6 +190,39 @@ def estrelas(qtd, tiers):
         else:
             return feitas, acum - qtd, len(tiers)
     return feitas, 0, len(tiers)
+
+
+def chave_dia(agora):
+    """O dia do jogo vira as 04:00 (reset diario)."""
+    import datetime as dt
+    return (agora - dt.timedelta(hours=4)).date().isoformat()
+
+
+def proximo_reset_diario(agora):
+    import datetime as dt
+    t = agora.replace(hour=4, minute=0, second=0, microsecond=0)
+    return t if agora < t else t + dt.timedelta(days=1)
+
+
+def proximo_reset_semanal(agora):
+    """Quarta-feira as 04:00."""
+    import datetime as dt
+    t = agora.replace(hour=4, minute=0, second=0, microsecond=0)
+    t += dt.timedelta(days=(2 - t.weekday()) % 7)
+    return t if agora < t else t + dt.timedelta(days=7)
+
+
+def inicio_semana(agora):
+    import datetime as dt
+    return proximo_reset_semanal(agora) - dt.timedelta(days=7)
+
+
+def formatar_longo(seg):
+    seg = max(0, int(seg))
+    d, r = divmod(seg, 86400)
+    h, r = divmod(r, 3600)
+    m, s = divmod(r, 60)
+    return (f"{d}d " if d else "") + f"{h:02d}:{m:02d}:{s:02d}"
 
 
 def proximo_inicio(eventos, agora=None):
@@ -1233,6 +1266,8 @@ class Progresso:
         self.arquivo = arquivo
         dados = carregar_json(arquivo, {"monstros": []})
         self.monstros = dados.get("monstros", [])
+        # almas por dia do jogo (o dia vira no reset das 04:00)
+        self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
         for m in self.monstros:
             m.setdefault("qtd", 0)
             m.setdefault("apelidos", [])
@@ -1247,7 +1282,7 @@ class Progresso:
 
     def salvar(self):
         try:
-            salvar_json(self.arquivo, {"monstros": self.monstros})
+            salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias})
         except Exception:
             pass
 
@@ -1339,9 +1374,30 @@ class Progresso:
         m["atualizado"] = time.time()
         if n > 0:
             m["ultima_alma"] = m["atualizado"]
+            self._anotar_dia(m["nome"], n)
         if salvar:
             self.salvar()
         return m
+
+    def _anotar_dia(self, nome, n):
+        import datetime as dt
+        k = chave_dia(dt.datetime.now())
+        dia = self.dias.setdefault(k, {})
+        dia[nome] = dia.get(nome, 0) + n
+        if len(self.dias) > 21:  # guarda 3 semanas
+            for velho in sorted(self.dias)[:-21]:
+                del self.dias[velho]
+
+    def estatisticas(self, agora=None):
+        import datetime as dt
+        agora = agora or dt.datetime.now()
+        hoje = self.dias.get(chave_dia(agora), {})
+        ini = chave_dia(inicio_semana(agora) + dt.timedelta(minutes=1))
+        fim = chave_dia(agora)
+        semana = sum(sum(v.values()) for k, v in self.dias.items() if ini <= k <= fim)
+        return {"hoje": sum(hoje.values()), "semana": semana,
+                "total": sum(m["qtd"] for m in self.monstros),
+                "top_hoje": sorted(hoje.items(), key=lambda kv: -kv[1])[:5]}
 
     def definir(self, m, qtd):
         m["qtd"] = max(0, int(qtd))
@@ -2244,9 +2300,10 @@ def main():
             h = tk.Frame(self.root, bg=COR["fundo"])
             h.pack(fill="x", padx=self.px(8), pady=(self.px(6), self.px(4)))
             self.cab = h
-            t = tk.Label(h, text="\u2726 Almas", fg=COR["alma"], bg=COR["fundo"],
-                         font=self.f_titulo)
+            t = tk.Label(h, text="\u25f7 Info" if self.cfg.get("aba") == "info" else "\u2726 Almas",
+                         fg=COR["alma"], bg=COR["fundo"], font=self.f_titulo)
             t.pack(side="left")
+            self.lbl_titulo = t
             self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
             # aparece so quando tem versao nova no GitHub
@@ -2261,6 +2318,10 @@ def main():
             self.b_modo = self.botao(h, "\u25a4" if self.cfg.get("compacto") else "\u2261",
                                      lambda e: self.alternar_compacto())
             self.b_modo.pack(side="right")
+            # aba de informacoes: resets e almas do dia/semana
+            self.b_aba = self.botao(h, "\u2726" if self.cfg.get("aba") == "info" else "\u25f7",
+                                    lambda e: self.alternar_aba())
+            self.b_aba.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
@@ -2358,9 +2419,13 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
+            if self.cfg.get("aba") == "info":
+                visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
-                         bool(self.cfg.get("recolhido")))
+                         bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"))
             if estrutura == getattr(self, "_estrutura", None):
+                if self.cfg.get("aba") == "info":
+                    self._atualizar_info()
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
@@ -2385,8 +2450,15 @@ def main():
                          font=self.f_peq, wraplength=self.px(240),
                          justify="left").pack(anchor="w", pady=self.px(4))
             self._rolagem = None
+            self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
-            if len(visiveis) > limite:
+            if self.cfg.get("aba") == "info":
+                # mesma largura da lista de almas (o contador nao muda de tamanho)
+                chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
+                larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
+                tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
+                self._montar_info()
+            elif len(visiveis) > limite:
                 pai = self._montar_rolagem()
                 for m in visiveis:
                     self._ui[id(m)] = self._linha(m, meta, pai)
@@ -2484,6 +2556,105 @@ def main():
             elif topo + alt > vis_b:
                 cv.yview_moveto(max(0, topo + alt - cv.winfo_height()) / total)
 
+        # ---------------- aba Info ----------------
+        def alternar_aba(self):
+            if getattr(self, "editando", None) is not None:
+                return
+            self._medir_largura_almas()
+            self.cfg["aba"] = "almas" if self.cfg.get("aba") == "info" else "info"
+            self.salvar_cfg()
+            info = self.cfg["aba"] == "info"
+            self.lbl_titulo.configure(text="\u25f7 Info" if info else "\u2726 Almas")
+            self.b_aba.configure(text="\u2726" if info else "\u25f7")
+            self.render()
+
+        def _medir_largura_almas(self):
+            try:
+                self.corpo.update_idletasks()
+                if self.cfg.get("aba") != "info":
+                    self._larg_almas = self.corpo.winfo_reqwidth()
+                    chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
+                    larguras = self.cfg.setdefault("larguras", {})
+                    if larguras.get(chave) != self._larg_almas:
+                        larguras[chave] = self._larg_almas
+                        self.salvar_cfg()
+            except Exception:
+                pass
+
+        def _montar_info(self):
+            bg = COR["painel"]
+            self._info = {}
+
+            def bloco():
+                f = tk.Frame(self.corpo, bg=bg)
+                f.pack(fill="x", pady=(0, self.px(4)))
+                return f
+
+            def linha(pai, chave, rotulo, cor=COR["texto"], fonte=None):
+                l = tk.Frame(pai, bg=bg)
+                l.pack(fill="x", padx=self.px(8), pady=self.px(2))
+                tk.Label(l, text=rotulo, fg=COR["suave"], bg=bg, font=self.f_nome).pack(side="left")
+                v = tk.Label(l, text="", fg=cor, bg=bg, font=fonte or self.f_nome)
+                v.pack(side="right")
+                self._info[chave] = v
+
+            b1 = bloco()
+            tk.Frame(b1, bg=bg, height=self.px(3)).pack()
+            linha(b1, "diario", "Reset di\u00e1rio (04:00)", COR["ouro"], self.fontes["relogio"])
+            linha(b1, "semanal", "Reset semanal (qua 04:00)", COR["ouro"], self.fontes["relogio"])
+            tk.Frame(b1, bg=bg, height=self.px(3)).pack()
+            b2 = bloco()
+            tk.Frame(b2, bg=bg, height=self.px(3)).pack()
+            linha(b2, "hoje", "Almas hoje", COR["alma"])
+            linha(b2, "semana", "Almas nesta semana", COR["alma"])
+            linha(b2, "total", "Almas no contador", COR["texto"])
+            tk.Frame(b2, bg=bg, height=self.px(3)).pack()
+            b3 = bloco()
+            tk.Label(b3, text="Hoje por bicho", fg=COR["suave"], bg=bg,
+                     font=self.f_peq).pack(anchor="w", padx=self.px(8), pady=(self.px(4), 0))
+            self._info["top"] = []
+            for i in range(5):
+                l = tk.Frame(b3, bg=bg)
+                l.pack(fill="x", padx=self.px(8), pady=(0, self.px(1)))
+                caixa = tk.Frame(l, bg=bg, width=self._largura_nome(),
+                                 height=self.fontes["nome"].metrics("linespace") + self.px(2))
+                caixa.pack(side="left")
+                caixa.pack_propagate(False)
+                n = tk.Label(caixa, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
+                n.pack(side="left", fill="both", expand=True)
+                q = tk.Label(l, text="", fg=COR["alma"], bg=bg, font=self.f_nome)
+                q.pack(side="right")
+                self._info["top"].append((n, q))
+            tk.Frame(b3, bg=bg, height=self.px(4)).pack()
+            self._atualizar_info()
+
+        def _atualizar_info(self):
+            info = getattr(self, "_info", None)
+            if not info:
+                return
+            import datetime as dt
+            agora = dt.datetime.now()
+            st = self.prog.estatisticas(agora)
+            val = {
+                "diario": formatar_longo((proximo_reset_diario(agora) - agora).total_seconds()),
+                "semanal": formatar_longo((proximo_reset_semanal(agora) - agora).total_seconds()),
+                "hoje": str(st["hoje"]), "semana": str(st["semana"]), "total": str(st["total"]),
+            }
+            for k, v in val.items():
+                if info[k].cget("text") != v:
+                    info[k].configure(text=v)
+            top = st["top_hoje"]
+            for i, (n, q) in enumerate(info["top"]):
+                if i < len(top):
+                    nome = self._cabe(top[i][0], self._largura_nome())
+                    tn, tq = nome, str(top[i][1])
+                else:
+                    tn, tq = ("nenhuma alma ainda hoje" if i == 0 else ""), ""
+                if n.cget("text") != tn:
+                    n.configure(text=tn, fg=COR["texto"] if top else COR["suave"])
+                if q.cget("text") != tq:
+                    q.configure(text=tq)
+
         def atualizar_evento(self, agendar=True):
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
             minuto fica vermelho e piscando. So mexe nesses dois textos."""
@@ -2532,6 +2703,11 @@ def main():
                 self._checar_aviso_som()
             except Exception:
                 pass
+            if self.cfg.get("aba") == "info":
+                try:
+                    self._atualizar_info()
+                except Exception:
+                    pass
             if agendar:
                 self.root.after(500, self.atualizar_evento)
 
@@ -2893,6 +3069,8 @@ def main():
                 self.fontes["som_mudo"].configure(size=self.fontes["botao"].cget("size"))
 
         def mudar_tamanho_letra(self, nome):
+            if self.cfg.get("aba") == "info":
+                self.alternar_aba()  # volta para medir a largura certa
             self.cfg["tamanho_letra"] = nome
             self.salvar_cfg()
             self._aplicar_tamanho_fontes()
