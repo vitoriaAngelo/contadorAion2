@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.12"
+VERSAO = "1.6.13"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -458,6 +458,8 @@ def corrigir_acentos(palavra):
 
 def limpar_nome(nome):
     nome = _CORTE_INICIO.sub("", nome or "")
+    # "x1." grudado no fim do nome ('Kerubianxi.' / 'Kerubianxl;')
+    nome = re.sub(r"(?<=[a-z\u00e0-\u00ff]{4})[x\u00d7][1iIlL|!t\u00b9][\W]*\s*$", "", nome)
     nome = _CORTE_FIM.sub("", nome)
     nome = re.sub(r"[\[\]\(\)\{\}<>\"'\u201c\u201d:;!?.,|*]+", " ", nome)
     nome = re.sub(r"\s+x\s*\d*\s*$", "", nome, flags=re.I)
@@ -540,7 +542,15 @@ def mesmo_monstro(a, b):
     total = 0
     for x, y in zip(pa, pb):
         e = _edicoes(x, y)
-        if e > max(1, len(max(x, y, key=len)) // 4) and not (len(x) <= 4 and e <= 2 and x[0] == y[0]):
+        maior = len(max(x, y, key=len))
+        # ate 1 letra errada por palavra (2 em palavras de 10+ letras):
+        # 'Kerubian' x 'Kerubiel' sao bichos diferentes
+        ok = e <= max(1, maior // 5)
+        if not ok and len(x) <= 4 and len(y) <= 4 and e <= 2 and x[0] == y[0]:
+            ok = True  # palavra curta muito borrada ('Zeit' -> 'Zaif')
+        if not ok and min(len(x), len(y)) >= 5 and (x.endswith(y) or y.endswith(x)):
+            ok = True  # comeco da palavra cortado ('Ermediario' -> 'Intermediario')
+        if not ok:
             return False
         total += e
     return total <= max(2, len("".join(pa)) // 6)
