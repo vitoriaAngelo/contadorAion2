@@ -9,7 +9,7 @@ casos = {
     "Você obteve OD Radiahte x1.": ("OD Radiante", 1), "Você obteve OD Puro x7.": ("OD Puro", 1),
     "Hagi obteve OD Fino x2.": None, "Hagi obteve OD Fino (Vinculado)": None, "Você obteve Odium x1.": None,
     "Você obteve 463 Kinah.": None, "Obteve Pontos da Alma Kerubian x1.": None, "Você obteve Pedra de Aprimoramento x18.": None,
-    "Você obteve ODrecido x1.": None,
+    "Você obteve ODrecido x1.": None, "Você obteve Od Puro.": ("OD Puro", 1), "Você obteve Od x2.": ("OD", 2),
 }
 ok = True
 for l, esp in casos.items():

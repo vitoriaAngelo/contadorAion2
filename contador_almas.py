@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.1"
+VERSAO = "1.8.2"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1850,6 +1850,12 @@ def preparar_imagem(img, cfg):
     escuro_perto = L.filter(ImageFilter.MinFilter(k))
     lc, le = int(cfg.get("limiar_claro", 150)), int(cfg.get("limiar_escuro", 90))
     claro = L.point(lambda v: 255 if v > lc else 0)
+    # nomes de item coloridos (azul/verde/roxo do OD Puro, OD Fino...) tem
+    # brilho baixo na conta do cinza, mas um canal de cor bem forte
+    r, g, b = img.convert("RGB").split()
+    forte = ImageChops.lighter(ImageChops.lighter(r, g), b).point(
+        lambda v: 255 if v > int(cfg.get("limiar_cor", 205)) else 0)
+    claro = ImageChops.lighter(claro, forte)
     contorno = escuro_perto.point(lambda v: 255 if v < le else 0)
     letras = ImageChops.multiply(claro, contorno)
     return ImageChops.invert(letras).convert("RGB")
