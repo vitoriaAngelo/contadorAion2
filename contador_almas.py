@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.6"
+VERSAO = "1.5.7"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -300,8 +300,15 @@ def carregar_config():
         salvo.pop("eventos", None)  # agenda nova (Kairah e Nahma)
     if salvo.get("versao_cfg", 0) < 7 and salvo.get("tiers") in (None, [5, 25, 74]):
         salvo["tiers"] = [5, 25, 75]  # a 3a estrela vai ate 75
+    if salvo.get("versao_cfg", 0) < 8 and isinstance(salvo.get("regiao"), dict):
+        # areas antigas cortavam o comeco das linhas (e o "x1." quebrado)
+        r = dict(salvo["regiao"])
+        mais = min(int(r.get("left", 0)), max(40, int(r.get("height", 200) * 0.2)))
+        r["left"] = int(r["left"]) - mais
+        r["width"] = int(r["width"]) + mais
+        salvo["regiao"] = r
     cfg.update(salvo)
-    cfg["versao_cfg"] = 7
+    cfg["versao_cfg"] = 8
     # a meta e sempre a soma das estrelas
     try:
         cfg["meta"] = sum(int(t) for t in cfg["tiers"])
@@ -593,7 +600,10 @@ class Rastreador:
                 # monstro novo com o nome cortado.
                 c = self.completar(n) or self.canon(n)
                 if c is None:
-                    return ("alma " + compacto(n), None)
+                    # se o resto nunca aparecer, conta com este nome depois
+                    # de alguns quadros (o "x1." pode ter ficado fora da area)
+                    cortado = re.search(r"\s(de|da|do|dos|das|e)\W*$", raw.strip(), re.I)
+                    return ("alma " + compacto(n), None, None if cortado else n)
             if c is None:
                 nitida = re.search(r"pontos\s+da\s+alma\s+\S", raw, re.I) or \
                     re.search(r"(alma\s+d[eoa]s?|soul\s+of)\s+\S", raw, re.I)
@@ -626,7 +636,8 @@ class Rastreador:
             c = self._classificar(t)
             if c:
                 cur.append({"y": float(y), "h": h, "chave": c[0], "nome": c[1],
-                            "qtd": quantidade_alma(t) if c[1] else 1, "cont": 0})
+                            "qtd": quantidade_alma(t) if c[1] else 1, "cont": 0,
+                            "prov": c[2] if len(c) > 2 else None})
         if not cur:
             if getattr(self, "mem", None) is None:
                 self._vazio_no_inicio = getattr(self, "_vazio_no_inicio", 0) + 1
@@ -775,6 +786,10 @@ class Rastreador:
         # alma de monstro novo lida borrada que agora foi confirmada
         for i, j in pares:
             m, c = mem[j], cur[i]
+            if m.get("pend") and not c["nome"] and c.get("prov"):
+                c["inc"] = m.get("inc", 0) + 1
+                if c["inc"] >= 4 and compacto(c["prov"]) == m["chave"][5:]:
+                    c["nome"] = c["prov"]  # conta logo abaixo
             if m.get("pend") and c["nome"]:
                 contar(c)
             elif c["nome"] and m.get("cont", 0) > 0:
@@ -791,10 +806,11 @@ class Rastreador:
             m, c = mem[j], cur[i]
             nome = c["nome"] or m["nome"]
             pend = bool(m.get("pend") and not c["nome"])
+            inc = c.get("inc", 0)
             nova_mem.append({"y": c["y"], "h": c["h"], "chave": c["chave"] if c["nome"] or not m["nome"] else m["chave"],
                              "nome": nome, "visto": fq, "pend": pend,
                              "qtd": max(c.get("qtd", 1), m.get("qtd", 1)),
-                             "cont": max(c.get("cont", 0), m.get("cont", 0))})
+                             "cont": max(c.get("cont", 0), m.get("cont", 0)), "inc": inc})
         for i in novos + meio:
             c = cur[i]
             pend = (i in novos) and c["nome"] is None and c["chave"].startswith("alma ")
@@ -1332,8 +1348,10 @@ def achar_chat(motor, cfg, sct, avisar=lambda t: None, proprias=()):
     ys = [a[1] for a in acertos]
     ye = [a[3] for a in acertos]
     alt = sorted(a[3] - a[1] for a in acertos)[len(acertos) // 2] or 14
-    esquerda = max(mon["left"], int(min(xs) - alt * 2))
-    largura = int(mon["width"] * 0.19)
+    # o "Voce" antes do "obteve" e o "x1." que quebra de linha ficam bem na
+    # borda esquerda do chat: sobra bastante para a esquerda
+    esquerda = max(mon["left"], int(min(xs) - alt * 7))
+    largura = int(mon["width"] * 0.19 + alt * 5)
     topo = max(mon["top"], int(min(ys) - alt * 3))
     base = min(mon["top"] + mon["height"], int(max(ye) + alt * 2))
     return {"left": esquerda, "top": topo, "width": largura, "height": base - topo}
