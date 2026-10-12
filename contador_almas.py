@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.5.8"
+VERSAO = "1.5.9"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -459,6 +459,23 @@ def mesmo_monstro(a, b):
             return False
         total += e
     return total <= max(2, len("".join(pa)) // 6)
+
+
+def nome_mais_completo(novo, velho):
+    """'Espirito da Terra Intermediario' completa 'Espirito da Terra Ermediario'
+    (o comeco da palavra tinha ficado fora da leitura)?"""
+    pn, pv = normalizar(novo).split(), normalizar(velho).split()
+    if len(pn) != len(pv) or pn == pv:
+        return False
+    maior = False
+    for x, y in zip(pn, pv):
+        if x == y:
+            continue
+        if len(x) > len(y) >= 3 and x.endswith(y):
+            maior = True
+            continue
+        return False
+    return maior
 
 
 def compacto(s):
@@ -1071,8 +1088,16 @@ class Progresso:
             m = {"nome": nome, "qtd": 0, "apelidos": [], "atualizado": 0}
             self.monstros.append(m)
         if n > 0 and not m.get("fixo"):
-            # o nome mostrado e a grafia que o OCR leu mais vezes
             votos = m.setdefault("votos", {})
+            if nome_mais_completo(nome, m["nome"]):
+                # o nome salvo estava cortado ('Ermediario'): a leitura inteira
+                # ('Intermediario') vale na hora, sem esperar votos
+                antigo = normalizar(m["nome"])
+                if antigo not in m["apelidos"]:
+                    m["apelidos"].append(antigo)
+                votos.clear()
+                votos[nome] = 1000
+            # o nome mostrado e a grafia que o OCR leu mais vezes
             votos[nome] = votos.get(nome, 0) + 1
             m["nome"] = max(votos, key=votos.get)
         m["qtd"] = max(0, m["qtd"] + n)
