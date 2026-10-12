@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.3"
+VERSAO = "1.8.4"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2396,13 +2396,66 @@ def main():
             finally:
                 self.root.attributes("-topmost", True)
 
-        def botao(self, pai, texto, cmd, cor=None, fonte=None):
+        def dica(self, w, texto):
+            """Dica que aparece ao parar o mouse em cima (texto ou funcao)."""
+            estado = {"id": None, "jan": None}
+
+            def esconder(e=None):
+                if estado["id"]:
+                    try:
+                        self.root.after_cancel(estado["id"])
+                    except Exception:
+                        pass
+                    estado["id"] = None
+                if estado["jan"] is not None:
+                    try:
+                        estado["jan"].destroy()
+                    except Exception:
+                        pass
+                    estado["jan"] = None
+
+            def mostrar():
+                estado["id"] = None
+                try:
+                    msg = texto() if callable(texto) else texto
+                    if not msg or not w.winfo_exists():
+                        return
+                    jan = tk.Toplevel(self.root)
+                    jan.overrideredirect(True)
+                    jan.attributes("-topmost", True)
+                    tk.Label(jan, text=msg, bg="#2a2e38", fg=COR["texto"], font=self.f_peq,
+                             padx=self.px(7), pady=self.px(3), justify="left",
+                             highlightthickness=1, highlightbackground="#3a4050").pack()
+                    jan.update_idletasks()
+                    x = w.winfo_pointerx() + self.px(12)
+                    y = w.winfo_pointery() + self.px(16)
+                    sw, sh = jan.winfo_screenwidth(), jan.winfo_screenheight()
+                    x = min(x, sw - jan.winfo_reqwidth() - 4)
+                    if y + jan.winfo_reqheight() > sh:
+                        y = w.winfo_pointery() - jan.winfo_reqheight() - self.px(8)
+                    jan.geometry(f"+{x}+{y}")
+                    estado["jan"] = jan
+                except Exception:
+                    estado["jan"] = None
+
+            def entrar(e=None):
+                esconder()
+                estado["id"] = self.root.after(500, mostrar)
+            w.bind("<Enter>", entrar, add="+")
+            w.bind("<Leave>", esconder, add="+")
+            w.bind("<ButtonPress>", esconder, add="+")
+            w.bind("<Destroy>", esconder, add="+")
+            return w
+
+        def botao(self, pai, texto, cmd, cor=None, fonte=None, dica=None):
             b = tk.Label(pai, text=texto, bg=pai["bg"], fg=cor or COR["suave"],
                          font=fonte or self.fontes["botao"], cursor="hand2",
                          padx=self.px(4))
             b.bind("<Button-1>", lambda e: cmd(e))
             b.bind("<Enter>", lambda e: b.configure(fg=COR["texto"]))
             b.bind("<Leave>", lambda e: b.configure(fg=cor or COR["suave"]))
+            if dica:
+                self.dica(b, dica)
             return b
 
         # ---------------- cabecalho ----------------
@@ -2421,23 +2474,37 @@ def main():
                                           font=self.fontes["fechar"], cursor="hand2")
             self.lbl_atualizar.pack(side="left", padx=(self.px(6), 0))
             self.lbl_atualizar.bind("<Button-1>", lambda e: self._clique_atualizar())
+            self.dica(self.lbl_atualizar, lambda: "Reabrir com a vers\u00e3o nova (o progresso fica salvo)"
+                      if getattr(self, "_versao_no_disco", None) else
+                      ("Baixar a vers\u00e3o nova do GitHub" if self.lbl_atualizar.cget("text") else ""))
 
-            self.botao(h, "\u2715", lambda e: self.sair()).pack(side="right")
-            self.botao(h, "\u2013", lambda e: self.minimizar()).pack(side="right")
+            self.botao(h, "\u2715", lambda e: self.sair(),
+                       dica="Fechar o contador").pack(side="right")
+            self.botao(h, "\u2013", lambda e: self.minimizar(),
+                       dica="Minimizar (vai para a barra de tarefas)").pack(side="right")
             # alterna modo normal / compacto
             self.b_modo = self.botao(h, "\u25a4" if self.cfg.get("compacto") else "\u2261",
-                                     lambda e: self.alternar_compacto())
+                                     lambda e: self.alternar_compacto(),
+                                     dica=lambda: "Voltar para o modo normal" if self.cfg.get("compacto")
+                                     else "Modo compacto (uma linha por bicho)")
             self.b_modo.pack(side="right")
             # aba de informacoes: resets e almas do dia/semana
             self.b_aba = self.botao(h, "\u2726" if self.cfg.get("aba") == "info" else "\u25f7",
-                                    lambda e: self.alternar_aba("info"))
+                                    lambda e: self.alternar_aba("info"),
+                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "info"
+                                    else "Info: quanto falta para o reset di\u00e1rio e o semanal")
             self.b_aba.pack(side="right")
             self.b_od = self.botao(h, "\u2726" if self.cfg.get("aba") == "od" else "\u25c6",
-                                   lambda e: self.alternar_aba("od"))
+                                   lambda e: self.alternar_aba("od"),
+                                   dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
+                                   else "Contador de OD (OD, Fino, Puro, Radiante)")
             self.b_od.pack(side="right")
-            self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
+            self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher(),
+                                         dica=lambda: "Mostrar todos os bichos" if self.cfg.get("recolhido")
+                                         else "Recolher: mostrar s\u00f3 os 3 \u00faltimos que pegaram alma")
             self.b_recolher.pack(side="right")
-            self.botao(h, "\u2699", self.menu_principal).pack(side="right")
+            self.botao(h, "\u2699", self.menu_principal,
+                       dica="Op\u00e7\u00f5es (cor, letra, volume, chat...)").pack(side="right")
             # som do aviso de evento: colorido = ligado, cinza riscado = mudo
             import tkinter.font as tkfont
             self.fontes["som_mudo"] = tkfont.Font(root=self.root, family="Segoe UI",
@@ -2446,6 +2513,8 @@ def main():
             self.b_som = tk.Label(h, text="\u266a", bg=COR["fundo"], cursor="hand2",
                                   padx=self.px(4))
             self.b_som.bind("<Button-1>", lambda e: self.alternar_som())
+            self.dica(self.b_som, lambda: "Som do aviso ligado (toca 1 min antes dos eventos). Clique para desligar"
+                      if self.cfg.get("aviso_som", True) else "Som do aviso desligado. Clique para ligar")
             self.b_som.pack(side="right")
             self._pintar_som()
 
@@ -2769,21 +2838,22 @@ def main():
                 nome = tk.Label(l, text=rotulo, fg=COR["texto"], bg=bg, font=self.f_nome)
                 nome.pack(side="left")
                 self.botao(l, "+", lambda e, t=tipo: self.od_ajustar(t, +1),
-                           fonte=self.fontes["botao_b"]).pack(side="right")
+                           fonte=self.fontes["botao_b"], dica=f"+1 {tipo}").pack(side="right")
                 self.botao(l, "\u2212", lambda e, t=tipo: self.od_ajustar(t, -1),
-                           fonte=self.fontes["botao_b"]).pack(side="right")
+                           fonte=self.fontes["botao_b"], dica=f"\u22121 {tipo}").pack(side="right")
                 n = tk.Label(l, text="", fg=COR["alma"], bg=bg,
                              font=self.f_nome if compacto else self.fontes["titulo"],
                              cursor="hand2", width=4 if compacto else 6, anchor="e")
                 n.pack(side="right", padx=(0, self.px(2 if compacto else 6)))
                 n.bind("<Button-1>", lambda e, t=tipo: self.od_definir(t))
+                self.dica(n, f"{tipo}: clique para digitar quantos voc\u00ea tem")
                 for x in (f, l, nome, n):
                     x.bind("<Button-3>", lambda e: self.menu_od(e))
                 self._od_ui[tipo] = (nome, n)
             barra = tk.Frame(self.corpo, bg=COR["fundo"])
             barra.pack(fill="x")
             self.botao(barra, "\u21ba Zerar ODs", lambda e: self.od_zerar(),
-                       fonte=self.f_peq).pack(side="right")
+                       fonte=self.f_peq, dica="Zerar os 4 contadores de OD (pergunta antes)").pack(side="right")
             self._atualizar_od()
 
         def _atualizar_od(self):
@@ -3045,6 +3115,7 @@ def main():
                 st._estado = None
                 st.pack(side="left", padx=(self.px(4) if i == 1 else 0, 0))
                 st.bind("<Button-1>", lambda e, m=m, i=i: self.escolher_estrela(m, i))
+                self.dica(st, f"Estou na {i}\u00aa estrela no jogo (clique para marcar)")
                 w["estrelas"].append(st)
 
         def _img_estrela(self, estado, decimos, bg):
@@ -3137,11 +3208,12 @@ def main():
             self._caixa_nome(topo, w, bg)
             self._estrelas_na(topo, m, w, bg)
             self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
-                       cor=COR["erro"], fonte=self.fontes["fechar"]).pack(side="right")
+                       cor=COR["erro"], fonte=self.fontes["fechar"],
+                       dica="Tirar este bicho da lista").pack(side="right")
             self.botao(topo, "+", lambda e, m=m: self.ajustar(m, +1),
-                       fonte=self.fontes["botao_b"]).pack(side="right")
+                       fonte=self.fontes["botao_b"], dica="+1 alma").pack(side="right")
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
-                       fonte=self.fontes["botao_b"]).pack(side="right")
+                       fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
                                  width=6, anchor="e", cursor="hand2")
             w["cont"].pack(side="right")
@@ -3184,6 +3256,7 @@ def main():
                 cx.bind("<Escape>", lambda e: fim(False))
                 return "break"
             w["cont"].bind("<Button-1>", editar)
+            self.dica(w["cont"], "Almas nesta estrela. Clique para digitar quantas voc\u00ea tem")
             # linha fininha de progresso da estrela atual
             H = max(2, self.px(2))
             w["cv"] = tk.Canvas(f, height=H, width=1, bg=COR["barra"], highlightthickness=0, bd=0)
@@ -3209,11 +3282,12 @@ def main():
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
             self._estrelas_na(topo, m, w, bg)
             self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
-                       cor=COR["erro"], fonte=self.fontes["fechar"]).pack(side="right")
+                       cor=COR["erro"], fonte=self.fontes["fechar"],
+                       dica="Tirar este bicho da lista").pack(side="right")
             self.botao(topo, "+", lambda e, m=m: self.ajustar(m, +1),
-                       fonte=self.fontes["botao_b"]).pack(side="right")
+                       fonte=self.fontes["botao_b"], dica="+1 alma").pack(side="right")
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
-                       fonte=self.fontes["botao_b"]).pack(side="right")
+                       fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
                                  width=7, anchor="e")
             w["cont"].pack(side="right", padx=(0, self.px(4)))
@@ -3260,6 +3334,7 @@ def main():
                 self.render_em_breve()
 
             caixa.bind("<Button-1>", comecar)
+            self.dica(caixa, "Quantas almas voc\u00ea tem nesta estrela (digite e aperte Enter)")
             caixa.bind("<Return>", confirmar)
             caixa.bind("<KP_Enter>", confirmar)
             caixa.bind("<FocusOut>", confirmar)
