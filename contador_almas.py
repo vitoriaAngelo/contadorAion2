@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.7.3"
+VERSAO = "1.7.4"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -190,6 +190,58 @@ def estrelas(qtd, tiers):
         else:
             return feitas, acum - qtd, len(tiers)
     return feitas, 0, len(tiers)
+
+
+def _hex(c):
+    """'#rrggbb' -> (r, g, b)"""
+    c = c.lstrip("#"); return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+def imagem_estrela(estado, frac, S, bg, ouro="#f4c46a"):
+    """Estrela arredondada e suave (desenhada com o Pillow).
+    estado: 'cheia' | 'atual' | 'vazia'. frac: 0..1 (enchimento da atual)."""
+    import math
+    from PIL import Image, ImageDraw, ImageFilter, ImageChops
+    K = 6                      # desenha grande e reduz (borda lisa)
+    N = S * K
+    cx, cy = N / 2, N / 2 + N * 0.04
+    R, r = N * 0.48, N * 0.48 * 0.50
+    pts = []
+    for i in range(10):
+        a = math.radians(-90 + i * 36)
+        rr = R if i % 2 == 0 else r
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    m = Image.new("L", (N, N), 0)
+    ImageDraw.Draw(m).polygon(pts, fill=255)
+    # pontas arredondadas: desfoca e corta
+    m = m.filter(ImageFilter.GaussianBlur(N * 0.055)).point(lambda v: 255 if v > 140 else 0)
+    borda = ImageChops.subtract(m, m.filter(ImageFilter.MinFilter(int(N * 0.09) | 1)))
+    fundo = Image.new("RGBA", (N, N), _hex(bg) + (255,))
+    o = _hex(ouro)
+    if estado == "cheia":
+        # dourado quentinho: claro em cima, mais quente embaixo + brilho
+        grad = Image.new("RGBA", (N, N))
+        topo, base = (255, 226, 150), (238, 160, 70)
+        for y in range(N):
+            t = y / N
+            cor = tuple(int(topo[k] + (base[k] - topo[k]) * t) for k in range(3))
+            ImageDraw.Draw(grad).line([(0, y), (N, y)], fill=cor + (255,))
+        fundo.paste(grad, (0, 0), m)
+        brilho = Image.new("L", (N, N), 0)
+        ImageDraw.Draw(brilho).ellipse((cx - N * 0.16, cy - N * 0.22, cx + N * 0.02, cy - N * 0.06), fill=150)
+        brilho = ImageChops.multiply(brilho.filter(ImageFilter.GaussianBlur(N * 0.04)), m)
+        fundo.paste((255, 250, 225, 255), (0, 0), brilho)
+    elif estado == "atual":
+        # miolo enchendo de baixo para cima + contorno dourado
+        miolo = Image.new("L", (N, N), 0)
+        topo_fill = int(N * (1 - frac))
+        ImageDraw.Draw(miolo).rectangle((0, topo_fill, N, N), fill=255)
+        miolo = ImageChops.multiply(miolo, m)
+        fundo.paste(tuple(int(o[k] * 0.55 + _hex(bg)[k] * 0.45) for k in range(3)) + (255,), (0, 0), miolo)
+        fundo.paste(o + (255,), (0, 0), borda)
+    else:
+        fundo.paste(tuple(int(_hex(bg)[k] + 14) for k in range(3)) + (255,), (0, 0), m)
+        fundo.paste((88, 93, 108, 255), (0, 0), borda)
+    return fundo.resize((S, S), Image.LANCZOS)
 
 
 def chave_dia(agora):
@@ -2777,13 +2829,16 @@ def main():
             # fazendo agora; cinza = ainda nao chegou
             for i, st in enumerate(w["estrelas"], 1):
                 if i <= feitas:
-                    txt, cor = "\u2605", COR["ouro"]
+                    est = ("cheia", 10)
                 elif i == feitas + 1:
-                    txt, cor = "\u2606", COR["ouro"]
+                    # a estrela atual vai enchendo (de 10 em 10%)
+                    tam = _tiers[i - 1] if i - 1 < len(_tiers) else 1
+                    est = ("atual", int(10 * (tam - faltam_t) / tam) if tam else 0)
                 else:
-                    txt, cor = "\u2606", "#5a6070"
-                if st.cget("text") != txt or st.cget("fg") != cor:
-                    st.configure(text=txt, fg=cor)
+                    est = ("vazia", 0)
+                if st._estado != est:
+                    st._estado = est
+                    st.configure(image=self._img_estrela(est[0], est[1], st._bg))
             # so mexe no que mudou de verdade
             for chave, txt in novo.items():
                 if chave in w and w[chave].cget("text") != txt:
@@ -2833,11 +2888,22 @@ def main():
             tiers = self.cfg.get("tiers", [5, 25, 75])
             w["estrelas"] = []
             for i in range(1, len(tiers) + 1):
-                st = tk.Label(topo, text="\u2606", fg="#5a6070", bg=bg,
-                              font=self.fontes["estrela"], cursor="hand2", padx=0)
+                st = tk.Label(topo, bg=bg, cursor="hand2", padx=self.px(2), bd=0)
+                st._bg = bg
+                st._estado = None
                 st.pack(side="left", padx=(self.px(4) if i == 1 else 0, 0))
                 st.bind("<Button-1>", lambda e, m=m, i=i: self.escolher_estrela(m, i))
                 w["estrelas"].append(st)
+
+        def _img_estrela(self, estado, decimos, bg):
+            S = max(12, int(self.fontes["estrela"].metrics("linespace") * 1.1))
+            cache = self.__dict__.setdefault("_cache_estrelas", {})
+            chave = (estado, decimos, S, bg)
+            if chave not in cache:
+                from PIL import ImageTk
+                cache[chave] = ImageTk.PhotoImage(
+                    imagem_estrela(estado, decimos / 10.0, S, bg), master=self.root)
+            return cache[chave]
 
         # ---------------- nome com largura fixa + letreiro ----------------
         def _largura_nome(self):
