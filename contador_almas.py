@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.6"
+VERSAO = "1.6.7"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2498,7 +2498,6 @@ def main():
             tamanho_t = _tiers[est_t - 1]
             cor_barra = COR["ouro"] if completo else COR["alma"]
             novo = {
-                "nome": m["nome"],
                 "cont": f"{tamanho_t - faltam_t}/{tamanho_t}",
                 "falta": "",
             }
@@ -2529,6 +2528,16 @@ def main():
                 w["cont"].configure(fg=cor_cont)
             if w["nome"].cget("fg") != cor_nome:
                 w["nome"].configure(fg=cor_nome)
+            # nome comprido: cortado com '...'; quando ganha alma, desliza
+            # para mostrar o nome inteiro
+            if w.get("nome_txt") != m["nome"]:
+                w["nome_txt"] = m["nome"]
+                self._parar_letreiro(w)
+                self._mostrar_nome(w, 0)
+            if resta > 0 and t_alma != w.get("letreiro_de") and \
+                    self.fontes["nome"].measure(m["nome"]) > w["nome_larg"]:
+                w["letreiro_de"] = t_alma
+                self._rodar_letreiro(w)
             cor_f = COR["ouro"] if completo else COR["suave"]
             if "falta" in w and w["falta"].cget("fg") != cor_f:
                 w["falta"].configure(fg=cor_f)
@@ -2554,6 +2563,74 @@ def main():
                 st.bind("<Button-1>", lambda e, m=m, i=i: self.escolher_estrela(m, i))
                 w["estrelas"].append(st)
 
+        # ---------------- nome com largura fixa + letreiro ----------------
+        def _largura_nome(self):
+            # do tamanho de um nome comprido comum: o contador nao muda de largura
+            return self.fontes["nome"].measure("Esp\u00edrito do Vento Intermedi\u00e1rio") + self.px(2)
+
+        def _caixa_nome(self, topo, w, bg):
+            larg = self._largura_nome()
+            caixa = tk.Frame(topo, bg=bg, width=larg,
+                             height=self.fontes["nome"].metrics("linespace") + self.px(2))
+            caixa.pack(side="left")
+            caixa.pack_propagate(False)
+            w["nome"] = tk.Label(caixa, text="", fg=COR["texto"], bg=bg, font=self.f_nome,
+                                 anchor="w", padx=0)
+            w["nome"].pack(side="left", fill="both", expand=True)
+            w["nome_larg"] = larg
+            w["nome_caixa"] = caixa
+
+        def _cabe(self, texto, larg, reticencias=True):
+            """Corta o texto para caber em larg pixels (com '...' no fim)."""
+            f = self.fontes["nome"]
+            if f.measure(texto) <= larg:
+                return texto
+            fim = "\u2026" if reticencias else ""
+            n = len(texto)
+            while n > 1 and f.measure(texto[:n].rstrip() + fim) > larg:
+                n -= 1
+            return texto[:n].rstrip() + fim
+
+        def _mostrar_nome(self, w, inicio):
+            txt = w.get("nome_txt", "")
+            if inicio <= 0:
+                vis = self._cabe(txt, w["nome_larg"])
+            else:
+                vis = self._cabe(txt[inicio:], w["nome_larg"], reticencias=False)
+            if w["nome"].cget("text") != vis:
+                w["nome"].configure(text=vis)
+
+        def _parar_letreiro(self, w):
+            if w.get("letreiro"):
+                try:
+                    self.root.after_cancel(w["letreiro"])
+                except Exception:
+                    pass
+                w["letreiro"] = None
+
+        def _rodar_letreiro(self, w):
+            """Desliza o nome ate aparecer o final, segura um pouco e volta."""
+            self._parar_letreiro(w)
+            txt = w.get("nome_txt", "")
+            f, larg = self.fontes["nome"], w["nome_larg"]
+            ultimo = 0
+            while ultimo < len(txt) - 1 and f.measure(txt[ultimo:]) > larg:
+                ultimo += 1
+
+            def passo(i):
+                try:
+                    if not w["nome"].winfo_exists():
+                        return
+                except Exception:
+                    return
+                if i > ultimo:
+                    w["letreiro"] = self.root.after(1500, lambda: (self._mostrar_nome(w, 0),
+                                                                  w.__setitem__("letreiro", None)))
+                    return
+                self._mostrar_nome(w, i)
+                w["letreiro"] = self.root.after(110 if i else 500, lambda: passo(i + 1))
+            passo(0)
+
         def _linha_compacta(self, m, meta, pai=None):
             """Uma linha so: nome, estrelas, numero (clique para editar), - + e x.
             Renomear e juntar ficam no botao direito."""
@@ -2563,8 +2640,7 @@ def main():
             topo = tk.Frame(f, bg=bg)
             topo.pack(fill="x", padx=self.px(6), pady=self.px(2))
             w = {"frame": f}
-            w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
-            w["nome"].pack(side="left")
+            self._caixa_nome(topo, w, bg)
             self._estrelas_na(topo, m, w, bg)
             self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
                        cor=COR["erro"], fonte=self.fontes["fechar"]).pack(side="right")
@@ -2614,7 +2690,7 @@ def main():
                 cx.bind("<Escape>", lambda e: fim(False))
                 return "break"
             w["cont"].bind("<Button-1>", editar)
-            for x in (f, topo, w["nome"], w["cont"]):
+            for x in (f, topo, w["nome"], w["nome_caixa"], w["cont"]):
                 x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
             self._atualizar_linha(m, meta, w)
             return w
@@ -2628,8 +2704,7 @@ def main():
             topo = tk.Frame(f, bg=bg)
             topo.pack(fill="x", padx=self.px(8), pady=(self.px(5), 0))
             w = {"frame": f}
-            w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
-            w["nome"].pack(side="left")
+            self._caixa_nome(topo, w, bg)
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
             self._estrelas_na(topo, m, w, bg)
             self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
@@ -2689,7 +2764,7 @@ def main():
             caixa.bind("<FocusOut>", confirmar)
             caixa.bind("<Escape>", cancelar)
 
-            for x in (f, topo, base, w["nome"]):
+            for x in (f, topo, base, w["nome"], w["nome_caixa"]):
                 x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
             self._atualizar_linha(m, meta, w)
             return w
