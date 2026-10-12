@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.2"
+VERSAO = "1.6.3"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -156,6 +156,9 @@ CONFIG_PADRAO = {
     "posicao": [40, 200],
     "max_linhas": 6,  # acima disso a lista rola
     "aviso_som": True,  # som 1 minuto antes dos eventos
+    "volume_aviso": 0.5,  # 0.25 baixo / 0.5 medio / 0.75 alto / 1.0 maximo
+    "compacto": False,  # uma linha por bicho
+    "tamanho_letra": "normal",  # pequena / normal / grande / muito grande
     "mostrar_concluidos": False,
     "recolhido": False,
 }
@@ -217,8 +220,9 @@ def proximo_inicio(eventos, agora=None):
     return (" + ".join(nomes), melhor) if melhor else None
 
 
-def criar_som_aviso(caminho):
-    """Gera um 'plim' curto de dois tons (sino suave) em WAV."""
+def criar_som_aviso(caminho, volume=0.5):
+    """Gera um 'plim' curto de dois tons (sino suave) em WAV.
+    volume de 0.1 a 1.0 (0.5 = o som original)."""
     import math, struct, wave
     taxa = 22050
     amostras = []
@@ -231,7 +235,7 @@ def criar_som_aviso(caminho):
                 x = t - ini
                 env = min(1.0, x / 0.008) * math.exp(-x * 5.5)
                 v += env * (math.sin(2 * math.pi * freq * x) + 0.25 * math.sin(4 * math.pi * freq * x))
-        amostras.append(int(max(-1.0, min(1.0, v * 0.38)) * 32767))
+        amostras.append(int(max(-1.0, min(1.0, v * 0.70 * volume)) * 32767))
     with wave.open(caminho, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
@@ -239,12 +243,17 @@ def criar_som_aviso(caminho):
         w.writeframes(struct.pack("<%dh" % len(amostras), *amostras))
 
 
-def tocar_aviso():
+VOLUME_AVISO = {"v": 0.5}
+
+
+def tocar_aviso(volume=None):
     """Toca o aviso sem travar o programa. Fora do Windows so registra."""
     try:
-        caminho = os.path.join(BASE, "aviso.wav")
+        vol = VOLUME_AVISO["v"] if volume is None else volume
+        vol = max(0.1, min(1.0, float(vol)))
+        caminho = os.path.join(BASE, f"aviso_{int(round(vol * 100))}.wav")
         if not os.path.exists(caminho) or os.path.getsize(caminho) < 1000:
-            criar_som_aviso(caminho)
+            criar_som_aviso(caminho, vol)
         if sys.platform == "win32":
             import winsound
             winsound.PlaySound(caminho, winsound.SND_FILENAME | winsound.SND_ASYNC)
@@ -1907,6 +1916,7 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
+            VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
             self.prog = Progresso(ARQ_DADOS)
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
@@ -1941,9 +1951,21 @@ def main():
             x, y = self.cfg.get("posicao", [40, 200])
             self.root.geometry(f"+{int(x)}+{int(y)}")
 
-            self.f_titulo = ("Segoe UI", 10, "bold")
-            self.f_nome = ("Segoe UI", 9, "bold")
-            self.f_peq = ("Segoe UI", 8)
+            # fontes com nome: mudar o tamanho no menu atualiza tudo na hora
+            import tkinter.font as tkfont
+            self._fontes_base = {
+                "titulo": ("Segoe UI", 10, "bold"), "nome": ("Segoe UI", 9, "bold"),
+                "peq": ("Segoe UI", 8, "normal"), "estrela": ("Segoe UI", 10, "normal"),
+                "botao": ("Segoe UI", 10, "normal"), "botao_b": ("Segoe UI", 10, "bold"),
+                "fechar": ("Segoe UI", 9, "bold"), "relogio": ("Consolas", 9, "bold"),
+                "evento": ("Segoe UI", 8, "bold"),
+            }
+            self.fontes = {k: tkfont.Font(root=self.root, family=f, size=t, weight=p)
+                           for k, (f, t, p) in self._fontes_base.items()}
+            self._aplicar_tamanho_fontes()
+            self.f_titulo = self.fontes["titulo"]
+            self.f_nome = self.fontes["nome"]
+            self.f_peq = self.fontes["peq"]
 
             self._montar_cabecalho()
             self.corpo = tk.Frame(self.root, bg=COR["fundo"])
@@ -2123,7 +2145,7 @@ def main():
 
         def botao(self, pai, texto, cmd, cor=None, fonte=None):
             b = tk.Label(pai, text=texto, bg=pai["bg"], fg=cor or COR["suave"],
-                         font=fonte or ("Segoe UI", 10), cursor="hand2",
+                         font=fonte or self.fontes["botao"], cursor="hand2",
                          padx=self.px(4))
             b.bind("<Button-1>", lambda e: cmd(e))
             b.bind("<Enter>", lambda e: b.configure(fg=COR["texto"]))
@@ -2142,7 +2164,7 @@ def main():
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
             # aparece so quando tem versao nova no GitHub
             self.lbl_atualizar = tk.Label(h, text="", fg=COR["ouro"], bg=COR["fundo"],
-                                          font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                          font=self.fontes["fechar"], cursor="hand2")
             self.lbl_atualizar.pack(side="left", padx=(self.px(6), 0))
             self.lbl_atualizar.bind("<Button-1>", lambda e: self._clique_atualizar())
 
@@ -2275,10 +2297,10 @@ def main():
                                             bg=COR["fundo"], font=self.f_peq)
                 self._lbl_rodape.pack(side="left")
                 self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
-                                             font=("Consolas", 9, "bold"), width=7, anchor="e")
+                                             font=self.fontes["relogio"], width=7, anchor="e")
                 self._lbl_relogio.pack(side="right")
                 self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
-                                            bg=COR["fundo"], font=("Segoe UI", 8, "bold"))
+                                            bg=COR["fundo"], font=self.fontes["evento"])
                 self._lbl_evento.pack(side="right")
                 self._ev_cache = None
                 self.atualizar_evento(agendar=False)
@@ -2289,7 +2311,7 @@ def main():
             caixa.pack(fill="x")
             cv = tk.Canvas(caixa, bg=COR["fundo"], highlightthickness=0, bd=0)
             cv.pack(side="left", fill="both", expand=True)
-            barra = tk.Canvas(caixa, width=self.px(5), bg=COR["fundo"], highlightthickness=0, bd=0)
+            barra = tk.Canvas(caixa, width=self.px(5), height=1, bg=COR["fundo"], highlightthickness=0, bd=0)
             barra.pack(side="right", fill="y", padx=(self.px(3), 0))
             dentro = tk.Frame(cv, bg=COR["fundo"])
             cv.create_window((0, 0), window=dentro, anchor="nw", tags="dentro")
@@ -2332,7 +2354,8 @@ def main():
         def _ajustar_rolagem(self, primeiros):
             cv, dentro = self._rolagem
             dentro.update_idletasks()
-            altura = sum(self._ui[id(m)]["frame"].winfo_reqheight() + self.px(4) for m in primeiros)
+            folga = self.px(2) if self.cfg.get("compacto") else self.px(4)
+            altura = sum(self._ui[id(m)]["frame"].winfo_reqheight() + folga for m in primeiros) - folga
             cv.configure(height=altura, width=dentro.winfo_reqwidth(),
                          scrollregion=(0, 0, dentro.winfo_reqwidth(), dentro.winfo_reqheight()))
             dentro.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
@@ -2416,6 +2439,12 @@ def main():
                 tocar_aviso()
                 registrar(f"AVISO SONORO: {nomes} em {int(falta)}s")
 
+        def mudar_volume(self, v):
+            self.cfg["volume_aviso"] = v
+            VOLUME_AVISO["v"] = v
+            self.salvar_cfg()
+            tocar_aviso()  # ja toca para voce ouvir como ficou
+
         def alternar_som(self):
             self.cfg["aviso_som"] = not self.cfg.get("aviso_som", True)
             self.salvar_cfg()
@@ -2448,7 +2477,7 @@ def main():
                     st.configure(text=txt, fg=cor)
             # so mexe no que mudou de verdade
             for chave, txt in novo.items():
-                if w[chave].cget("text") != txt:
+                if chave in w and w[chave].cget("text") != txt:
                     w[chave].configure(text=txt)
             # acabou de ganhar alma: nome e numero ficam dourados por uns
             # segundos (so troca a cor, nao redesenha nada)
@@ -2463,8 +2492,10 @@ def main():
             if w["nome"].cget("fg") != cor_nome:
                 w["nome"].configure(fg=cor_nome)
             cor_f = COR["ouro"] if completo else COR["suave"]
-            if w["falta"].cget("fg") != cor_f:
+            if "falta" in w and w["falta"].cget("fg") != cor_f:
                 w["falta"].configure(fg=cor_f)
+            if "cv" not in w:
+                return  # modo compacto: sem barra nem caixinha
             W, H = w["W"], w["H"]
             frac = (tamanho_t - faltam_t) / tamanho_t if tamanho_t else 0
             w["cv"].coords(w["barra"], 0, 0, int(W * frac), H)
@@ -2475,7 +2506,39 @@ def main():
                 cx.delete(0, "end")
                 cx.insert(0, str(tenho_tier))
 
+        def _estrelas_na(self, topo, m, w, bg):
+            tiers = self.cfg.get("tiers", [5, 25, 75])
+            w["estrelas"] = []
+            for i in range(1, len(tiers) + 1):
+                st = tk.Label(topo, text="\u2606", fg="#5a6070", bg=bg,
+                              font=self.fontes["estrela"], cursor="hand2", padx=0)
+                st.pack(side="left", padx=(self.px(4) if i == 1 else 0, 0))
+                st.bind("<Button-1>", lambda e, m=m, i=i: self.escolher_estrela(m, i))
+                w["estrelas"].append(st)
+
+        def _linha_compacta(self, m, meta, pai=None):
+            """Uma linha so: nome, estrelas e numero. O resto fica no botao
+            direito (tenho, +1, -1, renomear, tirar da lista)."""
+            bg = COR["painel"]
+            f = tk.Frame(pai or self.corpo, bg=bg)
+            f.pack(fill="x", pady=(0, self.px(2)))
+            topo = tk.Frame(f, bg=bg)
+            topo.pack(fill="x", padx=self.px(6), pady=self.px(2))
+            w = {"frame": f}
+            w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
+            w["nome"].pack(side="left")
+            self._estrelas_na(topo, m, w, bg)
+            w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
+                                 width=6, anchor="e")
+            w["cont"].pack(side="right")
+            for x in (f, topo, w["nome"], w["cont"]):
+                x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
+            self._atualizar_linha(m, meta, w)
+            return w
+
         def _linha(self, m, meta, pai=None):
+            if self.cfg.get("compacto"):
+                return self._linha_compacta(m, meta, pai)
             bg = COR["painel"]
             f = tk.Frame(pai or self.corpo, bg=bg)
             f.pack(fill="x", pady=(0, self.px(4)))
@@ -2485,27 +2548,20 @@ def main():
             w["nome"] = tk.Label(topo, text="", fg=COR["texto"], bg=bg, font=self.f_nome, anchor="w")
             w["nome"].pack(side="left")
             # estrelas clicaveis: clique na estrela em que voce esta no jogo
-            tiers = self.cfg.get("tiers", [5, 25, 75])
-            w["estrelas"] = []
-            for i in range(1, len(tiers) + 1):
-                st = tk.Label(topo, text="\u2606", fg="#5a6070", bg=bg,
-                              font=("Segoe UI", 10), cursor="hand2", padx=0)
-                st.pack(side="left", padx=(self.px(4) if i == 1 else 0, 0))
-                st.bind("<Button-1>", lambda e, m=m, i=i: self.escolher_estrela(m, i))
-                w["estrelas"].append(st)
+            self._estrelas_na(topo, m, w, bg)
             self.botao(topo, "\u2715", lambda e, m=m: self.fechar_monstro(m),
-                       cor=COR["erro"], fonte=("Segoe UI", 9, "bold")).pack(side="right")
+                       cor=COR["erro"], fonte=self.fontes["fechar"]).pack(side="right")
             self.botao(topo, "+", lambda e, m=m: self.ajustar(m, +1),
-                       fonte=("Segoe UI", 10, "bold")).pack(side="right")
+                       fonte=self.fontes["botao_b"]).pack(side="right")
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
-                       fonte=("Segoe UI", 10, "bold")).pack(side="right")
+                       fonte=self.fontes["botao_b"]).pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
                                  width=7, anchor="e")
             w["cont"].pack(side="right", padx=(0, self.px(4)))
 
             base = tk.Frame(f, bg=bg)
             base.pack(fill="x", padx=self.px(8), pady=(self.px(3), self.px(6)))
-            W, H = self.px(130), self.px(6)
+            W, H = self.px(int(130 * self._escala_letra())), self.px(6)
             w["W"], w["H"] = W, H
             w["cv"] = tk.Canvas(base, width=W, height=H, bg=COR["barra"], highlightthickness=0)
             w["cv"].pack(side="left")
@@ -2535,14 +2591,7 @@ def main():
                 self.editando = None
                 txt = re.sub(r"[^0-9]", "", cx.get())
                 if txt:
-                    tiers = self.cfg.get("tiers", [5, 25, 75])
-                    estrela = getattr(self, "_estrela_escolhida", {}).pop(id(m), None) \
-                        or tier_atual(m["qtd"], tiers)[0]
-                    tamanho = tiers[estrela - 1]
-                    tenho = max(0, min(int(txt), tamanho))
-                    total = total_por_tier(estrela, tamanho - tenho, tiers)
-                    self.prog.definir(m, total)
-                    registrar(f"EDITADO PELO USUARIO: {m['nome']} estrela {estrela} tenho {tenho} -> {total}")
+                    self.definir_tenho(m, int(txt))
                 self.root.focus_set()
                 self.render_em_breve()
 
@@ -2561,6 +2610,50 @@ def main():
                 x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
             self._atualizar_linha(m, meta, w)
             return w
+
+        def definir_tenho(self, m, tenho):
+            """'tenho N' na estrela atual (ou na que acabou de clicar)."""
+            tiers = self.cfg.get("tiers", [5, 25, 75])
+            estrela = getattr(self, "_estrela_escolhida", {}).pop(id(m), None) \
+                or tier_atual(m["qtd"], tiers)[0]
+            tamanho = tiers[estrela - 1]
+            tenho = max(0, min(int(tenho), tamanho))
+            total = total_por_tier(estrela, tamanho - tenho, tiers)
+            self.prog.definir(m, total)
+            registrar(f"EDITADO PELO USUARIO: {m['nome']} estrela {estrela} tenho {tenho} -> {total}")
+
+        def perguntar_tenho(self, m):
+            tiers = self.cfg.get("tiers", [5, 25, 75])
+            est, faltam = tier_atual(m["qtd"], tiers)
+            tam = tiers[est - 1]
+            v = self.dialogo(simpledialog.askinteger, APP_NOME,
+                             f"{m['nome']}\nQuantas almas voc\u00ea tem na {est}\u00aa estrela (de {tam})?",
+                             initialvalue=tam - faltam, minvalue=0, maxvalue=tam)
+            if v is not None:
+                self.definir_tenho(m, v)
+                self.render()
+
+        def _escala_letra(self):
+            return {"pequena": 0.85, "normal": 1.0, "grande": 1.2,
+                    "muito grande": 1.45}.get(self.cfg.get("tamanho_letra", "normal"), 1.0)
+
+        def _aplicar_tamanho_fontes(self):
+            esc = self._escala_letra()
+            for k, (fam, tam, peso) in self._fontes_base.items():
+                self.fontes[k].configure(size=max(6, int(round(tam * esc))))
+
+        def mudar_tamanho_letra(self, nome):
+            self.cfg["tamanho_letra"] = nome
+            self.salvar_cfg()
+            self._aplicar_tamanho_fontes()
+            self._estrutura = None  # remonta as linhas (barra acompanha a letra)
+            self.render()
+
+        def alternar_compacto(self):
+            self.cfg["compacto"] = not self.cfg.get("compacto")
+            self.salvar_cfg()
+            self._estrutura = None
+            self.render()
 
         def escolher_estrela(self, m, i):
             """Clicou na estrela i: o monstro passa a estar no comeco dessa
@@ -2605,7 +2698,11 @@ def main():
         # ---------------- menus ----------------
         def menu_monstro(self, e, m):
             menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="Definir quantidade\u2026", command=lambda: self.definir_qtd(m))
+            menu.add_command(label="Tenho nesta estrela\u2026", command=lambda: self.perguntar_tenho(m))
+            menu.add_command(label="+1 alma", command=lambda: self.ajustar(m, +1))
+            menu.add_command(label="\u22121 alma", command=lambda: self.ajustar(m, -1))
+            menu.add_separator()
+            menu.add_command(label="Definir quantidade total\u2026", command=lambda: self.definir_qtd(m))
             menu.add_command(label="Renomear\u2026", command=lambda: self.renomear(m))
             outros = [o for o in self.prog.monstros if o is not m]
             if outros:
@@ -2654,11 +2751,27 @@ def main():
             for v in (1.0, 0.9, 0.8, 0.7, 0.6):
                 sub.add_command(label=f"{int(v*100)}%", command=lambda v=v: self.opacidade(v))
             menu.add_cascade(label="Opacidade", menu=sub)
+            sub_letra = tk.Menu(menu, tearoff=0)
+            atual = self.cfg.get("tamanho_letra", "normal")
+            for nome in ("pequena", "normal", "grande", "muito grande"):
+                sub_letra.add_command(label=("\u2713 " if nome == atual else "    ") + nome.capitalize(),
+                                      command=lambda n=nome: self.mudar_tamanho_letra(n))
+            menu.add_cascade(label="Tamanho da letra", menu=sub_letra)
+            menu.add_checkbutton(label="Modo compacto (uma linha por bicho)",
+                                 onvalue=True, offvalue=False,
+                                 variable=tk.BooleanVar(value=bool(self.cfg.get("compacto"))),
+                                 command=self.alternar_compacto)
             menu.add_checkbutton(label="Som 1 minuto antes dos eventos",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=self.cfg.get("aviso_som", True)),
                                  command=self.alternar_som)
-            menu.add_command(label="Testar o som do aviso", command=tocar_aviso)
+            sub_vol = tk.Menu(menu, tearoff=0)
+            vol = float(self.cfg.get("volume_aviso", 0.5))
+            for nome, v in (("Baixo", 0.25), ("M\u00e9dio", 0.5), ("Alto", 0.75), ("M\u00e1ximo", 1.0)):
+                sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + nome,
+                                    command=lambda v=v: self.mudar_volume(v))
+            menu.add_cascade(label="Volume do aviso", menu=sub_vol)
+            menu.add_command(label="Testar o som do aviso", command=lambda: tocar_aviso())
             menu.add_checkbutton(label="Aparecer na stream (OBS/Discord)",
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=not self.cfg.get("esconder_da_captura", False)),
