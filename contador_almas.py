@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.8"
+VERSAO = "1.6.9"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1958,7 +1958,7 @@ def main():
                 "peq": ("Segoe UI", 8, "normal"), "estrela": ("Segoe UI", 10, "normal"),
                 "botao": ("Segoe UI", 10, "normal"), "botao_b": ("Segoe UI", 10, "bold"),
                 "fechar": ("Segoe UI", 9, "bold"), "relogio": ("Consolas", 9, "bold"),
-                "evento": ("Segoe UI", 8, "bold"),
+                "evento": ("Segoe UI", 8, "bold"), "versao": ("Segoe UI", 7, "normal"),
             }
             self.fontes = {k: tkfont.Font(root=self.root, family=f, size=t, weight=p)
                            for k, (f, t, p) in self._fontes_base.items()}
@@ -2213,6 +2213,16 @@ def main():
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
             self.b_pausa = self.botao(h, "\u23f8", lambda e: self.alternar_pausa())
             self.b_pausa.pack(side="right")
+            # som do aviso de evento: colorido = ligado, cinza riscado = mudo
+            import tkinter.font as tkfont
+            self.fontes["som_mudo"] = tkfont.Font(root=self.root, family="Segoe UI",
+                                                  size=self.fontes["botao"].cget("size"),
+                                                  overstrike=1)
+            self.b_som = tk.Label(h, text="\u266a", bg=COR["fundo"], cursor="hand2",
+                                  padx=self.px(4))
+            self.b_som.bind("<Button-1>", lambda e: self.alternar_som())
+            self.b_som.pack(side="right")
+            self._pintar_som()
 
             for w in (h, t, self.lbl_status):
                 w.bind("<ButtonPress-1>", self._arrastar_ini)
@@ -2279,7 +2289,7 @@ def main():
             visiveis, ocultos = lista, 0
 
             rodape = ""
-            mostra_rodape = not self.cfg.get("recolhido")
+            mostra_rodape = True  # evento e versao sempre aparecem embaixo
             if todos and mostra_rodape:
                 rodape = f"{len(concl)}/{len(todos)} conclu\u00eddos"
                 if ocultos:
@@ -2334,6 +2344,8 @@ def main():
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
                                             bg=COR["fundo"], font=self.f_peq)
                 self._lbl_rodape.pack(side="left")
+                tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
+                         font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
                 self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
                                              font=self.fontes["relogio"], width=7, anchor="e")
                 self._lbl_relogio.pack(side="right")
@@ -2486,8 +2498,18 @@ def main():
         def alternar_som(self):
             self.cfg["aviso_som"] = not self.cfg.get("aviso_som", True)
             self.salvar_cfg()
+            self._pintar_som()
             if self.cfg["aviso_som"]:
                 tocar_aviso()
+
+        def _pintar_som(self):
+            b = getattr(self, "b_som", None)
+            if b is None:
+                return
+            if self.cfg.get("aviso_som", True):
+                b.configure(fg=COR["alma"], font=self.fontes["botao"])
+            else:
+                b.configure(fg="#5a6070", font=self.fontes["som_mudo"])
 
         def _atualizar_linha(self, m, meta, w):
             feitas, falta_tier, n_tiers = estrelas(m["qtd"], self.cfg.get("tiers", [5, 25, 75]))
@@ -2799,6 +2821,8 @@ def main():
             esc = self._escala_letra()
             for k, (fam, tam, peso) in self._fontes_base.items():
                 self.fontes[k].configure(size=max(6, int(round(tam * esc))))
+            if "som_mudo" in self.fontes:
+                self.fontes["som_mudo"].configure(size=self.fontes["botao"].cget("size"))
 
         def mudar_tamanho_letra(self, nome):
             self.cfg["tamanho_letra"] = nome
