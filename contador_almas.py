@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.0"
+VERSAO = "1.8.1"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2129,6 +2129,7 @@ def main():
             self.cfg = carregar_config()
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
+            self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
             self.prog = Progresso(ARQ_DADOS)
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
@@ -2431,8 +2432,6 @@ def main():
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher())
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal).pack(side="right")
-            self.b_pausa = self.botao(h, "\u23f8", lambda e: self.alternar_pausa())
-            self.b_pausa.pack(side="right")
             # som do aviso de evento: colorido = ligado, cinza riscado = mudo
             import tkinter.font as tkfont
             self.fontes["som_mudo"] = tkfont.Font(root=self.root, family="Segoe UI",
@@ -2468,13 +2467,11 @@ def main():
                 txt, cor = "\u25cf " + self.status_extra, COR["ouro"]
             elif not self.cfg.get("regiao"):
                 txt, cor = "\u25cf procurando o chat\u2026", COR["ouro"]
-            elif not self.leitor_ativo():
-                txt, cor = "\u25cf pausado", COR["suave"]
             else:
-                txt, cor = "\u25cf lendo", COR["alma"]
-            self.lbl_status.configure(text=txt, fg=cor)
-            if hasattr(self, "b_pausa"):
-                self.b_pausa.configure(text="\u25b6" if not self.leitor_ativo() else "\u23f8")
+                # lendo normalmente: nao mostra nada (le sempre que esta aberto)
+                txt, cor = "", COR["suave"]
+            if self.lbl_status.cget("text") != txt or self.lbl_status.cget("fg") != cor:
+                self.lbl_status.configure(text=txt, fg=cor)
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -2759,6 +2756,10 @@ def main():
                 for x in (f, l, nome, n):
                     x.bind("<Button-3>", lambda e: self.menu_od(e))
                 self._od_ui[tipo] = (nome, n)
+            barra = tk.Frame(self.corpo, bg=COR["fundo"])
+            barra.pack(fill="x")
+            self.botao(barra, "\u21ba Zerar ODs", lambda e: self.od_zerar(),
+                       fonte=self.f_peq).pack(side="right")
             self._atualizar_od()
 
         def _atualizar_od(self):
