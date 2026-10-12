@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.10"
+VERSAO = "1.6.11"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1333,6 +1333,19 @@ class Progresso:
         for m in self.monstros:
             m["qtd"] = 0
         self.salvar()
+
+    def remover_todos(self):
+        """Tira todos os monstros da lista. Guarda uma copia antes
+        (progresso_antes_de_limpar.json), caso tenha sido sem querer."""
+        try:
+            salvar_json(self.arquivo.replace(".json", "_antes_de_limpar.json"),
+                        {"monstros": self.monstros})
+        except Exception:
+            pass
+        n = len(self.monstros)
+        self.monstros.clear()
+        self.salvar()
+        return n
 
 
 # --------------------------------------------------------------------------
@@ -2955,6 +2968,7 @@ def main():
                                  command=self.alternar_stream)
             menu.add_separator()
             menu.add_command(label="Zerar todos os contadores\u2026", command=self.zerar)
+            menu.add_command(label="Remover todos os monstros\u2026", command=self.remover_todos)
             menu.add_command(label="Abrir pasta dos dados", command=self.abrir_pasta)
             menu.add_command(label="Gerar relat\u00f3rio para suporte", command=self.gerar_relatorio)
             menu.add_command(label=f"Procurar atualiza\u00e7\u00e3o (vers\u00e3o {VERSAO})\u2026",
@@ -3020,6 +3034,19 @@ def main():
             if self.dialogo(messagebox.askyesno, APP_NOME,
                             "Zerar TODOS os contadores? Isso n\u00e3o pode ser desfeito."):
                 self.prog.zerar_tudo()
+                self.render()
+
+        def remover_todos(self):
+            n = len(self.prog.monstros)
+            if not n:
+                return
+            if self.dialogo(messagebox.askyesno, APP_NOME,
+                            f"Tirar TODOS os {n} monstros da lista?\n\n"
+                            "Uma c\u00f3pia fica guardada na pasta dos dados "
+                            "(progresso_antes_de_limpar.json)."):
+                self.prog.remover_todos()
+                self._ui = {}
+                registrar(f"REMOVIDOS TODOS PELO USUARIO ({n})")
                 self.render()
 
         def _clique_atualizar(self):
