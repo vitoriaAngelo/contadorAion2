@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.7.2"
+VERSAO = "1.7.3"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2814,11 +2814,15 @@ def main():
             if "falta" in w and w["falta"].cget("fg") != cor_f:
                 w["falta"].configure(fg=cor_f)
             if "cv" not in w:
-                return  # modo compacto: sem barra nem caixinha
+                return
             W, H = w["W"], w["H"]
+            if w.get("larga"):
+                W = max(1, w["cv"].winfo_width())  # compacto: barra da largura da linha
             frac = (tamanho_t - faltam_t) / tamanho_t if tamanho_t else 0
             w["cv"].coords(w["barra"], 0, 0, int(W * frac), H)
             w["cv"].itemconfigure(w["barra"], fill=cor_barra)
+            if "caixa" not in w:
+                return  # compacto: sem caixinha
             cx = w["caixa"]
             tenho_tier = tamanho_t - faltam_t
             if getattr(self, "editando", None) is not cx and cx.get() != str(tenho_tier):
@@ -2910,7 +2914,7 @@ def main():
             f = tk.Frame(pai or self.corpo, bg=bg)
             f.pack(fill="x", pady=(0, self.px(2)))
             topo = tk.Frame(f, bg=bg)
-            topo.pack(fill="x", padx=self.px(6), pady=self.px(2))
+            topo.pack(fill="x", padx=self.px(6), pady=(self.px(2), self.px(1)))
             w = {"frame": f}
             self._caixa_nome(topo, w, bg)
             self._estrelas_na(topo, m, w, bg)
@@ -2962,6 +2966,13 @@ def main():
                 cx.bind("<Escape>", lambda e: fim(False))
                 return "break"
             w["cont"].bind("<Button-1>", editar)
+            # linha fininha de progresso da estrela atual
+            H = max(2, self.px(2))
+            w["cv"] = tk.Canvas(f, height=H, width=1, bg=COR["barra"], highlightthickness=0, bd=0)
+            w["cv"].pack(fill="x", padx=self.px(6), pady=(0, self.px(3)))
+            w["barra"] = w["cv"].create_rectangle(0, 0, 0, H, fill=COR["alma"], width=0)
+            w["W"], w["H"], w["larga"] = 0, H, True
+            w["cv"].bind("<Configure>", lambda e, m=m, w=w: self._atualizar_linha(m, int(self.cfg["meta"]), w))
             for x in (f, topo, w["nome"], w["nome_caixa"], w["cont"]):
                 x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
             self._atualizar_linha(m, meta, w)
