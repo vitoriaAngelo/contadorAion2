@@ -9,6 +9,7 @@ Overlay para **Aion 2** que conta sozinho as almas de cada monstro que você far
 O contador **lê o chat do jogo pela tela** (como uma captura do OBS). Quando aparece
 `Obteve Pontos da Alma <monstro> x1.`, ele soma +1 naquele monstro.
 
+- Farmando em grupo: as almas que caem para outra pessoa ("Fulano obteve Alma: X (Vinculado)…") **não** contam para você.
 - **Não** lê a memória do jogo, **não** mexe na rede e **não** pede login.
 - Acha o chat sozinho, aguenta matança em massa (AoE), chat aberto/fechado e menu por cima.
 - Aparece na stream (OBS / Discord) — dá para usar como fonte de **Captura de Janela**.

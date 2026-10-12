@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.13"
+VERSAO = "1.6.14"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -504,7 +504,14 @@ class Extrator:
                 self.erros.append(f"{p}: {e}")
 
     def nome_em(self, linha):
+        if alma_de_outro(linha):
+            return None
+        tem_pontos = contem_aprox(linha, "pontos", 0.66)
         for r in self.regs:
+            if "pontos" not in r.pattern and not tem_pontos:
+                # o seu drop e sempre 'Obteve Pontos da Alma ...'; sem 'Pontos'
+                # nao e alma sua (ex.: 'Fulano obteve Alma: X' do grupo)
+                continue
             m = r.search(linha or "")
             if not m:
                 continue
@@ -571,6 +578,18 @@ def nome_mais_completo(novo, velho):
             continue
         return False
     return maior
+
+
+def alma_de_outro(linha):
+    """Alma que caiu para OUTRA pessoa do grupo:
+    'Hagi obteve Alma: Kerubian (Vinculado) atraves da distribuicao do grupo.'
+    Essas nao contam para voce."""
+    if not linha:
+        return False
+    if contem_aprox(linha, "vinculado", 0.78) or contem_aprox(linha, "distribuicao", 0.78):
+        return True
+    # 'obteve Alma:' sem 'Pontos' = mensagem do grupo
+    return bool(re.search(r"alma\s*[:;]", linha, re.I)) and not contem_aprox(linha, "pontos", 0.66)
 
 
 def compacto(s):
