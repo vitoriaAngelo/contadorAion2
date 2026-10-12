@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.4"
+VERSAO = "1.6.5"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2563,8 +2563,47 @@ def main():
             w["nome"].pack(side="left")
             self._estrelas_na(topo, m, w, bg)
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
-                                 width=6, anchor="e")
+                                 width=6, anchor="e", cursor="hand2")
             w["cont"].pack(side="right")
+
+            # clicar no numero: vira uma caixinha com o 'tenho' da estrela
+            def editar(e, m=m, w=w, topo=topo):
+                if getattr(self, "editando", None) is not None:
+                    return "break"
+                tiers = self.cfg.get("tiers", [5, 25, 75])
+                est, faltam = tier_atual(m["qtd"], tiers)
+                cx = tk.Entry(topo, width=4, justify="center", font=self.f_nome,
+                              bg=COR["barra"], fg=COR["texto"], insertbackground=COR["texto"],
+                              relief="flat", highlightthickness=1,
+                              highlightbackground="#3a4050", highlightcolor=COR["alma"])
+                cx.insert(0, str(tiers[est - 1] - faltam))
+                tam = tk.Label(topo, text=f"/{tiers[est - 1]}", fg=COR["suave"], bg=bg, font=self.f_nome)
+                w["cont"].pack_forget()
+                tam.pack(side="right")
+                cx.pack(side="right")
+                self.editando = cx
+                self.pegar_teclado()
+                cx.focus_force()
+                cx.select_range(0, "end")
+
+                def fim(salvar):
+                    if getattr(self, "editando", None) is not cx:
+                        return
+                    self.editando = None
+                    txt = re.sub(r"[^0-9]", "", cx.get())
+                    cx.destroy()
+                    tam.destroy()
+                    w["cont"].pack(side="right")
+                    if salvar and txt:
+                        self.definir_tenho(m, int(txt))
+                    self.root.focus_set()
+                    self.render_em_breve()
+                cx.bind("<Return>", lambda e: fim(True))
+                cx.bind("<KP_Enter>", lambda e: fim(True))
+                cx.bind("<FocusOut>", lambda e: fim(True))
+                cx.bind("<Escape>", lambda e: fim(False))
+                return "break"
+            w["cont"].bind("<Button-1>", editar)
             for x in (f, topo, w["nome"], w["cont"]):
                 x.bind("<Button-3>", lambda e, m=m: self.menu_monstro(e, m))
             self._atualizar_linha(m, meta, w)
