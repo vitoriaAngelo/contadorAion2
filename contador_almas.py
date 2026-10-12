@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.14"
+VERSAO = "1.6.15"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -134,6 +134,8 @@ CONFIG_PADRAO = {
     # "horas": null = toda hora. "dias": 0=segunda ... 6=domingo (opcional).
     "eventos": [
         {"nome": "Shugo", "minuto": 0, "horas": None, "duracao": 10},
+        # Mercador Nuvem Negra: a loja renova toda hora cheia
+        {"nome": "Loja", "agora": "Loja nova", "minuto": 0, "horas": None, "duracao": 5},
         {"nome": "Invas\u00e3o", "minuto": 30, "horas": None, "duracao": 3},
         {"nome": "Fenda", "minuto": 0,
          "horas": [2, 5, 8, 11, 14, 17, 20, 23], "duracao": 10},
@@ -282,6 +284,7 @@ def evento_info(eventos, agora=None):
             dias = ev.get("dias")
             dur = int(ev.get("duracao", 0))
             nome = str(ev.get("nome", "Evento"))
+            nome_agora = str(ev.get("agora") or nome)
         except Exception:
             continue
         base = agora.replace(second=0, microsecond=0)
@@ -297,11 +300,12 @@ def evento_info(eventos, agora=None):
             if fim <= agora:
                 continue
             andando = t <= agora < fim
+            rot = nome_agora if andando else nome
             if melhor is None or (andando and not melhor[2]) or \
                     (andando == melhor[2] and t < melhor[0]):
-                melhor = [t, [nome], andando, fim]
-            elif t == melhor[0] and andando == melhor[2] and nome not in melhor[1]:
-                melhor[1].append(nome)
+                melhor = [t, [rot], andando, fim]
+            elif t == melhor[0] and andando == melhor[2] and rot not in melhor[1]:
+                melhor[1].append(rot)
                 melhor[3] = max(melhor[3], fim)
             break
     if not melhor:
@@ -392,8 +396,13 @@ def carregar_config():
         salvo["regiao"] = r
     if salvo.get("versao_cfg", 0) < 9:
         salvo.pop("max_linhas", None)  # agora 6 com rolagem
+    if salvo.get("versao_cfg", 0) < 10 and isinstance(salvo.get("eventos"), list):
+        # loja do Mercador Nuvem Negra (renova toda hora cheia)
+        if not any(e.get("nome") == "Loja" for e in salvo["eventos"]):
+            salvo["eventos"].insert(1, {"nome": "Loja", "agora": "Loja nova", "minuto": 0,
+                                        "horas": None, "duracao": 5})
     cfg.update(salvo)
-    cfg["versao_cfg"] = 9
+    cfg["versao_cfg"] = 10
     # a meta e sempre a soma das estrelas
     try:
         cfg["meta"] = sum(int(t) for t in cfg["tiers"])
@@ -2484,10 +2493,14 @@ def main():
                 try:
                     agora = dt.datetime.now()
                     info = getattr(self, "_ev_cache", None)
-                    # so recalcula a agenda quando o evento comeca/termina
-                    if info is None or agora >= (info[2] if info[3] else info[1]):
+                    quando = getattr(self, "_ev_quando", None)
+                    # recalcula quando o evento comeca/termina e a cada 20s
+                    # (eventos juntos acabam em horas diferentes: Loja x Kairah)
+                    if info is None or quando is None or agora < quando or \
+                            (agora - quando).total_seconds() > 20 or \
+                            agora >= (info[2] if info[3] else info[1]):
                         info = evento_info(self.cfg.get("eventos", []), agora)
-                        self._ev_cache = info
+                        self._ev_cache, self._ev_quando = info, agora
                     if info:
                         nomes, t, fim_ev, andando = info
                         if andando:
@@ -2500,6 +2513,13 @@ def main():
                                 # ultimo minuto: vermelho piscando (2x por segundo)
                                 aceso = int(agora.timestamp() * 2) % 2 == 0
                                 cor = COR["erro"] if aceso else COR["fundo"]
+                        # nao deixa o texto alargar o contador
+                        f_ev = self.fontes["evento"]
+                        larg = self.px(int(170 * self._escala_letra()))
+                        if f_ev.measure(txt_n) > larg:
+                            while len(txt_n) > 3 and f_ev.measure(txt_n + "\u2026") > larg:
+                                txt_n = txt_n[:-1]
+                            txt_n = txt_n.rstrip(" +") + "\u2026"
                         if lbl.cget("text") != txt_n:
                             lbl.configure(text=txt_n)
                         if rel.cget("text") != txt_r:
