@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.2"
+VERSAO = "1.8.3"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2742,22 +2742,40 @@ def main():
         def _montar_od(self):
             bg = COR["painel"]
             self._od_ui = {}
-            for tipo in OD_TIPOS:
-                f = tk.Frame(self.corpo, bg=bg)
-                f.pack(fill="x", pady=(0, self.px(3)))
-                l = tk.Frame(f, bg=bg)
-                l.pack(fill="x", padx=self.px(8), pady=self.px(5))
+            compacto = bool(self.cfg.get("compacto"))
+            if compacto:
+                # grade 2x2 com nomes curtos (a cor do losango diz qual e)
+                grade = tk.Frame(self.corpo, bg=COR["fundo"])
+                grade.pack(fill="x")
+                grade.columnconfigure(0, weight=1, uniform="od")
+                grade.columnconfigure(1, weight=1, uniform="od")
+            for i, tipo in enumerate(OD_TIPOS):
+                if compacto:
+                    f = tk.Frame(grade, bg=bg)
+                    f.grid(row=i // 2, column=i % 2, sticky="ew",
+                           padx=(0, self.px(2)) if i % 2 == 0 else (self.px(2), 0),
+                           pady=(0, self.px(3)))
+                    l = tk.Frame(f, bg=bg)
+                    l.pack(fill="x", padx=self.px(6), pady=self.px(3))
+                    rotulo = tipo.replace("OD ", "") if tipo != "OD" else "OD"
+                else:
+                    f = tk.Frame(self.corpo, bg=bg)
+                    f.pack(fill="x", pady=(0, self.px(3)))
+                    l = tk.Frame(f, bg=bg)
+                    l.pack(fill="x", padx=self.px(8), pady=self.px(5))
+                    rotulo = tipo
                 tk.Label(l, text="\u25c6", fg=OD_CORES[tipo], bg=bg,
-                         font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(6)))
-                nome = tk.Label(l, text=tipo, fg=COR["texto"], bg=bg, font=self.f_nome)
+                         font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(4 if compacto else 6)))
+                nome = tk.Label(l, text=rotulo, fg=COR["texto"], bg=bg, font=self.f_nome)
                 nome.pack(side="left")
                 self.botao(l, "+", lambda e, t=tipo: self.od_ajustar(t, +1),
                            fonte=self.fontes["botao_b"]).pack(side="right")
                 self.botao(l, "\u2212", lambda e, t=tipo: self.od_ajustar(t, -1),
                            fonte=self.fontes["botao_b"]).pack(side="right")
-                n = tk.Label(l, text="", fg=COR["alma"], bg=bg, font=self.fontes["titulo"],
-                             cursor="hand2", width=6, anchor="e")
-                n.pack(side="right", padx=(0, self.px(6)))
+                n = tk.Label(l, text="", fg=COR["alma"], bg=bg,
+                             font=self.f_nome if compacto else self.fontes["titulo"],
+                             cursor="hand2", width=4 if compacto else 6, anchor="e")
+                n.pack(side="right", padx=(0, self.px(2 if compacto else 6)))
                 n.bind("<Button-1>", lambda e, t=tipo: self.od_definir(t))
                 for x in (f, l, nome, n):
                     x.bind("<Button-3>", lambda e: self.menu_od(e))
