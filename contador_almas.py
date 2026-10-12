@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.6.11"
+VERSAO = "1.6.12"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1299,6 +1299,8 @@ class Progresso:
             m["nome"] = max(votos, key=votos.get)
         m["qtd"] = max(0, m["qtd"] + n)
         m["atualizado"] = time.time()
+        if n > 0:
+            m["ultima_alma"] = m["atualizado"]
         if salvar:
             self.salvar()
         return m
@@ -2297,7 +2299,11 @@ def main():
             pend = [m for m in todos if m["qtd"] < meta]
             lista = pend + (concl if self.cfg.get("mostrar_concluidos") else [])
             if self.cfg.get("recolhido"):
-                lista = lista[:1]
+                # recolhido: so os 3 ultimos que ganharam alma, na ordem da
+                # lista (nao ficam trocando de lugar a cada alma)
+                ult = sorted(lista, key=lambda m: m.get("ultima_alma", m.get("atualizado", 0)),
+                             reverse=True)[:3]
+                lista = [m for m in lista if any(m is u for u in ult)]
             # todos ficam na lista; acima de 6 aparece a rolagem
             visiveis, ocultos = lista, 0
 
