@@ -130,6 +130,31 @@ class Regressoes(unittest.TestCase):
         self.assertEqual(r.quadro_pos(aberto, 3), [])
         self.assertEqual(r.quadro_pos(aberto, 4), [])
 
+    def test_chat_longo_reaberto_com_nomes_repetidos_nao_reconta(self):
+        r = ca.Rastreador(ca.PADROES_PADRAO)
+        nomes = ['Lupyllini', 'Lupyllini Putrefato'] * 10
+        historico = [f'Obteve Pontos da Alma {nome} x1.' for nome in nomes]
+
+        def quadro(linhas, topo):
+            return [(texto, topo + i * 24, 14)
+                    for i, texto in enumerate(linhas)]
+
+        # O OCR perdeu a ultima linha enquanto o chat estava fechado.
+        fechado = quadro(historico[-6:-1], 900)
+        aberto = quadro(historico, 430)
+        self.assertEqual(r.quadro_pos(fechado, 0), [])
+        for rodada in range(3):
+            self.assertEqual(r.quadro_pos([], rodada * 5 + 1), [])
+            self.assertEqual(r.quadro_pos([], rodada * 5 + 2), [])
+            self.assertEqual(r.quadro_pos(aberto, rodada * 5 + 3), [])
+            self.assertEqual(r.quadro_pos(aberto, rodada * 5 + 4), [])
+            self.assertEqual(r.quadro_pos(fechado, rodada * 5 + 5), [])
+
+    def test_reabertura_sem_referencia_numerada_nao_inventa_sufixo(self):
+        nomes = ['Lupyllini', 'Lupyllini Putrefato'] * 3
+        linhas = [{'chave': 'alma ' + nome.lower()} for nome in nomes]
+        self.assertIsNone(ca.novas_depois_da_reabertura(linhas[:5], linhas))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.12"
+VERSAO = "1.8.13"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1286,8 +1286,9 @@ def novas_depois_da_reabertura(anteriores, atuais):
     """Indices novos depois da ultima sequencia conhecida do chat.
 
     Quando o chat reabre, linhas antigas aparecem em outras posicoes. Uma
-    sequencia que chega ate o fim da memoria anterior serve de ancora; sem
-    ela, nao ha como distinguir historico de mensagens novas com seguranca.
+    sequencia que chega ate o fim da memoria anterior serve de ancora somente
+    se contiver uma mensagem numerada. Nomes de monstros se repetem e podem
+    criar um falso encaixe em outra parte do historico.
     """
     melhor = None
     for i, a in enumerate(anteriores):
@@ -1303,7 +1304,7 @@ def novas_depois_da_reabertura(anteriores, atuais):
                 if x.startswith("sis ") and re.search(r"\d{2,}", x):
                     refs += 1
                 n += 1
-            if i + n != len(anteriores) or not (refs or n >= 3):
+            if i + n != len(anteriores) or not refs:
                 continue
             nota = (refs, n, j + n)
             if melhor is None or nota > melhor[0]:
