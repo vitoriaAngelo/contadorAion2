@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.7"
+VERSAO = "1.8.8"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3502,7 +3502,42 @@ def main():
             if m in self.prog.monstros:
                 registrar(f"REMOVIDO PELO USUARIO: {m['nome']} ({m['qtd']})")
                 self.prog.remover(m)
-                self.render()
+                w = getattr(self, "_ui", {}).get(id(m))
+                estrutura = getattr(self, "_estrutura", None)
+                if not w or not estrutura or getattr(self, "editando", None) is not None:
+                    self.render()
+                    return
+                # A remocao nao altera as demais linhas: conserva os widgets,
+                # a rolagem e o foco para nao piscar a janela inteira.
+                self._parar_letreiro(w)
+                w["frame"].destroy()
+                del self._ui[id(m)]
+                restantes = [x for x in self.prog.monstros if id(x) in self._ui]
+                vazio = ""
+                if not self.prog.monstros:
+                    vazio = ("Procurando o chat do jogo… deixe o jogo aberto com o chat "
+                             "visível (linhas “Você obteve…”)."
+                             if not self.cfg.get("regiao") else
+                             "Chat encontrado. Aguardando a primeira alma…")
+                    tk.Label(self.corpo, text=vazio, fg=COR["suave"],
+                             bg=COR["fundo"], font=self.f_peq,
+                             wraplength=self.px(240), justify="left").pack(
+                                 anchor="w", pady=self.px(4), before=self._lbl_rodape.master)
+                self._estrutura = (tuple(i for i in estrutura[0] if i != id(m)),
+                                   estrutura[1], vazio, *estrutura[3:])
+                if self._rolagem:
+                    if restantes:
+                        limite = max(1, int(self.cfg.get("max_linhas", 6)))
+                        self._ajustar_rolagem(restantes[:limite])
+                    else:
+                        self._rolagem[0].master.destroy()
+                        self._rolagem = None
+                if self._lbl_rodape:
+                    meta = int(self.cfg["meta"])
+                    concluidos = sum(x["qtd"] >= meta for x in self.prog.monstros)
+                    rodape = (f"{concluidos}/{len(self.prog.monstros)} concluídos"
+                              if self.prog.monstros else "")
+                    self._lbl_rodape.configure(text=rodape)
 
         def ajustar(self, m, n):
             m["qtd"] = max(0, m["qtd"] + n)
