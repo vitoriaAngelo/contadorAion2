@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.10"
+VERSAO = "1.8.11"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2624,10 +2624,62 @@ def main():
             self.render()
 
         # ---------------- lista ----------------
+        def _atualizar_lista_sem_apagar(self, visiveis, meta, estrutura, rodape):
+            """Conserva as linhas existentes quando entram ou saem monstros."""
+            anterior = getattr(self, "_estrutura", None)
+            if not anterior or anterior[4] != "almas" or estrutura[4] != "almas" \
+                    or anterior[3] != estrutura[3]:
+                return False
+            limite = max(1, int(self.cfg.get("max_linhas", 6)))
+            if self._rolagem is None and len(visiveis) > limite:
+                return False  # a lista precisa entrar no canvas uma vez
+            if anterior[2] != estrutura[2]:
+                if getattr(self, "_vazio_label", None) is not None:
+                    self._vazio_label.destroy()
+                    self._vazio_label = None
+                if estrutura[2]:
+                    self._vazio_label = tk.Label(
+                        self.corpo, text=estrutura[2], fg=COR["suave"],
+                        bg=COR["fundo"], font=self.f_peq,
+                        wraplength=self.px(240), justify="left")
+                    self._vazio_label.pack(anchor="w", pady=self.px(4),
+                                           before=self._lbl_rodape.master)
+            ids = {id(m) for m in visiveis}
+            for chave, w in list(self._ui.items()):
+                if chave not in ids:
+                    self._parar_letreiro(w)
+                    w["frame"].destroy()
+                    del self._ui[chave]
+            pai = self._rolagem[1] if self._rolagem else self.corpo
+            for m in visiveis:
+                if id(m) not in self._ui:
+                    w = self._linha(m, meta, pai)
+                    self._ui[id(m)] = w
+                    if not self._rolagem:
+                        w["frame"].pack_configure(before=self._lbl_rodape.master)
+            if tuple(self._ui) != estrutura[0]:
+                for m in visiveis:
+                    self._ui[id(m)]["frame"].pack_forget()
+                for m in visiveis:
+                    f = self._ui[id(m)]["frame"]
+                    kw = {"fill": "x", "pady": (0, self.px(2 if self.cfg.get("compacto") else 4))}
+                    if not self._rolagem:
+                        kw["before"] = self._lbl_rodape.master
+                    f.pack(**kw)
+                self._ui = {id(m): self._ui[id(m)] for m in visiveis}
+            if self._rolagem:
+                self._ajustar_rolagem(visiveis[:limite])
+            for m in visiveis:
+                self._atualizar_linha(m, meta, self._ui[id(m)])
+            if self._lbl_rodape.cget("text") != rodape:
+                self._lbl_rodape.configure(text=rodape)
+            self._estrutura = estrutura
+            return True
+
         def render(self):
             """Desenha a lista. As linhas sao criadas uma vez so; quando uma alma
-            e contada, so os numeros mudam (nada pisca). A lista so e montada de
-            novo quando entra/sai monstro."""
+            e contada, so os numeros mudam. Novos monstros entram sem apagar
+            as linhas que ja estao na tela."""
             meta = int(self.cfg["meta"])
             todos = self.prog.monstros
             concl = [m for m in todos if m["qtd"] >= meta]
@@ -2678,16 +2730,20 @@ def main():
                 # usuario digitando na caixinha: monta de novo depois
                 self.root.after(500, self.render_em_breve)
                 return
+            if self._atualizar_lista_sem_apagar(visiveis, meta, estrutura, rodape):
+                return
             self._estrutura = estrutura
             for w in self.corpo.winfo_children():
                 w.destroy()
             self._ui = {}
             self._lbl_rodape = None
+            self._vazio_label = None
             self.b_recolher.configure(text="\u25b8" if self.cfg.get("recolhido") else "\u25be")
             if vazio:
-                tk.Label(self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
-                         font=self.f_peq, wraplength=self.px(240),
-                         justify="left").pack(anchor="w", pady=self.px(4))
+                self._vazio_label = tk.Label(
+                    self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
+                    font=self.f_peq, wraplength=self.px(240), justify="left")
+                self._vazio_label.pack(anchor="w", pady=self.px(4))
             self._rolagem = None
             self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
@@ -2776,7 +2832,8 @@ def main():
             cv, dentro = self._rolagem
             dentro.update_idletasks()
             folga = self.px(2) if self.cfg.get("compacto") else self.px(4)
-            altura = sum(self._ui[id(m)]["frame"].winfo_reqheight() + folga for m in primeiros) - folga
+            altura = max(0, sum(self._ui[id(m)]["frame"].winfo_reqheight() + folga
+                                 for m in primeiros) - folga)
             cv.configure(height=altura, width=dentro.winfo_reqwidth(),
                          scrollregion=(0, 0, dentro.winfo_reqwidth(), dentro.winfo_reqheight()))
             dentro.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
@@ -3557,10 +3614,12 @@ def main():
                              "visível (linhas “Você obteve…”)."
                              if not self.cfg.get("regiao") else
                              "Chat encontrado. Aguardando a primeira alma…")
-                    tk.Label(self.corpo, text=vazio, fg=COR["suave"],
-                             bg=COR["fundo"], font=self.f_peq,
-                             wraplength=self.px(240), justify="left").pack(
-                                 anchor="w", pady=self.px(4), before=self._lbl_rodape.master)
+                    self._vazio_label = tk.Label(
+                        self.corpo, text=vazio, fg=COR["suave"],
+                        bg=COR["fundo"], font=self.f_peq,
+                        wraplength=self.px(240), justify="left")
+                    self._vazio_label.pack(
+                        anchor="w", pady=self.px(4), before=self._lbl_rodape.master)
                 self._estrutura = (tuple(i for i in estrutura[0] if i != id(m)),
                                    estrutura[1], vazio, *estrutura[3:])
                 if self._rolagem:
