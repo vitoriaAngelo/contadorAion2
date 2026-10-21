@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.6"
+VERSAO = "1.8.7"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -647,10 +647,6 @@ def mesmo_monstro(a, b):
         # ate 1 letra errada por palavra (2 em palavras de 10+ letras):
         # 'Kerubian' x 'Kerubiel' sao bichos diferentes
         ok = e <= max(1, maior // 5)
-        if not ok and len(x) <= 4 and len(y) <= 4 and e <= 2 and x[0] == y[0]:
-            ok = True  # palavra curta muito borrada ('Zeit' -> 'Zaif')
-        if not ok and min(len(x), len(y)) >= 5 and (x.endswith(y) or y.endswith(x)):
-            ok = True  # comeco da palavra cortado ('Ermediario' -> 'Intermediario')
         if not ok:
             return False
         total += e
@@ -1095,7 +1091,9 @@ class Rastreador:
         (sc, _), delta, pares, novos, meio = melhor
 
         # quadro que nao encaixa em nada do que conhecemos
-        if sc < -3 and len(novos) >= 3 or (not pares and len(cur) >= 4):
+        sem_correspondencia = not any(
+            _peso_encaixe(mem[j]["chave"], cur[i]["chave"]) > 0 for i, j in pares)
+        if (sc < -3 and len(novos) >= 3) or (sem_correspondencia and len(cur) >= 4):
             conf = getattr(self, "_confuso", None)
             self._confuso = cur
             if conf and _mesmo_quadro(conf, cur, tol):
@@ -1109,10 +1107,16 @@ class Rastreador:
                     out = []
                     for i in range(len(self.mem) - 1, -1, -1):
                         m = self.mem[i]
-                        if m["nome"] and not velha(i):
+                        # A primeira leitura da rajada ja registrou suas
+                        # marcas. Isso nao significa que ela foi contada.
+                        era_velha = any(abs(c["y"] - m["y"]) < tol
+                                        for c in getattr(self, "_confuso_velhas", []))
+                        if m["nome"] and not era_velha:
                             m["cont"] = m["qtd"]
                             out += [m["nome"]] * m["qtd"]
                     return out
+            else:
+                self._confuso_velhas = [dict(cur[i]) for i in ja_vi]
             return []
         self._confuso = None
 
@@ -1384,35 +1388,20 @@ class Progresso:
         for m in self.monstros:
             if k in [c.replace(" ", "") for c in self._chaves(m)]:
                 return m
-        # junta sozinho erros de OCR (ex.: "Zeit Mutante" -> "Zaif Mutante"),
-        # mas monstros parecidos com uma palavra diferente ("Espirito da Agua
-        # Superior" x "Espirito da Terra Superior") ficam separados
-        melhor, nota = None, 0.0
+        # Corrige erros pequenos sem escolher entre candidatos ambiguos.
+        # Apelidos so valem na busca exata: nao encadear aproximacoes.
+        candidatos = []
         for m in self.monstros:
-            for c in self._chaves(m):
-                if mesmo_monstro(n, c):
-                    r = parecido(k, c.replace(" ", ""))
-                    if r > nota:
-                        melhor, nota = m, r
-        if melhor is None:
-            # lixo do cenario no MEIO do nome (linha quebrada):
-            # 'espirito do fogo eg intermediario' -> 'espirito do fogo intermediario'
-            pn = n.split()
-            for m in self.monstros:
-                for c in self._chaves(m):
-                    pc = c.split()
-                    if len(pn) - len(pc) not in (1, 2) or len(pc) < 2:
-                        continue
-                    if not mesmo_monstro(pn[-1], pc[-1]) or not mesmo_monstro(pn[0], pc[0]):
-                        continue
-                    i = j = 0
-                    while i < len(pn) and j < len(pc):
-                        if mesmo_monstro(pn[i], pc[j]):
-                            j += 1
-                        i += 1
-                    if j == len(pc):
-                        return m
-        return melhor
+            c = normalizar(m["nome"])
+            if mesmo_monstro(n, c):
+                r = parecido(k, c.replace(" ", ""))
+                candidatos.append((r, m))
+        candidatos.sort(key=lambda par: par[0], reverse=True)
+        if not candidatos:
+            return None
+        if len(candidatos) > 1 and candidatos[0][0] - candidatos[1][0] < 0.08:
+            return None  # nao atribuir uma leitura ambigua a um bicho arbitrario
+        return candidatos[0][1]
 
     def canonico(self, nome):
         m = self.achar(nome)
