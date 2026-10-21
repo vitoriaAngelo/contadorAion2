@@ -81,8 +81,8 @@ Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Traba
 - **A imagem da esquerda em "Ver leitura" mostra o jogo, mas o chat não aparece nela** (pode acontecer com tela cheia, HDR ou "Otimizações para jogos em janela" do Windows 11) → ⚙ → *Captura DirectX*.
 - **Contou errado** → use − / + ou a caixinha **tenho**.
 - Pode subir o chat (scroll) e voltar: o contador reconhece as mensagens que já viu e não conta de novo. Mesmo assim, se puder, deixe o chat embaixo enquanto farma.
-- Matando muitos de uma vez: se aparecerem mais linhas do que cabem no chat, as primeiras somem antes de serem lidas. Aumente a altura do chat no jogo.
-- Se o chat mostrar apenas almas identicas, sem mensagens diferentes entre elas, uma rajada ainda pode ser subcontada. Deixe mais linhas do chat visiveis e selecione toda a area no contador.
+- Matando muitos de uma vez: a detecção automática reserva espaço para mais linhas do chat e a captura verifica mudanças a cada 0,2 s. Se você escolheu a área manualmente, selecione **todo o chat**, inclusive a parte superior onde as linhas aparecem durante rajadas.
+- Se aparecerem mais mensagens do que cabem no chat do próprio jogo, as primeiras somem antes da captura. Aumente a altura do chat no jogo. Uma tela cheia de almas idênticas também não permite distinguir novas mensagens quando as antigas são substituídas por linhas iguais.
 - Nomes borrados ou parecidos podem aparecer separados. Corrija o nome no contador quando necessario.
 - **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
 - **Atualizar:** ⚙ → *Procurar atualização*. Ele baixa a versão nova daqui do GitHub, fecha e abre de novo sozinho, mantendo o progresso. Quando tem versão nova, aparece **⬆** no topo do overlay (clique nele). Versões antigas (antes da 1.5.0) não têm essa opção: baixe o ZIP de novo e rode o `INSTALAR.bat` uma vez.

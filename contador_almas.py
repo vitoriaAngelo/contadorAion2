@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.8"
+VERSAO = "1.8.9"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -144,11 +144,12 @@ CONFIG_PADRAO = {
         {"nome": "Nahma", "minuto": 0, "horas": [21], "dias": [4, 6], "duracao": 30},
     ],      # almas para cada estrela (somam a meta: 5+25+75=105)
     "regiao": None,            # {"left","top","width","height"} em pixels reais
-    "intervalo": 0.3,          # segundos entre capturas
+    "intervalo": 0.2,          # segundos entre capturas
     "motor_ocr": "auto",       # auto | windows | tesseract
     "idioma": "pt-BR",
     "escala_ocr": 2.0,         # amplia a imagem antes do OCR (ajuda em fonte pequena)
-    "leituras_paralelas": 2,   # quantas leituras do Tesseract ao mesmo tempo
+    "leituras_paralelas": 3,   # quantas leituras do Tesseract ao mesmo tempo
+    "regiao_manual": False,   # area escolhida pelo usuario nao e ampliada
     "esconder_da_captura": False,  # False = overlay aparece no OBS/Discord
     "filtro_contorno": True,   # isola letras com contorno escuro (cenario claro atras)
     "limiar_claro": 150,
@@ -486,8 +487,13 @@ def carregar_config():
         if not any(e.get("nome") == "Loja" for e in salvo["eventos"]):
             salvo["eventos"].insert(1, {"nome": "Loja", "agora": "Loja nova", "minuto": 0,
                                         "horas": None, "duracao": 5})
+    if salvo.get("versao_cfg", 0) < 11:
+        if salvo.get("intervalo") == 0.3:
+            salvo.pop("intervalo", None)
+        if salvo.get("leituras_paralelas") == 2:
+            salvo.pop("leituras_paralelas", None)
     cfg.update(salvo)
-    cfg["versao_cfg"] = 10
+    cfg["versao_cfg"] = 11
     # a meta e sempre a soma das estrelas
     try:
         cfg["meta"] = sum(int(t) for t in cfg["tiers"])
@@ -1093,7 +1099,16 @@ class Rastreador:
         # quadro que nao encaixa em nada do que conhecemos
         sem_correspondencia = not any(
             _peso_encaixe(mem[j]["chave"], cur[i]["chave"]) > 0 for i, j in pares)
-        if (sc < -3 and len(novos) >= 3) or (sem_correspondencia and len(cur) >= 4):
+        def referencias_numeradas(linhas):
+            return {m.group() for c in linhas if c["chave"].startswith("sis ")
+                    if (m := re.search(r"\d{2,}", c["chave"]))}
+        refs_antigas = referencias_numeradas(mem)
+        refs_atuais = referencias_numeradas(cur)
+        chat_substituido = (len(refs_antigas) >= 4 and len(refs_atuais) >= 4
+                           and not refs_antigas.intersection(refs_atuais)
+                           and abs(cur[-1]["y"] - fundo_mem) < tol)
+        if ((sc < -3 and len(novos) >= 3) or
+                (sem_correspondencia and len(cur) >= 4) or chat_substituido):
             conf = getattr(self, "_confuso", None)
             self._confuso = cur
             if conf and _mesmo_quadro(conf, cur, tol):
@@ -1770,6 +1785,22 @@ def apagar_proprias(img, reg, areas):
     return img
 
 
+def ampliar_regiao_chat(regiao, monitores):
+    """Reserva espaco para rajadas acima das poucas linhas usadas na deteccao."""
+    r = dict(regiao)
+    cx = r["left"] + r["width"] / 2
+    cy = r["top"] + r["height"] / 2
+    mon = next((m for m in monitores if m["left"] <= cx < m["left"] + m["width"]
+                and m["top"] <= cy < m["top"] + m["height"]), None)
+    if mon is None:
+        return r
+    base = min(mon["top"] + mon["height"], r["top"] + r["height"])
+    altura = min(480, int(mon["height"] * 0.52))
+    topo = max(mon["top"], min(r["top"], base - altura))
+    r["top"], r["height"] = topo, base - topo
+    return r
+
+
 def achar_chat(motor, cfg, sct, avisar=lambda t: None, proprias=()):
     """Procura o chat do jogo sozinho: em cada monitor, olha o canto inferior
     esquerdo atras de palavras 'obteve' / 'Pontos da Alma' e monta a area em
@@ -1809,7 +1840,9 @@ def achar_chat(motor, cfg, sct, avisar=lambda t: None, proprias=()):
     largura = int(mon["width"] * 0.19 + alt * 5)
     topo = max(mon["top"], int(min(ys) - alt * 3))
     base = min(mon["top"] + mon["height"], int(max(ye) + alt * 2))
-    return {"left": esquerda, "top": topo, "width": largura, "height": base - topo}
+    return ampliar_regiao_chat(
+        {"left": esquerda, "top": topo, "width": largura, "height": base - topo},
+        [mon])
 
 
 def criar_motor(cfg):
@@ -1993,6 +2026,11 @@ class Leitor(threading.Thread):
         with abrir_mss(mss) as sct_normal:
             modo_cap = self.cfg.get("captura", "normal")
             sct = nova_captura(self.cfg, sct_normal, lambda t: self.fila.put(("aviso", t)))
+            if self.cfg.get("regiao") and not self.cfg.get("regiao_manual", False):
+                maior = ampliar_regiao_chat(self.cfg["regiao"], sct.monitors[1:])
+                if maior != self.cfg["regiao"]:
+                    self.cfg["regiao"] = maior
+                    self.fila.put(("regiao", maior))
             if not self.cfg.get("regiao"):
                 self.pedir_deteccao.set()
             while not self.parar.is_set():
@@ -2028,7 +2066,7 @@ class Leitor(threading.Thread):
                     bruta = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
                     bruta = apagar_proprias(bruta, reg, self.areas_proprias)
                     # se a tela nao mudou, nao gasta OCR de novo
-                    mini = bruta.convert("L").resize((48, max(1, bruta.height * 48 // bruta.width)))
+                    mini = bruta.convert("L").resize((96, max(1, bruta.height * 96 // bruta.width)))
                     if self._igual(mini):
                         self.fila.put(("repetido", None))
                     else:
@@ -2051,7 +2089,7 @@ class Leitor(threading.Thread):
             return False
         from PIL import ImageChops, ImageStat
         dif = ImageStat.Stat(ImageChops.difference(ant, mini)).mean[0]
-        return dif < 1.5
+        return dif < 0.08
 
     def _processar(self, motor, bruta, t0):
         img = preparar_imagem(bruta, self.cfg)
@@ -3978,8 +4016,8 @@ def main():
             sel.title("Selecione o chat")
             sel.attributes("-topmost", True)
             sel.configure(bg=COR["fundo"])
-            tk.Label(sel, text="Arraste um ret\u00e2ngulo em volta das \u00faltimas linhas do chat "
-                               "(onde aparece \u201cObteve Pontos da Alma\u2026\u201d).  Esc cancela.",
+            tk.Label(sel, text="Arraste um ret\u00e2ngulo em volta de todo o chat, "
+                               "incluindo as linhas de cima. Esc cancela.",
                      fg=COR["texto"], bg=COR["fundo"], font=self.f_nome).pack(padx=8, pady=6)
             foto = ImageTk.PhotoImage(mostrar)
             cv = tk.Canvas(sel, width=mostrar.width, height=mostrar.height,
@@ -4015,6 +4053,7 @@ def main():
                 sel.destroy()
                 self.cfg["regiao"] = {"left": v["left"] + l, "top": v["top"] + t,
                                       "width": w, "height": h}
+                self.cfg["regiao_manual"] = True
                 self.status_extra = None
                 registrar(f"AREA ESCOLHIDA NA MAO: {self.cfg['regiao']}")
                 self.salvar_cfg()
@@ -4175,6 +4214,7 @@ def main():
                         registrar(f"DETECCAO DO CHAT: {dado}")
                         if dado:
                             self.cfg["regiao"] = dado
+                            self.cfg["regiao_manual"] = False
                             self.salvar_cfg()
                             self.rastreador.reiniciar()
                             self.status_extra = None
