@@ -13,7 +13,7 @@ class Regressoes(unittest.TestCase):
         pequena = {'left': 30, 'top': 808, 'width': 407, 'height': 218}
         maior = ca.ampliar_regiao_chat(pequena, [mon])
         self.assertEqual(maior['top'] + maior['height'], 1026)
-        self.assertEqual(maior['height'], 480)
+        self.assertEqual(maior['height'], 600)
         self.assertEqual(ca.ampliar_regiao_chat(maior, [mon]), maior)
 
     def test_uma_linha_alterada_dispara_leitura(self):

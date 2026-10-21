@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.9"
+VERSAO = "1.8.10"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1795,7 +1795,7 @@ def ampliar_regiao_chat(regiao, monitores):
     if mon is None:
         return r
     base = min(mon["top"] + mon["height"], r["top"] + r["height"])
-    altura = min(480, int(mon["height"] * 0.52))
+    altura = min(600, int(mon["height"] * 0.60))
     topo = max(mon["top"], min(r["top"], base - altura))
     r["top"], r["height"] = topo, base - topo
     return r
