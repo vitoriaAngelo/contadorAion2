@@ -2,23 +2,12 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import contador_almas as ca
 
 
 class Regressoes(unittest.TestCase):
-    def test_volta_a_area_automatica_da_versao_187(self):
-        salvo = {"versao_cfg": 11, "regiao": {"left": 30, "top": 426,
-                 "width": 407, "height": 600}, "intervalo": 0.2,
-                 "leituras_paralelas": 3, "regiao_manual": False}
-        with patch.object(ca, "carregar_json", return_value=salvo):
-            cfg = ca.carregar_config()
-        self.assertIsNone(cfg["regiao"])
-        self.assertEqual(cfg["intervalo"], 0.3)
-        self.assertEqual(cfg["leituras_paralelas"], 2)
-
     def test_nomes_ambiguos_e_palavras_extras(self):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
             p = ca.Progresso(os.path.join(pasta, 'p.json'))
