@@ -77,6 +77,59 @@ class Regressoes(unittest.TestCase):
             self.assertEqual(len(r.quadro_pos(atual, rodada * 2 + 1.5)), 0)
         self.assertEqual(esperado, 20)
 
+    def test_reabrir_chat_nao_reconta_historico(self):
+        r = ca.Rastreador(ca.PADROES_PADRAO)
+        alma = lambda n: f'Obteve Pontos da Alma {n} x1.'
+        historico = [alma(n) for n in
+                     ('Papis', 'Mumu', 'Papis', 'Mumu', 'Papis', 'Mumu')]
+        def quadro(linhas, topo):
+            return [(texto, topo + i * 38, 22)
+                    for i, texto in enumerate(linhas)]
+        antigo = quadro(historico[-3:], 700)
+        self.assertEqual(r.quadro_pos(antigo, 0), [])
+        self.assertEqual(r.quadro_pos(antigo, 1), [])
+        for t in (2, 3, 4):
+            self.assertEqual(r.quadro_pos([], t), [])
+        reaberto = quadro(historico, 500)
+        self.assertEqual(r.quadro_pos(reaberto, 5), [])
+        self.assertEqual(r.quadro_pos(reaberto, 6), [])
+        self.assertEqual(r.quadro_pos(reaberto, 7), [])
+        nova = quadro(historico + [alma('Zaif Mutante')], 462)
+        self.assertEqual(r.quadro_pos(nova, 8), ['Zaif Mutante'])
+
+    def test_reabrir_chat_conta_apenas_alma_nova(self):
+        r = ca.Rastreador(ca.PADROES_PADRAO)
+        antigo = ['Voce obteve 123 Kinah.',
+                  'Obteve Pontos da Alma Papis x1.',
+                  'Voce obteve 456 Kinah.',
+                  'Obteve Pontos da Alma Mumu x1.']
+        novo = antigo + ['Voce obteve 789 Kinah.',
+                         'Obteve Pontos da Alma Zaif Mutante x1.']
+        def quadro(linhas):
+            return [(linha, 500 + i * 38, 22) for i, linha in enumerate(linhas)]
+        self.assertEqual(r.quadro_pos(quadro(antigo), 0), [])
+        for t in (1, 2, 3):
+            self.assertEqual(r.quadro_pos([], t), [])
+        self.assertEqual(r.quadro_pos(quadro(novo), 4), ['Zaif Mutante'])
+        self.assertEqual(r.quadro_pos(quadro(novo), 5), [])
+        self.assertEqual(r.quadro_pos(quadro(novo), 6), [])
+
+    def test_expandir_chat_sem_sumir_nao_reconta(self):
+        r = ca.Rastreador(ca.PADROES_PADRAO)
+        alma = lambda n: f'Obteve Pontos da Alma {n} x1.'
+        historico = [alma(n) for n in
+                     ('Papis', 'Mumu', 'Papis', 'Mumu', 'Papis', 'Mumu')]
+        def quadro(linhas, topo):
+            return [(texto, topo + i * 38, 22)
+                    for i, texto in enumerate(linhas)]
+        fechado = quadro(historico[-3:], 700)
+        aberto = quadro(historico, 500)
+        self.assertEqual(r.quadro_pos(fechado, 0), [])
+        self.assertEqual(r.quadro_pos(fechado, 1), [])
+        self.assertEqual(r.quadro_pos(aberto, 2), [])
+        self.assertEqual(r.quadro_pos(aberto, 3), [])
+        self.assertEqual(r.quadro_pos(aberto, 4), [])
+
 
 if __name__ == '__main__':
     unittest.main()

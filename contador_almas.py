@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.11"
+VERSAO = "1.8.12"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -807,6 +807,10 @@ class Rastreador:
         self.mem = None
         self.lac = []
         self.passo = None
+        self._chat_vazio = 0
+        self._chat_reabrindo = False
+        self._quadro_reabertura = None
+        self._tentativas_reabertura = 0
 
     def _lembrar(self, agora, linhas_alma):
         self.memoria.append((agora, Counter(linhas_alma)))
@@ -989,6 +993,12 @@ class Rastreador:
         if not cur:
             if getattr(self, "mem", None) is None:
                 self._vazio_no_inicio = getattr(self, "_vazio_no_inicio", 0) + 1
+            else:
+                self._chat_vazio = getattr(self, "_chat_vazio", 0) + 1
+                if self._chat_vazio >= 2:
+                    self._chat_reabrindo = True
+                    self._quadro_reabertura = None
+                    self._tentativas_reabertura = 0
             return []  # chat escondido/coberto: guarda tudo como estava
         cur.sort(key=lambda c: c["y"])
         alt = sorted(c["h"] for c in cur)[len(cur) // 2]
@@ -1016,6 +1026,41 @@ class Rastreador:
                 continue
             limpo.append(c)
         cur = limpo
+
+        mem_antes = getattr(self, "mem", None)
+        if mem_antes and not getattr(self, "_chat_reabrindo", False) and \
+                len(cur) > len(mem_antes) and \
+                cur[0]["y"] < min(m["y"] for m in mem_antes) - passo * 1.5 and \
+                cur[-1]["y"] < max(m["y"] for m in mem_antes) - passo * 0.5:
+            # Abrir o chat mostra historico acima e move a caixa de digitar.
+            # Isso nao e uma rajada nova, mesmo sem um quadro vazio no meio.
+            self._chat_reabrindo = True
+            self._quadro_reabertura = cur
+            self._tentativas_reabertura = 0
+            return []
+
+        if getattr(self, "_chat_reabrindo", False):
+            anterior = getattr(self, "_quadro_reabertura", None)
+            indices_novos = novas_depois_da_reabertura(self.mem, cur)
+            self._tentativas_reabertura = getattr(self, "_tentativas_reabertura", 0) + 1
+            estavel = anterior is not None and _mesmo_quadro(anterior, cur, tol)
+            if indices_novos is None and not estavel and self._tentativas_reabertura < 6:
+                self._quadro_reabertura = cur
+                return []  # animacao de abertura: ainda nao ha quadro estavel
+            # O historico reapareceu em outras posicoes. So o trecho abaixo
+            # da ultima sequencia conhecida pode conter almas novas.
+            indices_novos = indices_novos or []
+            ja_vi = self._marcar_vistos(cur, agora, fq, passo)
+            self.mem = [dict(c, visto=fq, pend=False, cont=c["qtd"])
+                        for c in cur]
+            self.lac = []
+            self._chat_reabrindo = False
+            self._quadro_reabertura = None
+            self._tentativas_reabertura = 0
+            self._chat_vazio = 0
+            return [cur[i]["nome"] for i in indices_novos if cur[i]["nome"]
+                    and i not in ja_vi for _ in range(cur[i]["qtd"])]
+        self._chat_vazio = 0
 
         # Impressao digital: as mensagens com numero ("Voce obteve 463 Kinah")
         # sao praticamente unicas. Se uma delas ja passou pela tela antes, o
@@ -1235,6 +1280,35 @@ def _mesmo_quadro(a, b, tol):
                 bate += 1
                 break
     return bate >= max(2, int(len(b) * 0.6))
+
+
+def novas_depois_da_reabertura(anteriores, atuais):
+    """Indices novos depois da ultima sequencia conhecida do chat.
+
+    Quando o chat reabre, linhas antigas aparecem em outras posicoes. Uma
+    sequencia que chega ate o fim da memoria anterior serve de ancora; sem
+    ela, nao ha como distinguir historico de mensagens novas com seguranca.
+    """
+    melhor = None
+    for i, a in enumerate(anteriores):
+        for j, c in enumerate(atuais):
+            if _diferenca_linhas(a["chave"], c["chave"]) >= 0.65:
+                continue
+            n = 0
+            refs = 0
+            while i + n < len(anteriores) and j + n < len(atuais):
+                x, y = anteriores[i + n]["chave"], atuais[j + n]["chave"]
+                if _diferenca_linhas(x, y) >= 0.65:
+                    break
+                if x.startswith("sis ") and re.search(r"\d{2,}", x):
+                    refs += 1
+                n += 1
+            if i + n != len(anteriores) or not (refs or n >= 3):
+                continue
+            nota = (refs, n, j + n)
+            if melhor is None or nota > melhor[0]:
+                melhor = (nota, j + n)
+    return list(range(melhor[1], len(atuais))) if melhor else None
 
 
 def _peso_encaixe(a, b):
