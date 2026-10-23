@@ -169,6 +169,7 @@ class LeituraNpcap(unittest.TestCase):
                 ca.aplicar_atualizacao(codigo, pasta)
             self.assertTrue(os.path.isfile(os.path.join(pasta, 'pet_protocol.py')))
             self.assertTrue(os.path.isfile(os.path.join(pasta, 'pet_nomes_npcap.json')))
+            self.assertTrue(os.path.isfile(os.path.join(pasta, 'radar_mascotes.json')))
             with open(os.path.join(pasta, 'progresso.json')) as f:
                 self.assertEqual(f.read(), '{"monstros": []}')
 

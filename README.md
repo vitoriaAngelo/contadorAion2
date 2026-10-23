@@ -73,6 +73,13 @@ Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
 três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
 personagem, os valores conhecidos são os últimos salvos no computador; após a
 sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
+Logo abaixo, o **Radar de mascotes** lista os monstros que o jogo anunciou por
+perto e que dão almas ainda pendentes, com o total restante por pet. Quando o
+jogo informou sua posição há menos de 10 segundos, mostra direção cardinal e
+distância aproximada. Se a posição envelhecer, oculta esses números até você
+usar uma habilidade ou mudar de área. O radar só mostra monstros recebidos
+pela captura de rede; ele não prevê pontos de surgimento nem cobre instâncias
+que não enviem esses eventos.
 A aba inicial **Almas** mostra somente os bichos em acompanhamento. A
 sincronização do catálogo não coloca todos eles na lista de farm.
 
@@ -116,3 +123,6 @@ Interface em `contador_almas.py`; decodificador em `pet_protocol.py`, adaptado d
 [aion2-pet-overlay](https://github.com/MartinLVila/aion2-pet-overlay) sob a licença
 em `LICENSE-PET-PROTOCOL.txt`. A tabela de nomes foi derivada de
 [aion2-pet-tracker](https://github.com/MikeZeen/aion2-pet-tracker).
+O catálogo de monstros e pets do radar usa dados de
+[Aion-DPS-Meter](https://github.com/SkeeveAN/Aion-DPS-Meter), licença MIT em
+`LICENSE-RADAR.txt`.

@@ -49,6 +49,10 @@ MAX_LEVEL = len(REQ)
 OP_STATE = b"\x00\x90"
 OP_GAIN = b"\x0d\x90"
 OP_NICKNAME = b"\x33\x36"
+OP_ZONE = b"\x21\x36"
+OP_NPC_SPAWN = b"\x41\x36"
+OP_NPC_REMOVE = b"\x42\x36"
+OP_LOCAL_POSITION = b"\x3c\x37"
 OP_LZ4 = b"\xff\xff"
 
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
@@ -56,7 +60,7 @@ OP_LZ4 = b"\xff\xff"
 KNOWN_OPS = {bytes.fromhex(h) for h in (
     "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8456 "
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
-    "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336").split()}
+    "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
 
 
 def log(*parts):
@@ -226,6 +230,62 @@ def parse_nickname(payload):
         return None
 
 
+def parse_zone(payload):
+    """Zona e posição de chegada; coordenadas do jogo têm 100 unidades por metro."""
+    if len(payload) < 24:
+        return None
+    zone = struct.unpack_from("<I", payload, 4)[0]
+    x, y = struct.unpack_from("<ff", payload, 16)
+    if zone <= 0 or not all(-500_000 < v < 500_000 for v in (x, y)):
+        return None
+    return zone, x, y
+
+
+def parse_npc_spawn(payload):
+    """Aparição de monstro: instância, tipo e posição observada pelo jogo."""
+    import math
+    try:
+        entity, p = read_varint(payload, 0)
+        if not 0 < entity < 1_000_000 or len(payload) < p + 17:
+            return None
+        if payload[p + 2] == 1:
+            size = payload[p + 3]
+            if not 1 <= size <= 100 or p + 4 + size + 14 > len(payload):
+                return None
+            p += 1 + size
+        p += 3
+        npc = struct.unpack_from("<I", payload, p)[0]
+        x, y = struct.unpack_from("<ff", payload, p + 6)
+        if not 0 < npc < 10_000_000 or not all(math.isfinite(v) and abs(v) < 500_000
+                                                for v in (x, y)):
+            return None
+        return entity, npc, x, y
+    except (IndexError, struct.error, ValueError):
+        return None
+
+
+def parse_npc_remove(payload):
+    try:
+        entity, p = read_varint(payload, 0)
+        return entity if 0 < entity < 1_000_000 and len(payload) == p + 2 else None
+    except IndexError:
+        return None
+
+
+def parse_local_position(payload, own_entity):
+    import math
+    if own_entity is None:
+        return None
+    try:
+        entity, p = read_varint(payload, 0)
+        if entity != own_entity or len(payload) < p + 9 or payload[p] != 3:
+            return None
+        x, y = struct.unpack_from("<ff", payload, p + 1)
+        return (x, y) if all(math.isfinite(v) and abs(v) < 500_000 for v in (x, y)) else None
+    except (IndexError, struct.error):
+        return None
+
+
 def find_sync(buf, need=8):
     """Offset where `need` consecutive frames with known opcodes start
     (or known frames that end exactly at the end of the buffer)."""
@@ -310,6 +370,8 @@ class Decoder:
         self.emit = emit
         self.streams = {}
         self.ready = False
+        self.own_entity = None
+        self.zone_id = None
 
     def segment(self, conn, seq, data):
         stream = self.streams.setdefault(conn, Stream())
@@ -331,7 +393,27 @@ class Decoder:
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:
+                            self.own_entity, _ = read_varint(payload, 0)
                             self.emit(("nickname", nome))
+                    elif op == OP_ZONE:
+                        zone = parse_zone(payload)
+                        if zone:
+                            if zone[0] != self.zone_id:
+                                self.own_entity = None
+                            self.zone_id = zone[0]
+                            self.emit(("zone",) + zone)
+                    elif op == OP_LOCAL_POSITION:
+                        position = parse_local_position(payload, self.own_entity)
+                        if position:
+                            self.emit(("position",) + position)
+                    elif op == OP_NPC_SPAWN:
+                        mob = parse_npc_spawn(payload)
+                        if mob:
+                            self.emit(("mob_spawn",) + mob)
+                    elif op == OP_NPC_REMOVE:
+                        entity = parse_npc_remove(payload)
+                        if entity is not None:
+                            self.emit(("mob_remove", entity))
             except Exception as e:
                 log("frame:", type(e).__name__)
 

@@ -25,12 +25,13 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.6"
+VERSAO = "1.9.7"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
 ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
-                     "pet_protocol.py", "pet_nomes_npcap.json", "LICENSE-PET-PROTOCOL.txt"]
+                     "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
+                     "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"]
 
 
 def versao_tupla(v):
@@ -62,12 +63,14 @@ def aplicar_atualizacao(dados_py, pasta):
     extras = {}
     for nome in ARQUIVOS_ATUALIZAR[1:]:
         if os.path.exists(os.path.join(pasta, nome)) or nome in (
-                "pet_protocol.py", "pet_nomes_npcap.json", "LICENSE-PET-PROTOCOL.txt"):
+                "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
+                "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"):
             try:
                 extras[nome] = baixar_texto(REPO_RAW + nome)
             except Exception:
                 if nome in ("pet_protocol.py", "pet_nomes_npcap.json",
-                            "LICENSE-PET-PROTOCOL.txt"):
+                            "radar_mascotes.json", "LICENSE-PET-PROTOCOL.txt",
+                            "LICENSE-RADAR.txt"):
                     raise
     alvo = os.path.join(pasta, "contador_almas.py")
     if os.path.exists(alvo):
@@ -200,6 +203,35 @@ def estrelas(qtd, tiers):
 def _hex(c):
     """'#rrggbb' -> (r, g, b)"""
     c = c.lstrip("#"); return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def linhas_radar(mobs, posicao, catalogo, especies, agora):
+    """Monstros vistos na zona atual que dão almas ainda necessárias."""
+    import math
+    pets = {r[0]: r for r in catalogo}
+    recente = posicao is not None and agora - posicao[2] <= 10
+    direcoes = ("N", "NE", "L", "SE", "S", "SO", "O", "NO")
+    linhas = []
+    for npc, x, y, visto in mobs.values():
+        if agora - visto > 120:
+            continue
+        especie = especies.get(str(npc))
+        if not especie:
+            continue
+        pet_id, monstro = especie
+        pet = pets.get(str(pet_id))
+        if not pet or not str(pet[3]).isdigit() or int(pet[3]) <= 0:
+            continue
+        distancia = direcao = None
+        if recente:
+            dx, dy = x - posicao[0], y - posicao[1]
+            distancia = math.hypot(dx, dy) / 100
+            if distancia > 150:
+                continue
+            direcao = direcoes[round(math.degrees(math.atan2(dx, -dy)) / 45) % 8]
+        linhas.append((monstro, pet[1], int(pet[3]), distancia, direcao, visto))
+    linhas.sort(key=lambda r: (r[3] is None, r[3] if r[3] is not None else -r[5], r[0]))
+    return linhas
 
 def imagem_estrela(estado, frac, S, bg, ouro="#f4c46a"):
     """Estrela arredondada e suave (desenhada com o Pillow).
@@ -2194,6 +2226,7 @@ class LeitorRede(threading.Thread):
         self.pedir_deteccao = threading.Event()
         self.areas_proprias = []
         self.ultima = None
+        self.radar_mascotes = carregar_json(os.path.join(BASE, "radar_mascotes.json"), {})
         try:
             with open(os.path.join(BASE, "pet_nomes_npcap.json"), encoding="utf-8") as f:
                 self.nomes = json.load(f)
@@ -2221,6 +2254,8 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("estado_rede", evento[1:]))
                 elif evento[0] == "nickname":
                     self.fila.put(("personagem_rede", evento[1]))
+                elif evento[0] in ("zone", "position", "mob_spawn", "mob_remove"):
+                    self.fila.put(("radar_rede", evento))
 
             pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
@@ -2292,6 +2327,10 @@ def main():
             self.rede_conectada = False
             self.rede_pronta = False
             self.rede_sincronizada = False
+            self.radar_mobs = {}
+            self.radar_posicao = None
+            self.radar_zona = None
+            self._radar_ui = None
             self.erro = None
             self.debug = None
             self.ultimas_linhas = []
@@ -2349,6 +2388,7 @@ def main():
                            else Leitor(self.cfg))
             self.leitor.start()
             self.root.after(100, self.consumir)
+            self.root.after(1000, self._radar_pulso)
             self.root.after(3000, self.reforcar_topo)
             self.root.protocol("WM_DELETE_WINDOW", self.sair)
 
@@ -2974,7 +3014,7 @@ def main():
             proxima = "almas" if atual == destino else destino
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
                       "_od_ui", "_lbl_crono", "_b_crono", "_pets_tree",
-                      "_pets_resumo", "_pets_busca", "_lbl_evento",
+                      "_pets_resumo", "_pets_busca", "_radar_ui", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
             self._abas_visuais[atual] = {
                 "corpo": self.corpo,
@@ -3074,6 +3114,29 @@ def main():
                                          bg=COR["fundo"], font=self.f_peq,
                                          justify="left", anchor="w")
             self._pets_resumo.pack(fill="x", pady=(self.px(3), 0))
+            radar = tk.Frame(self.corpo, bg=COR["painel"],
+                             highlightthickness=1, highlightbackground=COR["barra"])
+            radar.pack(fill="x", pady=(self.px(7), 0))
+            tk.Label(radar, text="◉ Radar de mascotes", fg=COR["ouro"],
+                     bg=COR["painel"], font=self.f_nome, anchor="w").pack(
+                         fill="x", padx=self.px(7), pady=(self.px(5), 0))
+            status = tk.Label(radar, text="", fg=COR["suave"], bg=COR["painel"],
+                              font=self.f_peq, anchor="w", justify="left",
+                              wraplength=self.px(355))
+            status.pack(fill="x", padx=self.px(7), pady=(self.px(2), self.px(3)))
+            rows = []
+            for _ in range(3):
+                row = tk.Frame(radar, bg=COR["painel"])
+                linha = tk.Label(row, text="", fg=COR["texto"], bg=COR["painel"],
+                                 font=self.f_peq, anchor="w", justify="left",
+                                 wraplength=self.px(355))
+                linha.pack(fill="x")
+                detalhe = tk.Label(row, text="", fg=COR["suave"], bg=COR["painel"],
+                                   font=self.f_peq, anchor="w", justify="left",
+                                   wraplength=self.px(355))
+                detalhe.pack(fill="x")
+                rows.append((row, linha, detalhe))
+            self._radar_ui = (radar, status, rows)
             self._atualizar_pets()
 
         def _imagem_estrelas_pet(self, andamento):
@@ -3136,6 +3199,76 @@ def main():
             resumo = f"{len(visiveis)}/{len(linhas)} pets · {estado}"
             if self._pets_resumo.cget("text") != resumo:
                 self._pets_resumo.configure(text=resumo)
+            self._atualizar_radar(linhas)
+
+        def _radar_pulso(self):
+            if self.cfg.get("aba") == "pets":
+                self._atualizar_radar()
+            self.root.after(1000, self._radar_pulso)
+
+        def _ao_radar_rede(self, evento):
+            tipo = evento[0]
+            agora = time.monotonic()
+            if tipo == "zone":
+                _, zona, x, y = evento
+                if (zona != self.radar_zona or
+                        (self.radar_posicao is not None and
+                         ((x - self.radar_posicao[0]) ** 2 +
+                          (y - self.radar_posicao[1]) ** 2) > 15_000 ** 2)):
+                    self.radar_mobs.clear()
+                self.radar_zona = zona
+                self.radar_posicao = (x, y, agora)
+            elif tipo == "position":
+                self.radar_posicao = (evento[1], evento[2], agora)
+            elif tipo == "mob_spawn":
+                _, entity, npc, x, y = evento
+                if str(npc) in getattr(self.leitor, "radar_mascotes", {}):
+                    self.radar_mobs[entity] = (npc, x, y, agora)
+            elif tipo == "mob_remove":
+                self.radar_mobs.pop(evento[1], None)
+
+        def _atualizar_radar(self, catalogo=None):
+            ui = getattr(self, "_radar_ui", None)
+            if self.cfg.get("aba") != "pets" or not ui or not ui[0].winfo_exists():
+                return
+            if catalogo is None:
+                catalogo = self.prog.catalogo_pets(self.nomes_pets,
+                                                  self.cfg.get("tiers", [5, 25, 75]))
+            agora = time.monotonic()
+            especies = getattr(self.leitor, "radar_mascotes", {})
+            linhas = linhas_radar(self.radar_mobs, self.radar_posicao, catalogo,
+                                  especies, agora) if self.rede_sincronizada else []
+            if not self.rede_sincronizada:
+                mensagem = "Entre no personagem para confirmar as almas restantes."
+            elif not especies:
+                mensagem = "Catálogo do radar ausente. Atualize o aplicativo."
+            elif self.radar_posicao is None:
+                mensagem = "Aguardando sua posição no jogo."
+            elif agora - self.radar_posicao[2] > 10:
+                mensagem = "Posição antiga: use uma habilidade para atualizar a distância."
+            elif not linhas:
+                mensagem = "Nenhum monstro de pet pendente visto por perto."
+            else:
+                mensagem = f"{len(linhas)} monstro(s) visto(s) · distância aproximada"
+            status = ui[1]
+            if status.cget("text") != mensagem:
+                status.configure(text=mensagem)
+            for i, (row, titulo, detalhe) in enumerate(ui[2]):
+                if i >= len(linhas):
+                    if row.winfo_manager():
+                        row.pack_forget()
+                    continue
+                monstro, pet, faltam, distancia, direcao, _ = linhas[i]
+                prefixo = (f"{direcao}  ~{distancia:.0f} m  " if distancia is not None
+                           else "•  ")
+                linha = prefixo + monstro
+                sub = f"Pet: {pet} · faltam {faltam} almas"
+                if titulo.cget("text") != linha:
+                    titulo.configure(text=linha)
+                if detalhe.cget("text") != sub:
+                    detalhe.configure(text=sub)
+                if not row.winfo_manager():
+                    row.pack(fill="x", padx=self.px(7), pady=(0, self.px(5)))
 
         def _montar_info(self):
             bg = COR["painel"]
@@ -4508,6 +4641,8 @@ def main():
                         pass
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
+                    elif tipo == "radar_rede":
+                        self._ao_radar_rede(dado)
                     elif tipo == "estado_rede":
                         mudou = self.prog.sincronizar_pets(*dado, self.leitor.nomes)
                         self.prog.salvar()  # inclui a data da fotografia, mesmo sem mudanças
@@ -4529,6 +4664,9 @@ def main():
                         if not dado:
                             self.rede_pronta = False
                             self.rede_sincronizada = False
+                            self.radar_mobs.clear()
+                            self.radar_posicao = None
+                            self.radar_zona = None
                         self.atualizar_status()
                     elif tipo == "rede_pronta":
                         self.rede_pronta = True
