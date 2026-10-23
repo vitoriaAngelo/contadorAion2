@@ -7,7 +7,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Nome    = "Contador de Almas"
-$Versao  = "1.8.6"
+$Versao  = "1.9.0"
 $Origem  = $PSScriptRoot
 $Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
 $ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
@@ -140,54 +140,39 @@ try {
     if (-not (Test-Path $pyw)) { $pyw = $py }
 
     # 2) Bibliotecas ----------------------------------------------------------
-    Passo 2 $total "Instalando as bibliotecas (mss, Pillow, pytesseract)..."
+    Passo 2 $total "Instalando as bibliotecas de captura Npcap..."
     $cod = Rodar $py @("-m", "pip", "install", "--user", "--upgrade", "--disable-pip-version-check", "-q", "-r", (Join-Path $Origem "requirements.txt"))
     if ($cod -ne 0) { throw "Falha ao instalar as bibliotecas do Python" }
     Ok "Bibliotecas instaladas"
 
-    # 3) Tesseract (leitor de texto da tela) -----------------------------------
-    Passo 3 $total "Procurando o Tesseract (leitor de texto da tela)..."
-    $tess = Achar-Tesseract
-    if (-not $tess -and (Tem-Winget)) {
-        Aviso "Tesseract não encontrado. Instalando... (o Windows pode pedir permissão de administrador)"
-        Rodar "winget" @("install", "--id", "UB-Mannheim.TesseractOCR", "-e", "--silent", "--accept-package-agreements", "--accept-source-agreements") | Out-Null
-        $tess = Achar-Tesseract
-    }
-    if ($tess) {
-        Ok "Tesseract: $tess"
+    # 3) Npcap ---------------------------------------------------------------
+    Passo 3 $total "Procurando o Npcap..."
+    if (Test-Path "$env:SystemRoot\System32\Npcap\wpcap.dll") {
+        Ok "Npcap instalado"
     } else {
-        Aviso "Não consegui instalar o Tesseract sozinho. Instale por este site e pronto (não precisa reinstalar o contador):"
-        Write-Host "    https://github.com/UB-Mannheim/tesseract/wiki"
-        Start-Process "https://github.com/UB-Mannheim/tesseract/wiki"
+        Aviso "Instale o Npcap pelo site oficial antes de usar a leitura de rede: https://npcap.com/"
+        Start-Process "https://npcap.com/"
     }
 
     # 4) Copiar o programa ------------------------------------------------------
     Passo 4 $total "Copiando o programa para $Destino ..."
     Fechar-Contador
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
-    foreach ($arq in @("contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt", "LICENSE", "README.md")) {
+    foreach ($arq in @("contador_almas.py", "pet_protocol.py", "pet_nomes_npcap.json",
+                      "LICENSE-PET-PROTOCOL.txt", "icone.ico", "desinstalar.ps1",
+                      "requirements.txt", "LICENSE", "README.md")) {
         $de = Join-Path $Origem $arq
         if (Test-Path $de) { Copy-Item $de -Destination $Destino -Force }
     }
     Get-ChildItem $Destino -File | Unblock-File -ErrorAction SilentlyContinue
     Ok "Programa copiado (seu progresso, se já existia, foi mantido)"
 
-    # 5) Português para o leitor de texto ----------------------------------------
-    Passo 5 $total "Baixando o pacote de português do leitor de texto..."
-    $td = Join-Path $Destino "tessdata"
-    New-Item -ItemType Directory -Force -Path $td | Out-Null
-    $por = Join-Path $td "por.traineddata"
-    if (-not (Test-Path $por) -or (Get-Item $por).Length -lt 100000) {
-        try {
-            Invoke-WebRequest -Uri $UrlPortugues -OutFile $por -UseBasicParsing
-            Ok "Português baixado"
-        } catch {
-            Remove-Item $por -ErrorAction SilentlyContinue
-            Aviso "Não consegui baixar o português; o programa vai usar o idioma que vier com o Tesseract."
-        }
-    } else {
-        Ok "Português já estava baixado"
+    # 5) Verificar arquivos da captura ---------------------------------------
+    Passo 5 $total "Verificando os arquivos da leitura de rede..."
+    foreach ($arq in @("pet_protocol.py", "pet_nomes_npcap.json")) {
+        if (-not (Test-Path (Join-Path $Destino $arq))) { throw "Arquivo ausente: $arq" }
     }
+    Ok "Leitura de rede pronta"
 
     # 6) Atalhos e registro ---------------------------------------------------------
     Passo 6 $total "Criando os atalhos e registrando em Aplicativos..."

@@ -6,25 +6,24 @@ Overlay para **Aion 2** que conta sozinho as almas de cada monstro que você far
 
 ## Como funciona
 
-O contador **lê o chat do jogo pela tela** (como uma captura do OBS). Quando aparece
-`Obteve Pontos da Alma <monstro> x1.`, ele soma +1 naquele monstro.
+O contador lê passivamente, pelo **Npcap**, os eventos de alma que o AION 2 recebe
+no seu próprio PC. Cada evento traz o identificador do pet e a quantidade recebida;
+isso permite contar várias almas de uma vez sem reler o histórico do chat.
 
 - Farmando em grupo: as almas que caem para outra pessoa ("Fulano obteve Alma: X (Vinculado)…") **não** contam para você.
-- **Não** lê a memória do jogo, **não** mexe na rede e **não** pede login.
-- Acha o chat sozinho, aguenta matança em massa (AoE), chat aberto/fechado e menu por cima.
+- **Não** lê a memória do jogo, não envia pacotes e não pede login.
+- O chat pode estar aberto ou fechado. Pacotes brutos não são salvos.
 - Aparece na stream (OBS / Discord) — dá para usar como fonte de **Captura de Janela**.
 
-> ⚠️ **Aviso:** é um programa de terceiros, não oficial. Ele só olha a tela, mas nenhum programa externo tem garantia contra o anti-cheat do jogo. Use por sua conta e risco.
+> ⚠️ **Aviso:** é um programa de terceiros, não oficial. A compatibilidade com o jogo e seu anti-cheat não é garantida. Use por sua conta e risco.
 
 ## Instalar
 
 1. Baixe o projeto: em <https://github.com/vitoriaAngelo/contadorAion2>, botão verde **Code → Download ZIP**, e extraia em qualquer pasta.
 2. Dê dois cliques em **`INSTALAR.bat`**.
    - Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
-3. Espere terminar. Ele instala o que faltar sozinho:
-   - **Python** (se você não tiver);
-   - **Tesseract** (o leitor de texto da tela) — o Windows pode pedir permissão de administrador;
-   - o **pacote de português** do leitor.
+3. Instale o [Npcap](https://npcap.com/) com as opções padrão e espere o instalador
+   instalar o Python e as bibliotecas necessárias.
 4. Pronto: use o ícone **Contador de Almas** na Área de Trabalho (também fica no Menu Iniciar).
 
 Depois de instalado, a pasta que você extraiu pode ser apagada.
@@ -32,7 +31,7 @@ Depois de instalado, a pasta que você extraiu pode ser apagada.
 ## Usar
 
 - Abra o jogo em **Janela sem bordas** (em tela cheia exclusiva o overlay não aparece por cima).
-- Abra o contador. Ele procura o chat sozinho (deixe algumas linhas "Você obteve…" visíveis).
+- Abra o contador. Ele aguarda a conexão do AION 2; o chat pode ficar fechado.
 - Mate monstros: cada alma soma no monstro certo.
 
 Em cada monstro:
@@ -56,13 +55,13 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
 
-Botão ◆ no topo: aba **OD** — conta OD, OD Fino, OD Puro e OD Radiante lendo "Você obteve OD … x1/x2" no chat (o do grupo não conta). Clique no número para digitar; botão "↺ Zerar ODs" para zerar.
+Botão ◆ no topo: aba **OD** — os números podem ser ajustados manualmente. A leitura de rede desta versão cobre almas de pets, ainda não OD.
 
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
 
 Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho). Botão ♪: liga/desliga o som 1 minuto antes dos eventos (riscado = mudo).
 
-Menu ⚙: cor de destaque (verde-água, rosa, roxo, azul, dourado, laranja, vermelho, verde), tamanho da letra, som 1 minuto antes dos eventos (liga/desliga e volume — ao escolher o volume ele toca para você ouvir), detectar o chat de novo, escolher a área na mão, opacidade, aparecer ou não na stream.
+Menu ⚙: cor de destaque, tamanho da letra, som antes dos eventos, opacidade e visibilidade na stream.
 
 ## OBS
 
@@ -72,25 +71,20 @@ Fonte **Captura de Janela** → janela **[pythonw.exe]: Contador de Almas** → 
 
 **Configurações → Aplicativos → Contador de Almas → Desinstalar.**
 Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Trabalho.
-(O Python e o Tesseract continuam instalados — dá para tirar pela mesma tela, se quiser.)
+(O Python e o Npcap continuam instalados.)
 
 ## Problemas
 
-- **"Não consegui iniciar o OCR"** → o Tesseract não está instalado. Instale por <https://github.com/UB-Mannheim/tesseract/wiki> e abra o contador de novo.
-- **Não conta nada** → ⚙ → *Ver leitura*: a primeira linha mostra o motor de leitura e qualquer erro. Se a área estiver errada, ⚙ → *Detectar o chat automaticamente* (com o chat visível) ou *Selecionar área do chat na mão*.
-- **A imagem da esquerda em "Ver leitura" mostra o jogo, mas o chat não aparece nela** (pode acontecer com tela cheia, HDR ou "Otimizações para jogos em janela" do Windows 11) → ⚙ → *Captura DirectX*.
+- **Não conta nada** → confirme que o Npcap está instalado e que o contador está aberto enquanto o AION 2 está conectado. Um erro de captura aparece no topo e no `diagnostico.log` da pasta do programa.
 - **Contou errado** → use − / + ou a caixinha **tenho**.
-- Pode subir o chat (scroll) e voltar: o contador reconhece as mensagens que já viu e não conta de novo. Mesmo assim, se puder, deixe o chat embaixo enquanto farma.
-- Matando muitos de uma vez: se aparecerem mais linhas do que cabem no chat, as primeiras somem antes de serem lidas. Aumente a altura do chat no jogo.
-- Se o chat mostrar apenas almas identicas, sem mensagens diferentes entre elas, uma rajada ainda pode ser subcontada. Deixe mais linhas do chat visiveis e selecione toda a area no contador.
-- Nomes borrados ou parecidos podem aparecer separados. Corrija o nome no contador quando necessario.
+- Se o nome de um pet ainda não estiver na tabela, ele aparece como `Alma #ID` sem misturar com outro pet.
 - **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
 - **Atualizar:** ⚙ → *Procurar atualização*. Ele baixa a versão nova daqui do GitHub, fecha e abre de novo sozinho, mantendo o progresso. Quando tem versão nova, aparece **⬆** no topo do overlay (clique nele). Versões antigas (antes da 1.5.0) não têm essa opção: baixe o ZIP de novo e rode o `INSTALAR.bat` uma vez.
 
 ## Requisitos
 
 - Windows 10 ou 11
-- Aion 2 em **português** (os textos em inglês também são reconhecidos, mas não foram testados no jogo)
+- Npcap instalado e acesso à captura de pacotes no Windows
 
 ## Para quem quer mexer no código
 
@@ -99,4 +93,7 @@ pip install -r requirements.txt
 RODAR.bat        (ou: pythonw contador_almas.py)
 ```
 
-Tudo fica em `contador_almas.py` (Python + tkinter). Licença MIT — veja `LICENSE`.
+Interface em `contador_almas.py`; decodificador em `pet_protocol.py`, adaptado de
+[aion2-pet-overlay](https://github.com/MartinLVila/aion2-pet-overlay) sob a licença
+em `LICENSE-PET-PROTOCOL.txt`. A tabela de nomes foi derivada de
+[aion2-pet-tracker](https://github.com/MikeZeen/aion2-pet-tracker).

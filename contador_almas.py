@@ -25,11 +25,12 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.8.8"
+VERSAO = "1.9.0"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
-ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt"]
+ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
+                     "pet_protocol.py", "pet_nomes_npcap.json", "LICENSE-PET-PROTOCOL.txt"]
 
 
 def versao_tupla(v):
@@ -60,11 +61,14 @@ def aplicar_atualizacao(dados_py, pasta):
     compile(dados_py, "contador_almas.py", "exec")  # erro aqui = nao troca nada
     extras = {}
     for nome in ARQUIVOS_ATUALIZAR[1:]:
-        if os.path.exists(os.path.join(pasta, nome)):
+        if os.path.exists(os.path.join(pasta, nome)) or nome in (
+                "pet_protocol.py", "pet_nomes_npcap.json", "LICENSE-PET-PROTOCOL.txt"):
             try:
                 extras[nome] = baixar_texto(REPO_RAW + nome)
             except Exception:
-                pass
+                if nome in ("pet_protocol.py", "pet_nomes_npcap.json",
+                            "LICENSE-PET-PROTOCOL.txt"):
+                    raise
     alvo = os.path.join(pasta, "contador_almas.py")
     if os.path.exists(alvo):
         with open(alvo, "rb") as f:
@@ -144,6 +148,7 @@ CONFIG_PADRAO = {
         {"nome": "Nahma", "minuto": 0, "horas": [21], "dias": [4, 6], "duracao": 30},
     ],      # almas para cada estrela (somam a meta: 5+25+75=105)
     "regiao": None,            # {"left","top","width","height"} em pixels reais
+    "fonte_leitura": "npcap",  # eventos de alma recebidos do jogo pela rede
     "intervalo": 0.3,          # segundos entre capturas
     "motor_ocr": "auto",       # auto | windows | tesseract
     "idioma": "pt-BR",
@@ -1457,6 +1462,42 @@ class Progresso:
             self.salvar()
         return m
 
+    def somar_pet(self, pet_id, nome, n):
+        """Usa o identificador do jogo; nomes parecidos nunca sao misturados."""
+        pet_id = str(pet_id)
+        m = next((x for x in self.monstros if x.get("pet_id") == pet_id), None)
+        if m is None:
+            m = next((x for x in self.monstros if not x.get("pet_id")
+                      and normalizar(x["nome"]) == normalizar(nome)), None)
+        if m is None:
+            m = {"nome": nome, "qtd": 0, "apelidos": [], "atualizado": 0}
+            self.monstros.append(m)
+        m["pet_id"] = pet_id
+        m["qtd"] += n
+        m["atualizado"] = m["ultima_alma"] = time.time()
+        self._anotar_dia(m["nome"], n)
+        return m
+
+    def sincronizar_pets(self, levels, points, nomes):
+        """Atualiza somente monstros ja exibidos; login nao e um novo drop."""
+        alterou = False
+        for raw_id in levels.keys() | points.keys():
+            pet_id = str(raw_id)
+            nome = nomes.get(pet_id)
+            m = next((x for x in self.monstros if x.get("pet_id") == pet_id), None)
+            if m is None and nome:
+                m = next((x for x in self.monstros if not x.get("pet_id")
+                          and normalizar(x["nome"]) == normalizar(nome)), None)
+            if m is None:
+                continue
+            nivel = max(0, min(int(levels.get(raw_id, 0)), 3))
+            total = sum((5, 25, 75)[:nivel]) + (0 if nivel == 3 else int(points.get(raw_id, 0)))
+            if m["qtd"] != total or m.get("pet_id") != pet_id:
+                m["qtd"] = total
+                m["pet_id"] = pet_id
+                alterou = True
+        return alterou
+
     def _anotar_dia(self, nome, n):
         import datetime as dt
         k = chave_dia(dt.datetime.now())
@@ -2071,6 +2112,51 @@ class Leitor(threading.Thread):
                 self.fila.put(("aviso", f"Falha na leitura: {e}"))
 
 
+class LeitorRede(threading.Thread):
+    """Entrega ganhos de alma do Npcap na mesma fila usada pela interface."""
+
+    def __init__(self, cfg):
+        super().__init__(daemon=True)
+        self.cfg = cfg
+        self.fila = queue.Queue()
+        self.ativo = threading.Event()
+        self.ativo.set()
+        self.parar = threading.Event()
+        self.pedir_deteccao = threading.Event()
+        self.areas_proprias = []
+        self.ultima = None
+        try:
+            with open(os.path.join(BASE, "pet_nomes_npcap.json"), encoding="utf-8") as f:
+                self.nomes = json.load(f)
+        except (OSError, ValueError):
+            self.nomes = {}
+
+    def run(self):
+        try:
+            import pet_protocol
+            if not pet_protocol.npcap_installed():
+                raise RuntimeError("Npcap não está instalado. Instale pelo site npcap.com e abra o contador de novo.")
+            if not self.nomes:
+                raise RuntimeError("Falta a tabela pet_nomes_npcap.json. Atualize ou reinstale o contador.")
+            self.fila.put(("motor", "Npcap"))
+
+            def receber(evento):
+                if evento[0] == "gain" and self.ativo.is_set():
+                    _, pet_id, quantidade = evento
+                    self.fila.put(("alma_rede", (pet_id, quantidade)))
+                elif evento[0] == "conn":
+                    self.fila.put(("conexao_rede", evento[1]))
+                elif evento[0] == "ready":
+                    self.fila.put(("rede_pronta", True))
+                elif evento[0] == "state" and self.ativo.is_set():
+                    self.fila.put(("estado_rede", evento[1:]))
+
+            pet_protocol.run_sniffer(receber, self.parar)
+        except Exception as e:
+            if not self.parar.is_set():
+                self.fila.put(("erro", str(e)))
+
+
 # --------------------------------------------------------------------------
 # Interface (overlay)
 # --------------------------------------------------------------------------
@@ -2129,7 +2215,9 @@ def main():
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
-            self.motor_nome = "iniciando OCR..."
+            self.motor_nome = "iniciando Npcap..."
+            self.rede_conectada = False
+            self.rede_pronta = False
             self.erro = None
             self.debug = None
             self.ultimas_linhas = []
@@ -2180,7 +2268,8 @@ def main():
             self.corpo.pack(fill="both", expand=True, padx=self.px(8), pady=(0, self.px(8)))
             self.render()
 
-            self.leitor = Leitor(self.cfg)
+            self.leitor = (LeitorRede(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
+                           else Leitor(self.cfg))
             self.leitor.start()
             self.root.after(100, self.consumir)
             self.root.after(3000, self.reforcar_topo)
@@ -2558,7 +2647,14 @@ def main():
 
         def atualizar_status(self):
             if self.erro:
-                txt, cor = "\u25cf erro no OCR", COR["erro"]
+                txt, cor = "\u25cf erro na leitura", COR["erro"]
+            elif self.cfg.get("fonte_leitura") == "npcap":
+                if not self.rede_conectada:
+                    txt, cor = "\u25cf aguardando AION 2\u2026", COR["ouro"]
+                elif not self.rede_pronta:
+                    txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
+                else:
+                    txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
                 txt, cor = "\u25cf " + self.status_extra, COR["ouro"]
             elif not self.cfg.get("regiao"):
@@ -2613,7 +2709,9 @@ def main():
                     rodape += f"  \u00b7  +{ocultos} ocultos"
             vazio = ""
             if not todos:
-                vazio = ("Procurando o chat do jogo\u2026 deixe o jogo aberto com o chat "
+                vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap\u2026"
+                         if self.cfg.get("fonte_leitura") == "npcap" else
+                         "Procurando o chat do jogo\u2026 deixe o jogo aberto com o chat "
                          "vis\u00edvel (linhas \u201cVoc\u00ea obteve\u2026\u201d)."
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
@@ -3594,9 +3692,12 @@ def main():
 
         def menu_principal(self, e):
             menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="Detectar o chat automaticamente", command=self.detectar_chat)
-            menu.add_command(label="Selecionar \u00e1rea do chat na m\u00e3o\u2026", command=self.selecionar_regiao)
-            menu.add_command(label="Ver leitura / ajustar padr\u00f5es\u2026", command=self.abrir_debug)
+            if self.cfg.get("fonte_leitura") == "npcap":
+                menu.add_command(label="Leitura: Npcap (rede)", state="disabled")
+            else:
+                menu.add_command(label="Detectar o chat automaticamente", command=self.detectar_chat)
+                menu.add_command(label="Selecionar \u00e1rea do chat na m\u00e3o\u2026", command=self.selecionar_regiao)
+                menu.add_command(label="Ver leitura / ajustar padr\u00f5es\u2026", command=self.abrir_debug)
             menu.add_separator()
             menu.add_command(label="Adicionar monstro\u2026", command=self.adicionar)
             sub = tk.Menu(menu, tearoff=0)
@@ -3640,10 +3741,11 @@ def main():
             menu.add_command(label=f"Procurar atualiza\u00e7\u00e3o (vers\u00e3o {VERSAO})\u2026",
                              command=self.procurar_atualizacao)
             menu.add_separator()
-            menu.add_checkbutton(label="Captura DirectX (use se o chat n\u00e3o aparecer na leitura)",
-                                 onvalue=True, offvalue=False,
-                                 variable=tk.BooleanVar(value=self.cfg.get("captura") == "directx"),
-                                 command=self.alternar_captura)
+            if self.cfg.get("fonte_leitura") != "npcap":
+                menu.add_checkbutton(label="Captura DirectX (use se o chat n\u00e3o aparecer na leitura)",
+                                     onvalue=True, offvalue=False,
+                                     variable=tk.BooleanVar(value=self.cfg.get("captura") == "directx"),
+                                     command=self.alternar_captura)
             menu.add_command(label="Sair", command=self.sair)
             self.abrir_menu(menu, e)
 
@@ -3925,7 +4027,7 @@ def main():
                     pass
                 destino = os.path.join(desk, "ContadorDeAlmas-relatorio.zip")
                 with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
-                    for nome in ("diagnostico.log", "diagnostico.log.old", "config.json",
+                    for nome in ("diagnostico.log", "diagnostico.log.old", "pet_overlay.log", "config.json",
                                  "captura_original.png", "captura_tratada.png",
                                  "tela_monitor1.jpg", "tela_monitor2.jpg", "tela_monitor3.jpg"):
                         cam = os.path.join(BASE, nome)
@@ -4150,16 +4252,32 @@ def main():
                         self.ao_ler([t for t, _, _ in dado[0]], dado[0], dado[1])
                     elif tipo == "repetido":
                         pass
+                    elif tipo == "alma_rede":
+                        self.ao_alma_rede(*dado)
+                    elif tipo == "estado_rede":
+                        if self.prog.sincronizar_pets(*dado, self.leitor.nomes):
+                            self.prog.salvar()
+                            self.render_em_breve()
+                    elif tipo == "conexao_rede":
+                        self.rede_conectada = bool(dado)
+                        if not dado:
+                            self.rede_pronta = False
+                        self.atualizar_status()
+                    elif tipo == "rede_pronta":
+                        self.rede_pronta = True
+                        self.atualizar_status()
                     elif tipo == "motor":
                         registrar("MOTOR: " + str(dado))
                         self.motor_nome = dado
                         self.atualizar_status()
                     elif tipo == "erro":
-                        registrar("ERRO OCR: " + str(dado))
+                        registrar("ERRO LEITURA: " + str(dado))
                         self.erro = dado
                         self.atualizar_status()
                         self.dialogo(messagebox.showerror, APP_NOME, dado +
-                                     "\n\nVerifique se o Tesseract est\u00e1 instalado (veja o README, se\u00e7\u00e3o Problemas).")
+                                     ("\n\nVerifique se o Npcap está instalado."
+                                      if self.cfg.get("fonte_leitura") == "npcap" else
+                                      "\n\nVerifique se o Tesseract está instalado."))
                     elif tipo == "aviso":
                         agora_av = time.time()
                         if agora_av - getattr(self, "_ult_aviso", 0) > 10 or \
@@ -4187,6 +4305,21 @@ def main():
             except queue.Empty:
                 pass
             self.root.after(100, self.consumir)
+
+        def ao_alma_rede(self, pet_id, quantidade):
+            try:
+                quantidade = int(quantidade)
+                if not 1 <= quantidade <= 100:
+                    return
+                nome = self.leitor.nomes.get(str(pet_id), f"Alma #{pet_id}")
+                monstro = self.prog.somar_pet(pet_id, nome, quantidade)
+                self.prog.salvar()
+                self.destaque[normalizar(monstro["nome"])] = time.time()
+                self._rolar_para = monstro
+                registrar(f"NPCAP: {nome} x{quantidade} (pet {pet_id})")
+                self.render_em_breve()
+            except Exception as e:
+                registrar(f"ERRO ao registrar alma da rede: {e}")
 
         def ao_ler(self, linhas, itens=None, t0=None):
             self.ultimas_linhas = linhas
