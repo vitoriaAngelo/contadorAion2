@@ -63,6 +63,9 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
+O nome do personagem identificado pelo Npcap aparece ao lado do título e é atualizado
+ao trocar de personagem. Se o contador abrir depois do login, mostra o último nome
+salvo até receber uma nova identificação do jogo.
 
 Botão ◆ no topo: aba **OD** — os números podem ser ajustados manualmente. A leitura de rede desta versão cobre almas de pets, ainda não OD.
 

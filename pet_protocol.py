@@ -48,6 +48,7 @@ MAX_LEVEL = len(REQ)
 
 OP_STATE = b"\x00\x90"
 OP_GAIN = b"\x0d\x90"
+OP_NICKNAME = b"\x33\x36"
 OP_LZ4 = b"\xff\xff"
 
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
@@ -55,7 +56,7 @@ OP_LZ4 = b"\xff\xff"
 KNOWN_OPS = {bytes.fromhex(h) for h in (
     "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8456 "
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
-    "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090").split()}
+    "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336").split()}
 
 
 def log(*parts):
@@ -103,6 +104,8 @@ def split_frames(buf):
 
 def frame_op(frame):
     _, j = read_varint(frame, 0)
+    if j < len(frame) and 0xF0 <= frame[j] < 0xFF:
+        j += 1
     return frame[j:j + 2]
 
 
@@ -155,6 +158,8 @@ def decompress_lz4_block(data, expected_size):
 def unpack(frame):
     """Yields (opcode, payload), expanding compressed bundles."""
     _, j = read_varint(frame, 0)
+    if j < len(frame) and 0xF0 <= frame[j] < 0xFF:
+        j += 1
     op, body = frame[j:j + 2], frame[j + 2:]
     if op != OP_LZ4:
         yield op, body
@@ -197,6 +202,30 @@ def parse_gain(payload):
             for i in range(count)]
 
 
+def parse_nickname(payload):
+    """Nome do personagem local em 0x3336; ignora outras formas desse opcode."""
+    try:
+        entity, i = read_varint(payload, 0)
+        if not 0 < entity < 1_000_000 or i + 5 >= len(payload):
+            return None
+        i += 5  # preambulo da ficha do proprio personagem
+        tamanho, i = read_varint(payload, i)
+        if not 1 <= tamanho <= 71 or i + tamanho + 3 > len(payload):
+            return None
+        nome = payload[i:i + tamanho].decode("utf-8")
+        if not (1 <= len(nome) <= 40 and any(c.isalpha() for c in nome) and
+                all(c.isalnum() or c in "_-" for c in nome)):
+            return None
+        i += tamanho
+        servidor = struct.unpack_from("<H", payload, i)[0]
+        classe = payload[i + 2]
+        if not servidor or classe > 32:
+            return None
+        return nome
+    except (IndexError, UnicodeDecodeError, ValueError, struct.error):
+        return None
+
+
 def find_sync(buf, need=8):
     """Offset where `need` consecutive frames with known opcodes start
     (or known frames that end exactly at the end of the buffer)."""
@@ -209,7 +238,8 @@ def find_sync(buf, need=8):
             except IndexError:
                 break
             total = length - 4 + (j - i)
-            if total < (j - i) + 2 or buf[j:j + 2] not in KNOWN_OPS:
+            op_off = j + (1 if j < n and 0xF0 <= buf[j] < 0xFF else 0)
+            if total < (op_off - i) + 2 or buf[op_off:op_off + 2] not in KNOWN_OPS:
                 good = -1
                 break
             if i + total > n:
@@ -274,7 +304,7 @@ class Stream:
 
 
 class Decoder:
-    """Raw TCP segments -> events ("state", levels, points) / ("gain", pet_id, amount)."""
+    """Raw TCP segments -> soul, collection and own-character events."""
 
     def __init__(self, emit):
         self.emit = emit
@@ -298,6 +328,10 @@ class Decoder:
                             self.emit(("state",) + parse_state(payload))
                         except Exception as e:
                             log("state parse:", type(e).__name__)
+                    elif op == OP_NICKNAME:
+                        nome = parse_nickname(payload)
+                        if nome:
+                            self.emit(("nickname", nome))
             except Exception as e:
                 log("frame:", type(e).__name__)
 

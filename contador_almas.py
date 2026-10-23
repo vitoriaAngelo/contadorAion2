@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.4"
+VERSAO = "1.9.5"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2219,6 +2219,8 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("rede_pronta", True))
                 elif evento[0] == "state" and self.ativo.is_set():
                     self.fila.put(("estado_rede", evento[1:]))
+                elif evento[0] == "nickname":
+                    self.fila.put(("personagem_rede", evento[1]))
 
             pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
@@ -2277,6 +2279,7 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
+            self.personagem = self.cfg.get("personagem", "")
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
@@ -2651,6 +2654,11 @@ def main():
                          fg=COR["alma"], bg=COR["fundo"], font=self.f_titulo)
             t.pack(side="left")
             self.lbl_titulo = t
+            self.lbl_personagem = tk.Label(h, text="", fg=COR["suave"],
+                                           bg=COR["fundo"], font=self.f_peq)
+            self.lbl_personagem.pack(side="left", padx=(self.px(5), 0))
+            self.dica(self.lbl_personagem, lambda: self.personagem or "Personagem ainda não identificado")
+            self._atualizar_personagem()
             self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
             # aparece so quando tem versao nova no GitHub
@@ -2744,6 +2752,12 @@ def main():
                 txt, cor = "", COR["suave"]
             if self.lbl_status.cget("text") != txt or self.lbl_status.cget("fg") != cor:
                 self.lbl_status.configure(text=txt, fg=cor)
+
+        def _atualizar_personagem(self):
+            nome = self.personagem
+            texto = "· " + (nome[:16] + "…" if len(nome) > 17 else nome) if nome else ""
+            if self.lbl_personagem.cget("text") != texto:
+                self.lbl_personagem.configure(text=texto)
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -4452,6 +4466,13 @@ def main():
                         registrar(f"NPCAP: progresso sincronizado ({len(dado[0])} níveis, "
                                   f"{len(dado[1])} contadores)")
                         self.atualizar_status()
+                    elif tipo == "personagem_rede":
+                        if dado != self.personagem:
+                            self.personagem = dado
+                            self.cfg["personagem"] = dado
+                            self.salvar_cfg()
+                            self._atualizar_personagem()
+                            registrar("NPCAP: personagem identificado")
                     elif tipo == "conexao_rede":
                         self.rede_conectada = bool(dado)
                         if not dado:

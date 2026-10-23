@@ -24,6 +24,22 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_nome_do_proprio_personagem_no_login(self):
+        nome = 'Vitória'.encode('utf-8')
+        payload = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
+                   varint(len(nome)) + nome + struct.pack('<HB', 11002, 14))
+        eventos = []
+        pp.Decoder(eventos.append).segment('jogo', 1000,
+                                            frame(pp.OP_NICKNAME, payload))
+        self.assertEqual(eventos, [('ready',), ('nickname', 'Vitória')])
+        com_flag = varint(len(payload) + 7) + b'\xf0' + pp.OP_NICKNAME + payload
+        outros = []
+        pp.Decoder(outros.append).segment('jogo', 2000, com_flag)
+        self.assertEqual(outros, [('ready',), ('nickname', 'Vitória')])
+        self.assertIsNone(pp.parse_nickname(payload[:-2]))
+        self.assertIsNone(pp.parse_nickname(varint(2445) + b'\x00' * 5 +
+                                             b'\x05A B C' + struct.pack('<HB', 11002, 14)))
+
     def test_varias_almas_no_mesmo_evento_e_retransmissao(self):
         ganhos = []
         dec = pp.Decoder(ganhos.append)
