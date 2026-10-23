@@ -3636,9 +3636,9 @@ def main():
                 if not self.prog.monstros:
                     vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap…"
                              if self.cfg.get("fonte_leitura") == "npcap" else
-                             "Procurando o chat do jogo… deixe o chat visível.")
-                             if not self.cfg.get("regiao") else
-                             "Chat encontrado. Aguardando a primeira alma…")
+                             ("Procurando o chat do jogo… deixe o chat visível."
+                              if not self.cfg.get("regiao") else
+                              "Chat encontrado. Aguardando a primeira alma…"))
                     tk.Label(self.corpo, text=vazio, fg=COR["suave"],
                              bg=COR["fundo"], font=self.f_peq,
                              wraplength=self.px(240), justify="left").pack(
