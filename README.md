@@ -73,14 +73,14 @@ Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
 três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
 personagem, os valores conhecidos são os últimos salvos no computador; após a
 sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
-Logo abaixo, o **Radar de mascotes** lista os monstros que o jogo anunciou por
+Na tela inicial **Almas**, abaixo dos farms, o **Radar de mascotes** lista os monstros que o jogo anunciou por
 perto e que dão almas ainda pendentes, com o total restante por pet. Quando o
 jogo informou sua posição há menos de 10 segundos, mostra direção cardinal e
 distância aproximada. Se a posição envelhecer, oculta esses números até você
 usar uma habilidade ou mudar de área. O radar só mostra monstros recebidos
 pela captura de rede; ele não prevê pontos de surgimento nem cobre instâncias
 que não enviem esses eventos.
-A aba inicial **Almas** mostra somente os bichos em acompanhamento. A
+A lista de farms na aba inicial **Almas** mostra somente os bichos em acompanhamento. A
 sincronização do catálogo não coloca todos eles na lista de farm.
 
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).

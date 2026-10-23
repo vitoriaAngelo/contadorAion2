@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.7"
+VERSAO = "1.9.8"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2910,6 +2910,8 @@ def main():
             else:
                 for m in visiveis:
                     self._ui[id(m)] = self._linha(m, meta)
+            if self.cfg.get("aba", "almas") == "almas":
+                self._montar_radar()
             self._lbl_evento = None
             if mostra_rodape:
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -3114,6 +3116,9 @@ def main():
                                          bg=COR["fundo"], font=self.f_peq,
                                          justify="left", anchor="w")
             self._pets_resumo.pack(fill="x", pady=(self.px(3), 0))
+            self._atualizar_pets()
+
+        def _montar_radar(self):
             radar = tk.Frame(self.corpo, bg=COR["painel"],
                              highlightthickness=1, highlightbackground=COR["barra"])
             radar.pack(fill="x", pady=(self.px(7), 0))
@@ -3137,7 +3142,7 @@ def main():
                 detalhe.pack(fill="x")
                 rows.append((row, linha, detalhe))
             self._radar_ui = (radar, status, rows)
-            self._atualizar_pets()
+            self._atualizar_radar()
 
         def _imagem_estrelas_pet(self, andamento):
             from PIL import Image, ImageTk
@@ -3199,12 +3204,11 @@ def main():
             resumo = f"{len(visiveis)}/{len(linhas)} pets · {estado}"
             if self._pets_resumo.cget("text") != resumo:
                 self._pets_resumo.configure(text=resumo)
-            self._atualizar_radar(linhas)
 
         def _radar_pulso(self):
-            if self.cfg.get("aba") == "pets":
+            if self.cfg.get("aba", "almas") == "almas":
                 self._atualizar_radar()
-            self.root.after(1000, self._radar_pulso)
+            self.root.after(500, self._radar_pulso)
 
         def _ao_radar_rede(self, evento):
             tipo = evento[0]
@@ -3229,19 +3233,20 @@ def main():
 
         def _atualizar_radar(self, catalogo=None):
             ui = getattr(self, "_radar_ui", None)
-            if self.cfg.get("aba") != "pets" or not ui or not ui[0].winfo_exists():
+            if self.cfg.get("aba", "almas") != "almas" or not ui or not ui[0].winfo_exists():
                 return
             if catalogo is None:
                 catalogo = self.prog.catalogo_pets(self.nomes_pets,
                                                   self.cfg.get("tiers", [5, 25, 75]))
             agora = time.monotonic()
-            especies = getattr(self.leitor, "radar_mascotes", {})
+            especies = getattr(getattr(self, "leitor", None), "radar_mascotes", {})
             linhas = linhas_radar(self.radar_mobs, self.radar_posicao, catalogo,
-                                  especies, agora) if self.rede_sincronizada else []
-            if not self.rede_sincronizada:
-                mensagem = "Entre no personagem para confirmar as almas restantes."
-            elif not especies:
+                                  especies, agora)
+            if not especies and hasattr(self, "leitor"):
                 mensagem = "Catálogo do radar ausente. Atualize o aplicativo."
+            elif not self.rede_sincronizada:
+                mensagem = ("Progresso salvo; entre no personagem para confirmar."
+                            if linhas else "Aguardando monstros próximos; entre no personagem para sincronizar.")
             elif self.radar_posicao is None:
                 mensagem = "Aguardando sua posição no jogo."
             elif agora - self.radar_posicao[2] > 10:
