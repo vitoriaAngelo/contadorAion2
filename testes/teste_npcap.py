@@ -90,6 +90,28 @@ class LeituraNpcap(unittest.TestCase):
             p.somar_pet(1036, 'Lupyllini', 1)
             self.assertEqual(p.monstros[-1]['qtd'], 25)
 
+    def test_catalogo_lista_todos_e_distingue_valor_salvo_do_jogo(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            caminho = os.path.join(pasta, 'progresso.json')
+            nomes = {'1142': 'Aberração Deformada', '1036': 'Lupyllini',
+                     '1202': 'Lupyllini Putrefato'}
+            p = ca.Progresso(caminho)
+            self.assertEqual(len(p.catalogo_pets(nomes)), 3)
+            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1202')[2:],
+                             ('—', '—', 'desconhecido'))
+            p.somar_pet(1142, nomes['1142'], 19)
+            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')[2:],
+                             ('Nv.1 14/25', '86', 'salvo'))
+            p.sincronizar_pets({1142: 2}, {1142: 44}, nomes)
+            p.salvar()
+            p = ca.Progresso(caminho)
+            rows = {r[0]: r for r in p.catalogo_pets(nomes)}
+            self.assertEqual(rows['1142'][2:], ('Nv.2 44/75', '31', 'jogo'))
+            self.assertEqual(rows['1202'][2:], ('Nv.0 0/5', '105', 'jogo'))
+            p.somar_pet(1142, nomes['1142'], 2)
+            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')[2:],
+                             ('Nv.2 46/75', '29', 'jogo'))
+
     def test_atualizador_instala_arquivos_novos_sem_apagar_progresso(self):
         pasta_codigo = os.path.dirname(os.path.dirname(__file__))
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:

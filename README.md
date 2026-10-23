@@ -65,6 +65,11 @@ continua contando; clique no ícone dele para voltar) · ✕ fechar.
 
 Botão ◆ no topo: aba **OD** — os números podem ser ajustados manualmente. A leitura de rede desta versão cobre almas de pets, ainda não OD.
 
+Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
+almas na estrela atual e quantas faltam para completar. Antes de entrar no
+personagem, os valores conhecidos são os últimos salvos no computador; após a
+sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
+
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
 
 Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho). Botão ♪: liga/desliga o som 1 minuto antes dos eventos (riscado = mudo).

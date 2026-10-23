@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.2"
+VERSAO = "1.9.3"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1367,6 +1367,9 @@ class Progresso:
         self.pets_ocultos = ({str(k): int(v) for k, v in ocultos.items()}
                              if isinstance(ocultos, dict) else
                              {str(k): 0 for k in ocultos})
+        self.pet_estado = {str(k): int(v) for k, v in
+                           (dados.get("pet_estado") or {}).items()}
+        self.pet_estado_em = dados.get("pet_estado_em")
         self.od = {t: int((dados.get("od") or {}).get(t, 0)) for t in OD_TIPOS}
         # almas por dia do jogo (o dia vira no reset das 04:00)
         self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
@@ -1385,7 +1388,9 @@ class Progresso:
     def salvar(self):
         try:
             salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias,
-                                      "od": self.od, "pets_ocultos": self.pets_ocultos})
+                                      "od": self.od, "pets_ocultos": self.pets_ocultos,
+                                      "pet_estado": self.pet_estado,
+                                      "pet_estado_em": self.pet_estado_em})
         except Exception:
             pass
 
@@ -1480,6 +1485,8 @@ class Progresso:
             self.monstros.append(m)
         m["pet_id"] = pet_id
         m["qtd"] += n
+        if self.pet_estado_em is not None:
+            self.pet_estado[pet_id] = min(105, self.pet_estado.get(pet_id, m["qtd"] - n) + n)
         m["atualizado"] = m["ultima_alma"] = time.time()
         self._anotar_dia(m["nome"], n)
         return m
@@ -1487,12 +1494,14 @@ class Progresso:
     def sincronizar_pets(self, levels, points, nomes):
         """Importa o progresso atual do jogo sem contar o login como drop novo."""
         alterou = False
+        estado = {}
         for raw_id in levels.keys() | points.keys():
             pet_id = str(raw_id)
             nivel = max(0, min(int(levels.get(raw_id, 0)), 3))
             total = sum((5, 25, 75)[:nivel]) + (0 if nivel == 3 else
                                                      min(max(0, int(points.get(raw_id, 0))),
                                                          (5, 25, 75)[nivel]))
+            estado[pet_id] = total
             if pet_id in self.pets_ocultos:
                 if self.pets_ocultos[pet_id] != total:
                     self.pets_ocultos[pet_id] = total
@@ -1514,7 +1523,39 @@ class Progresso:
                 m["qtd"] = total
                 m["pet_id"] = pet_id
                 alterou = True
+        novo_estado = {pet_id: estado.get(pet_id, 0) for pet_id in nomes}
+        novo_estado.update(estado)
+        alterou = alterou or novo_estado != self.pet_estado
+        self.pet_estado = novo_estado
+        self.pet_estado_em = time.time()
         return alterou
+
+    def catalogo_pets(self, nomes, tiers=(5, 25, 75)):
+        """Todas as entradas conhecidas, com valor confirmado ou salvo localmente."""
+        ids = set(nomes) | set(self.pet_estado) | set(self.pets_ocultos)
+        salvos = {str(m["pet_id"]): m for m in self.monstros if m.get("pet_id")}
+        ids.update(salvos)
+        linhas = []
+        for pet_id in ids:
+            nome = nomes.get(pet_id) or salvos.get(pet_id, {}).get("nome") or f"Pet #{pet_id}"
+            if pet_id in self.pet_estado:
+                total, origem = self.pet_estado[pet_id], "jogo"
+            elif pet_id in salvos:
+                total, origem = salvos[pet_id]["qtd"], "salvo"
+            elif pet_id in self.pets_ocultos:
+                total, origem = self.pets_ocultos[pet_id], "salvo"
+            else:
+                total, origem = None, "desconhecido"
+            if total is None:
+                andamento, falta = "—", "—"
+            else:
+                estrela, faltam = tier_atual(total, tiers)
+                andamento = (f"Nv.{len(tiers)} MAX" if total >= sum(tiers) else
+                             f"Nv.{estrela - 1} "
+                             f"{tiers[estrela - 1] - faltam}/{tiers[estrela - 1]}")
+                falta = str(max(0, sum(tiers) - total))
+            linhas.append((pet_id, nome, andamento, falta, origem))
+        return sorted(linhas, key=lambda x: normalizar(x[1]))
 
     def _anotar_dia(self, nome, n):
         import datetime as dt
@@ -2232,6 +2273,7 @@ def main():
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
             self.prog = Progresso(ARQ_DADOS)
+            self.nomes_pets = carregar_json(os.path.join(BASE, "pet_nomes_npcap.json"), {})
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
@@ -2630,6 +2672,10 @@ def main():
                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
                                    else "Contador de OD (OD, Fino, Puro, Radiante)")
             self.b_od.pack(side="right")
+            self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
+                                     lambda e: self.alternar_aba("pets"),
+                                     dica="Lista de todos os pets e progresso de almas")
+            self.b_pets.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher(),
                                          dica=lambda: "Mostrar todos os bichos" if self.cfg.get("recolhido")
                                          else "Recolher: mostrar s\u00f3 os 3 \u00faltimos que pegaram alma")
@@ -2739,7 +2785,7 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            if self.cfg.get("aba") in ("info", "od"):
+            if self.cfg.get("aba") in ("info", "od", "pets"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"))
@@ -2748,6 +2794,8 @@ def main():
                     self._atualizar_info()
                 elif self.cfg.get("aba") == "od":
                     self._atualizar_od()
+                elif self.cfg.get("aba") == "pets":
+                    self._atualizar_pets()
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
@@ -2774,13 +2822,15 @@ def main():
             self._rolagem = None
             self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
-            if self.cfg.get("aba") in ("info", "od"):
+            if self.cfg.get("aba") in ("info", "od", "pets"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
                 tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
                 if self.cfg.get("aba") == "od":
                     self._montar_od()
+                elif self.cfg.get("aba") == "pets":
+                    self._montar_pets()
                 else:
                     self._montar_info()
             elif len(visiveis) > limite:
@@ -2883,7 +2933,8 @@ def main():
 
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
-            return {"info": "\u25f7 Info", "od": "\u25c6 OD"}.get(self.cfg.get("aba"), "\u2726 Almas")
+            return {"info": "\u25f7 Info", "od": "\u25c6 OD",
+                    "pets": "\u2661 Pets"}.get(self.cfg.get("aba"), "\u2726 Almas")
 
         def alternar_aba(self, destino="info"):
             """Botao da aba: abre a aba; clicando de novo volta para as almas."""
@@ -2896,12 +2947,13 @@ def main():
             self.lbl_titulo.configure(text=self._titulo_aba())
             self.b_aba.configure(text="\u2726" if aba == "info" else "\u25f7")
             self.b_od.configure(text="\u2726" if aba == "od" else "\u25c6")
+            self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
 
         def _medir_largura_almas(self):
             try:
                 self.corpo.update_idletasks()
-                if self.cfg.get("aba") != "info":
+                if self.cfg.get("aba") == "almas":
                     self._larg_almas = self.corpo.winfo_reqwidth()
                     chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                     larguras = self.cfg.setdefault("larguras", {})
@@ -2910,6 +2962,77 @@ def main():
                         self.salvar_cfg()
             except Exception:
                 pass
+
+        # ---------------- catálogo completo de pets ----------------
+        def _montar_pets(self):
+            from tkinter import ttk
+            topo = tk.Frame(self.corpo, bg=COR["fundo"])
+            topo.pack(fill="x", pady=(0, self.px(4)))
+            tk.Label(topo, text="Buscar", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="left", padx=(0, self.px(5)))
+            self._pets_busca = tk.StringVar()
+            busca = tk.Entry(topo, textvariable=self._pets_busca, font=self.f_nome,
+                             fg=COR["texto"], bg=COR["painel"],
+                             insertbackground=COR["texto"], relief="flat")
+            busca.pack(side="left", fill="x", expand=True)
+            busca.bind("<KeyRelease>", lambda e: self._atualizar_pets())
+
+            estilo = ttk.Style(self.root)
+            estilo.configure("Pets.Treeview", background=COR["painel"],
+                             fieldbackground=COR["painel"], foreground=COR["texto"],
+                             rowheight=self.px(23), font=self.f_peq, borderwidth=0)
+            estilo.configure("Pets.Treeview.Heading", background=COR["barra"],
+                             foreground=COR["texto"], font=self.f_peq)
+            estilo.map("Pets.Treeview", background=[("selected", COR["destaque"])],
+                        foreground=[("selected", COR["texto"])])
+            caixa = tk.Frame(self.corpo, bg=COR["fundo"])
+            caixa.pack(fill="both", expand=True)
+            tree = ttk.Treeview(caixa, columns=("pet", "almas", "faltam"),
+                                show="headings", height=11, style="Pets.Treeview",
+                                selectmode="browse")
+            for chave, titulo, largura in (("pet", "Pet", 205),
+                                            ("almas", "Almas", 95),
+                                            ("faltam", "Faltam", 55)):
+                tree.heading(chave, text=titulo)
+                tree.column(chave, width=self.px(largura),
+                            minwidth=self.px(45), stretch=chave == "pet",
+                            anchor="w" if chave == "pet" else "center")
+            barra = ttk.Scrollbar(caixa, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=barra.set)
+            tree.pack(side="left", fill="both", expand=True)
+            barra.pack(side="right", fill="y")
+            self._pets_tree = tree
+            self._pets_resumo = tk.Label(self.corpo, fg=COR["suave"],
+                                         bg=COR["fundo"], font=self.f_peq,
+                                         justify="left", anchor="w")
+            self._pets_resumo.pack(fill="x", pady=(self.px(3), 0))
+            self._atualizar_pets()
+
+        def _atualizar_pets(self):
+            tree = getattr(self, "_pets_tree", None)
+            if self.cfg.get("aba") != "pets" or tree is None or not tree.winfo_exists():
+                return
+            linhas = self.prog.catalogo_pets(self.nomes_pets,
+                                            self.cfg.get("tiers", [5, 25, 75]))
+            busca = normalizar(self._pets_busca.get()).replace(" ", "")
+            visiveis = [r for r in linhas if busca in normalizar(r[1]).replace(" ", "")
+                        or busca in r[0]]
+            ids = tuple(r[0] for r in visiveis)
+            if tuple(tree.get_children()) != ids:
+                tree.delete(*tree.get_children())
+                for pet_id, nome, almas, faltam, origem in visiveis:
+                    tree.insert("", "end", iid=pet_id,
+                                values=(nome, almas, "✓" if faltam == "0" else faltam))
+            else:
+                for pet_id, nome, almas, faltam, origem in visiveis:
+                    valores = (nome, almas, "✓" if faltam == "0" else faltam)
+                    if tuple(tree.item(pet_id, "values")) != valores:
+                        tree.item(pet_id, values=valores)
+            estado = ("Sincronizado com o jogo" if self.rede_sincronizada else
+                      "Valores salvos; entre no personagem para confirmar")
+            resumo = f"{len(visiveis)}/{len(linhas)} pets · {estado}"
+            if self._pets_resumo.cget("text") != resumo:
+                self._pets_resumo.configure(text=resumo)
 
         def _montar_info(self):
             bg = COR["painel"]
@@ -4280,8 +4403,9 @@ def main():
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
                     elif tipo == "estado_rede":
-                        if self.prog.sincronizar_pets(*dado, self.leitor.nomes):
-                            self.prog.salvar()
+                        mudou = self.prog.sincronizar_pets(*dado, self.leitor.nomes)
+                        self.prog.salvar()  # inclui a data da fotografia, mesmo sem mudanças
+                        if mudou:
                             self.render_em_breve()
                         self.rede_sincronizada = True
                         registrar(f"NPCAP: progresso sincronizado ({len(dado[0])} níveis, "
