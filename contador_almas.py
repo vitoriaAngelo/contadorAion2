@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.3"
+VERSAO = "1.9.4"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1384,6 +1384,18 @@ class Progresso:
                     m["apelidos"].append(normalizar(m["nome"]))
                     m["nome"] = novo
                     m.pop("votos", None)
+        # Versões anteriores colocavam o catálogo inteiro na aba de farm.
+        # Essas entradas não foram escolhidas nem receberam drop durante o uso.
+        migrou_catalogo = False
+        for m in list(self.monstros):
+            if (m.get("pet_id") and not m.get("atualizado") and
+                    not m.get("ultima_alma")):
+                pet_id = str(m["pet_id"])
+                self.pet_estado.setdefault(pet_id, int(m["qtd"]))
+                self.monstros.remove(m)
+                migrou_catalogo = True
+        if migrou_catalogo:
+            self.salvar()
 
     def salvar(self):
         try:
@@ -1485,7 +1497,7 @@ class Progresso:
             self.monstros.append(m)
         m["pet_id"] = pet_id
         m["qtd"] += n
-        if self.pet_estado_em is not None:
+        if self.pet_estado_em is not None or pet_id in self.pet_estado:
             self.pet_estado[pet_id] = min(105, self.pet_estado.get(pet_id, m["qtd"] - n) + n)
         m["atualizado"] = m["ultima_alma"] = time.time()
         self._anotar_dia(m["nome"], n)
@@ -1512,11 +1524,6 @@ class Progresso:
             if m is None and nome:
                 m = next((x for x in self.monstros if not x.get("pet_id")
                           and normalizar(x["nome"]) == normalizar(nome)), None)
-            if m is None and nome and total > 0:
-                m = {"nome": nome, "qtd": 0, "apelidos": [], "atualizado": 0,
-                     "pet_id": pet_id}
-                self.monstros.append(m)
-                alterou = True
             if m is None:
                 continue
             if m["qtd"] != total or m.get("pet_id") != pet_id:
@@ -1539,7 +1546,8 @@ class Progresso:
         for pet_id in ids:
             nome = nomes.get(pet_id) or salvos.get(pet_id, {}).get("nome") or f"Pet #{pet_id}"
             if pet_id in self.pet_estado:
-                total, origem = self.pet_estado[pet_id], "jogo"
+                total = self.pet_estado[pet_id]
+                origem = "jogo" if self.pet_estado_em is not None else "salvo"
             elif pet_id in salvos:
                 total, origem = salvos[pet_id]["qtd"], "salvo"
             elif pet_id in self.pets_ocultos:
@@ -2327,8 +2335,11 @@ def main():
             self.f_peq = self.fontes["peq"]
 
             self._montar_cabecalho()
-            self.corpo = tk.Frame(self.root, bg=COR["fundo"])
-            self.corpo.pack(fill="both", expand=True, padx=self.px(8), pady=(0, self.px(8)))
+            self.area_abas = tk.Frame(self.root, bg=COR["fundo"])
+            self.area_abas.pack(fill="both", expand=True, padx=self.px(8), pady=(0, self.px(8)))
+            self._abas_visuais = {}
+            self.corpo = tk.Frame(self.area_abas, bg=COR["fundo"])
+            self.corpo.pack(fill="both", expand=True)
             self.render()
 
             self.leitor = (LeitorRede(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
@@ -2788,7 +2799,9 @@ def main():
             if self.cfg.get("aba") in ("info", "od", "pets"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
-                         bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"))
+                         bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"),
+                         bool(self.cfg.get("compacto")), self.cfg.get("tamanho_letra"),
+                         tuple(self.cfg.get("tiers", [5, 25, 75])), meta, self.cfg.get("max_linhas"))
             if estrutura == getattr(self, "_estrutura", None):
                 if self.cfg.get("aba") == "info":
                     self._atualizar_info()
@@ -2799,7 +2812,9 @@ def main():
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
-                    if w:
+                    if w and (w.get("_ultima_qtd") != m["qtd"] or
+                              w.get("_ultimo_nome") != m["nome"] or
+                              w.get("_realce_ativo")):
                         self._atualizar_linha(m, meta, w)
                 if getattr(self, "_lbl_rodape", None) and self._lbl_rodape.cget("text") != rodape:
                     self._lbl_rodape.configure(text=rodape)
@@ -2941,7 +2956,30 @@ def main():
             if getattr(self, "editando", None) is not None:
                 return
             self._medir_largura_almas()
-            self.cfg["aba"] = "almas" if self.cfg.get("aba") == destino else destino
+            atual = self.cfg.get("aba", "almas")
+            proxima = "almas" if atual == destino else destino
+            campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
+                      "_od_ui", "_lbl_crono", "_b_crono", "_pets_tree",
+                      "_pets_resumo", "_pets_busca", "_lbl_evento",
+                      "_lbl_relogio", "_ev_cache", "_ev_quando")
+            self._abas_visuais[atual] = {
+                "corpo": self.corpo,
+                **{campo: getattr(self, campo, None) for campo in campos},
+            }
+            for evento in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                self.root.unbind_all(evento)
+            self.corpo.pack_forget()
+            salva = self._abas_visuais.get(proxima)
+            if salva:
+                self.corpo = salva["corpo"]
+                for campo in campos:
+                    setattr(self, campo, salva[campo])
+            else:
+                self.corpo = tk.Frame(self.area_abas, bg=COR["fundo"])
+                for campo in campos:
+                    setattr(self, campo, {} if campo == "_ui" else None)
+            self.corpo.pack(fill="both", expand=True)
+            self.cfg["aba"] = proxima
             self.salvar_cfg()
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
@@ -3403,6 +3441,9 @@ def main():
                 w["cont"].configure(fg=cor_cont)
             if w["nome"].cget("fg") != cor_nome:
                 w["nome"].configure(fg=cor_nome)
+            w["_ultima_qtd"] = m["qtd"]
+            w["_ultimo_nome"] = m["nome"]
+            w["_realce_ativo"] = resta > 0
             # nome comprido: cortado com '...'; quando ganha alma, desliza
             # para mostrar o nome inteiro
             if w.get("nome_txt") != m["nome"]:

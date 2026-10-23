@@ -1,3 +1,4 @@
+import json
 import os
 import struct
 import sys
@@ -74,11 +75,13 @@ class LeituraNpcap(unittest.TestCase):
             caminho = os.path.join(pasta, 'progresso.json')
             p = ca.Progresso(caminho)
             nomes = {'1036': 'Lupyllini', '1202': 'Lupyllini Putrefato'}
+            p.somar_pet(1036, 'Lupyllini', 1)
             self.assertTrue(p.sincronizar_pets({1036: 1, 1202: 2},
                                                {1036: 19, 1202: 7}, nomes))
             self.assertEqual({m['pet_id']: m['qtd'] for m in p.monstros},
-                             {'1036': 24, '1202': 37})
-            self.assertEqual(p.dias, {})
+                             {'1036': 24})
+            self.assertEqual(sum(sum(v.values()) for v in p.dias.values()), 1)
+            self.assertEqual(len(p.catalogo_pets(nomes)), 2)
             self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
                                                 {1036: 19, 1202: 7}, nomes))
             p.remover(next(m for m in p.monstros if m['pet_id'] == '1036'))
@@ -86,9 +89,26 @@ class LeituraNpcap(unittest.TestCase):
             p = ca.Progresso(caminho)
             self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
                                                 {1036: 19, 1202: 7}, nomes))
-            self.assertEqual([m['pet_id'] for m in p.monstros], ['1202'])
+            self.assertEqual(p.monstros, [])
             p.somar_pet(1036, 'Lupyllini', 1)
             self.assertEqual(p.monstros[-1]['qtd'], 25)
+
+    def test_catalogo_antigo_sai_da_aba_de_farm_sem_perder_os_valores(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            caminho = os.path.join(pasta, 'progresso.json')
+            with open(caminho, 'w', encoding='utf-8') as f:
+                json.dump({'monstros': [
+                    {'pet_id': '1036', 'nome': 'Lupyllini', 'qtd': 24,
+                     'apelidos': [], 'atualizado': 0},
+                    {'pet_id': '1142', 'nome': 'Aberração Deformada', 'qtd': 74,
+                     'apelidos': [], 'atualizado': 123}],
+                }, f)
+            p = ca.Progresso(caminho)
+            self.assertEqual([m['pet_id'] for m in p.monstros], ['1142'])
+            linhas = {r[0]: r for r in p.catalogo_pets(
+                {'1036': 'Lupyllini', '1142': 'Aberração Deformada'})}
+            self.assertEqual(linhas['1036'][2:], ('Nv.1 19/25', '81', 'salvo'))
+            self.assertEqual(linhas['1142'][2:], ('Nv.2 44/75', '31', 'salvo'))
 
     def test_catalogo_lista_todos_e_distingue_valor_salvo_do_jogo(self):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:

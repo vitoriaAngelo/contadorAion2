@@ -47,7 +47,8 @@ Em cada monstro:
 Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
 
 Ao entrar no personagem com o contador aberto, o Npcap traz o progresso de almas já
-registrado pelo jogo. Cada bicho farmado aparece com as almas da estrela atual, o total
+registrado pelo jogo. A aba **Pets** mostra o catálogo completo; a aba inicial atualiza
+somente os bichos que você está acompanhando, com almas da estrela atual, total
 acumulado e quantas faltam para completar. Entrar novamente no personagem permite
 sincronizar esse histórico se o contador foi aberto depois do login. Fechar um bicho no
 ✕ o mantém fora da lista até chegar um novo drop dele.
@@ -69,6 +70,8 @@ Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
 almas na estrela atual e quantas faltam para completar. Antes de entrar no
 personagem, os valores conhecidos são os últimos salvos no computador; após a
 sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
+A aba inicial **Almas** mostra somente os bichos em acompanhamento. A
+sincronização do catálogo não coloca todos eles na lista de farm.
 
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
 
