@@ -70,7 +70,7 @@ salvo até receber uma nova identificação do jogo.
 Botão ◆ no topo: aba **OD** — os números podem ser ajustados manualmente. A leitura de rede desta versão cobre almas de pets, ainda não OD.
 
 Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
-almas na estrela atual e quantas faltam para completar. Antes de entrar no
+três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
 personagem, os valores conhecidos são os últimos salvos no computador; após a
 sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
 A aba inicial **Almas** mostra somente os bichos em acompanhamento. A

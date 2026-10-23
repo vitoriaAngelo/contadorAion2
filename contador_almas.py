@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.5"
+VERSAO = "1.9.6"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3030,35 +3030,82 @@ def main():
             busca.bind("<KeyRelease>", lambda e: self._atualizar_pets())
 
             estilo = ttk.Style(self.root)
+            # O tema nativo do Windows ignora as cores do cabeçalho do Treeview.
+            if estilo.theme_use() != "clam":
+                estilo.theme_use("clam")
             estilo.configure("Pets.Treeview", background=COR["painel"],
                              fieldbackground=COR["painel"], foreground=COR["texto"],
-                             rowheight=self.px(23), font=self.f_peq, borderwidth=0)
+                             rowheight=self.px(29), font=self.f_peq, borderwidth=0)
             estilo.configure("Pets.Treeview.Heading", background=COR["barra"],
-                             foreground=COR["texto"], font=self.f_peq)
+                             foreground=COR["texto"], font=self.f_peq,
+                             relief="flat", padding=(self.px(3), self.px(5)))
+            estilo.map("Pets.Treeview.Heading",
+                       background=[("active", COR["barra"])],
+                       foreground=[("active", COR["texto"])])
             estilo.map("Pets.Treeview", background=[("selected", COR["destaque"])],
                         foreground=[("selected", COR["texto"])])
+            estilo.configure("Pets.Vertical.TScrollbar", background=COR["barra"],
+                             troughcolor=COR["fundo"], arrowcolor=COR["texto"],
+                             bordercolor=COR["fundo"], lightcolor=COR["barra"],
+                             darkcolor=COR["barra"])
             caixa = tk.Frame(self.corpo, bg=COR["fundo"])
             caixa.pack(fill="both", expand=True)
             tree = ttk.Treeview(caixa, columns=("pet", "almas", "faltam"),
-                                show="headings", height=11, style="Pets.Treeview",
+                                show="tree headings", height=11, style="Pets.Treeview",
                                 selectmode="browse")
-            for chave, titulo, largura in (("pet", "Pet", 205),
-                                            ("almas", "Almas", 95),
-                                            ("faltam", "Faltam", 55)):
+            tree.heading("#0", text="Estrelas")
+            tree.column("#0", width=self.px(76), minwidth=self.px(76),
+                        stretch=False, anchor="center")
+            for chave, titulo, largura in (("pet", "Pet", 170),
+                                            ("almas", "Almas", 78),
+                                            ("faltam", "Faltam", 51)):
                 tree.heading(chave, text=titulo)
                 tree.column(chave, width=self.px(largura),
-                            minwidth=self.px(45), stretch=chave == "pet",
+                            minwidth=self.px(42), stretch=chave == "pet",
                             anchor="w" if chave == "pet" else "center")
-            barra = ttk.Scrollbar(caixa, orient="vertical", command=tree.yview)
+            barra = ttk.Scrollbar(caixa, orient="vertical", command=tree.yview,
+                                  style="Pets.Vertical.TScrollbar")
             tree.configure(yscrollcommand=barra.set)
             tree.pack(side="left", fill="both", expand=True)
             barra.pack(side="right", fill="y")
             self._pets_tree = tree
+            self._pets_estrelas_cache = {}
             self._pets_resumo = tk.Label(self.corpo, fg=COR["suave"],
                                          bg=COR["fundo"], font=self.f_peq,
                                          justify="left", anchor="w")
             self._pets_resumo.pack(fill="x", pady=(self.px(3), 0))
             self._atualizar_pets()
+
+        def _imagem_estrelas_pet(self, andamento):
+            from PIL import Image, ImageTk
+            nivel = 0
+            frac = 0.0
+            achado = re.fullmatch(r"Nv\.(\d+)\s+(\d+)/(\d+)", andamento)
+            if achado:
+                nivel = min(int(achado.group(1)), 3)
+                atual, meta = int(achado.group(2)), int(achado.group(3))
+                anterior = (self.cfg.get("tiers", [5, 25, 75])[nivel - 1]
+                            if nivel else 0)
+                frac = max(0.0, min(1.0, (atual - anterior) /
+                                     max(1, meta - anterior)))
+            elif andamento == "Nv.3 MAX":
+                nivel = 3
+            # Arredondar evita criar centenas de imagens durante a captura.
+            decimos = round(frac * 10)
+            chave = (nivel, decimos)
+            cache = self._pets_estrelas_cache
+            if chave not in cache:
+                tamanho = self.px(16)
+                espaco = self.px(2)
+                img = Image.new("RGBA", (3 * tamanho + 2 * espaco, tamanho),
+                                COR["painel"])
+                for i in range(3):
+                    estado = "cheia" if i < nivel else "atual" if i == nivel and decimos else "vazia"
+                    estrela = imagem_estrela(estado, decimos / 10, tamanho,
+                                             COR["painel"])
+                    img.paste(estrela, (i * (tamanho + espaco), 0))
+                cache[chave] = ImageTk.PhotoImage(img, master=self.root)
+            return cache[chave]
 
         def _atualizar_pets(self):
             tree = getattr(self, "_pets_tree", None)
@@ -3074,12 +3121,16 @@ def main():
                 tree.delete(*tree.get_children())
                 for pet_id, nome, almas, faltam, origem in visiveis:
                     tree.insert("", "end", iid=pet_id,
+                                image=self._imagem_estrelas_pet(almas),
                                 values=(nome, almas, "✓" if faltam == "0" else faltam))
             else:
                 for pet_id, nome, almas, faltam, origem in visiveis:
                     valores = (nome, almas, "✓" if faltam == "0" else faltam)
                     if tuple(tree.item(pet_id, "values")) != valores:
                         tree.item(pet_id, values=valores)
+                    imagem = self._imagem_estrelas_pet(almas)
+                    if tree.item(pet_id, "image") != str(imagem):
+                        tree.item(pet_id, image=imagem)
             estado = ("Sincronizado com o jogo" if self.rede_sincronizada else
                       "Valores salvos; entre no personagem para confirmar")
             resumo = f"{len(visiveis)}/{len(linhas)} pets · {estado}"
