@@ -51,6 +51,8 @@ registrado pelo jogo. Cada bicho farmado aparece com as almas da estrela atual, 
 acumulado e quantas faltam para completar. Entrar novamente no personagem permite
 sincronizar esse histórico se o contador foi aberto depois do login. Fechar um bicho no
 ✕ o mantém fora da lista até chegar um novo drop dele.
+Enquanto não receber o progresso inicial do jogo, o contador avisa para entrar novamente
+no personagem; os drops novos continuam sendo contados normalmente nesse intervalo.
 
 No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
 (fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,

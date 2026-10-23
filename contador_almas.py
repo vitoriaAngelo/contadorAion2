@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.1"
+VERSAO = "1.9.2"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2238,6 +2238,7 @@ def main():
             self.motor_nome = "iniciando Npcap..."
             self.rede_conectada = False
             self.rede_pronta = False
+            self.rede_sincronizada = False
             self.erro = None
             self.debug = None
             self.ultimas_linhas = []
@@ -2673,6 +2674,8 @@ def main():
                     txt, cor = "\u25cf aguardando AION 2\u2026", COR["ouro"]
                 elif not self.rede_pronta:
                     txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
+                elif not self.rede_sincronizada:
+                    txt, cor = "\u25cf entre novamente no personagem para sincronizar", COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -4280,10 +4283,15 @@ def main():
                         if self.prog.sincronizar_pets(*dado, self.leitor.nomes):
                             self.prog.salvar()
                             self.render_em_breve()
+                        self.rede_sincronizada = True
+                        registrar(f"NPCAP: progresso sincronizado ({len(dado[0])} níveis, "
+                                  f"{len(dado[1])} contadores)")
+                        self.atualizar_status()
                     elif tipo == "conexao_rede":
                         self.rede_conectada = bool(dado)
                         if not dado:
                             self.rede_pronta = False
+                            self.rede_sincronizada = False
                         self.atualizar_status()
                     elif tipo == "rede_pronta":
                         self.rede_pronta = True
