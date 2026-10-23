@@ -46,6 +46,12 @@ Em cada monstro:
 
 Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
 
+Ao entrar no personagem com o contador aberto, o Npcap traz o progresso de almas já
+registrado pelo jogo. Cada bicho farmado aparece com as almas da estrela atual, o total
+acumulado e quantas faltam para completar. Entrar novamente no personagem permite
+sincronizar esse histórico se o contador foi aberto depois do login. Fechar um bicho no
+✕ o mantém fora da lista até chegar um novo drop dele.
+
 No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
 (fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,
 com base em <https://www.animoria.com.br/#agenda>: Shugo (toda hora :00), Invasão Dimensional (:30),

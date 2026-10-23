@@ -69,6 +69,27 @@ class LeituraNpcap(unittest.TestCase):
             self.assertEqual({m['pet_id']: m['qtd'] for m in p.monstros},
                              {'1036': 9, '1202': 37})
 
+    def test_login_importa_progresso_antigo_sem_contar_drop_ou_reabrir_fechado(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            caminho = os.path.join(pasta, 'progresso.json')
+            p = ca.Progresso(caminho)
+            nomes = {'1036': 'Lupyllini', '1202': 'Lupyllini Putrefato'}
+            self.assertTrue(p.sincronizar_pets({1036: 1, 1202: 2},
+                                               {1036: 19, 1202: 7}, nomes))
+            self.assertEqual({m['pet_id']: m['qtd'] for m in p.monstros},
+                             {'1036': 24, '1202': 37})
+            self.assertEqual(p.dias, {})
+            self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
+                                                {1036: 19, 1202: 7}, nomes))
+            p.remover(next(m for m in p.monstros if m['pet_id'] == '1036'))
+            p.salvar()
+            p = ca.Progresso(caminho)
+            self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
+                                                {1036: 19, 1202: 7}, nomes))
+            self.assertEqual([m['pet_id'] for m in p.monstros], ['1202'])
+            p.somar_pet(1036, 'Lupyllini', 1)
+            self.assertEqual(p.monstros[-1]['qtd'], 25)
+
     def test_atualizador_instala_arquivos_novos_sem_apagar_progresso(self):
         pasta_codigo = os.path.dirname(os.path.dirname(__file__))
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:

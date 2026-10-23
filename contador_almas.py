@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.0"
+VERSAO = "1.9.1"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1363,6 +1363,10 @@ class Progresso:
         self.arquivo = arquivo
         dados = carregar_json(arquivo, {"monstros": []})
         self.monstros = dados.get("monstros", [])
+        ocultos = dados.get("pets_ocultos", {})
+        self.pets_ocultos = ({str(k): int(v) for k, v in ocultos.items()}
+                             if isinstance(ocultos, dict) else
+                             {str(k): 0 for k in ocultos})
         self.od = {t: int((dados.get("od") or {}).get(t, 0)) for t in OD_TIPOS}
         # almas por dia do jogo (o dia vira no reset das 04:00)
         self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
@@ -1380,7 +1384,8 @@ class Progresso:
 
     def salvar(self):
         try:
-            salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias, "od": self.od})
+            salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias,
+                                      "od": self.od, "pets_ocultos": self.pets_ocultos})
         except Exception:
             pass
 
@@ -1465,12 +1470,13 @@ class Progresso:
     def somar_pet(self, pet_id, nome, n):
         """Usa o identificador do jogo; nomes parecidos nunca sao misturados."""
         pet_id = str(pet_id)
+        anterior_oculto = self.pets_ocultos.pop(pet_id, 0)
         m = next((x for x in self.monstros if x.get("pet_id") == pet_id), None)
         if m is None:
             m = next((x for x in self.monstros if not x.get("pet_id")
                       and normalizar(x["nome"]) == normalizar(nome)), None)
         if m is None:
-            m = {"nome": nome, "qtd": 0, "apelidos": [], "atualizado": 0}
+            m = {"nome": nome, "qtd": anterior_oculto, "apelidos": [], "atualizado": 0}
             self.monstros.append(m)
         m["pet_id"] = pet_id
         m["qtd"] += n
@@ -1479,19 +1485,31 @@ class Progresso:
         return m
 
     def sincronizar_pets(self, levels, points, nomes):
-        """Atualiza somente monstros ja exibidos; login nao e um novo drop."""
+        """Importa o progresso atual do jogo sem contar o login como drop novo."""
         alterou = False
         for raw_id in levels.keys() | points.keys():
             pet_id = str(raw_id)
+            nivel = max(0, min(int(levels.get(raw_id, 0)), 3))
+            total = sum((5, 25, 75)[:nivel]) + (0 if nivel == 3 else
+                                                     min(max(0, int(points.get(raw_id, 0))),
+                                                         (5, 25, 75)[nivel]))
+            if pet_id in self.pets_ocultos:
+                if self.pets_ocultos[pet_id] != total:
+                    self.pets_ocultos[pet_id] = total
+                    alterou = True
+                continue
             nome = nomes.get(pet_id)
             m = next((x for x in self.monstros if x.get("pet_id") == pet_id), None)
             if m is None and nome:
                 m = next((x for x in self.monstros if not x.get("pet_id")
                           and normalizar(x["nome"]) == normalizar(nome)), None)
+            if m is None and nome and total > 0:
+                m = {"nome": nome, "qtd": 0, "apelidos": [], "atualizado": 0,
+                     "pet_id": pet_id}
+                self.monstros.append(m)
+                alterou = True
             if m is None:
                 continue
-            nivel = max(0, min(int(levels.get(raw_id, 0)), 3))
-            total = sum((5, 25, 75)[:nivel]) + (0 if nivel == 3 else int(points.get(raw_id, 0)))
             if m["qtd"] != total or m.get("pet_id") != pet_id:
                 m["qtd"] = total
                 m["pet_id"] = pet_id
@@ -1541,6 +1559,8 @@ class Progresso:
         self.salvar()
 
     def remover(self, m):
+        if m.get("pet_id"):
+            self.pets_ocultos[str(m["pet_id"])] = m["qtd"]
         self.monstros.remove(m)
         self.salvar()
 
@@ -3224,7 +3244,8 @@ def main():
             cor_barra = COR["ouro"] if completo else COR["alma"]
             novo = {
                 "cont": f"{tamanho_t - faltam_t}/{tamanho_t}",
-                "falta": "",
+                "falta": (f"{m['qtd']} no total · faltam {max(0, meta - m['qtd'])}"
+                          if m["qtd"] < meta else f"{m['qtd']} no total · completo"),
             }
             # estrelas: douradas = completas; contorno dourado = a que esta
             # fazendo agora; cinza = ainda nao chegou
@@ -3478,8 +3499,8 @@ def main():
             w["cv"] = tk.Canvas(base, width=W, height=H, bg=COR["barra"], highlightthickness=0)
             w["cv"].pack(side="left")
             w["barra"] = w["cv"].create_rectangle(0, 0, 0, H, fill=COR["alma"], width=0)
-            # texto "faltam X p/ N estrela" removido a pedido (fica so a caixinha)
             w["falta"] = tk.Label(base, text="", fg=COR["suave"], bg=bg, font=self.f_peq)
+            w["falta"].pack(side="left", padx=(self.px(7), 0))
             caixa = tk.Entry(base, width=4, justify="center", font=self.f_nome,
                              bg=COR["barra"], fg=COR["texto"],
                              insertbackground=COR["texto"], relief="flat",
@@ -3613,8 +3634,9 @@ def main():
                 restantes = [x for x in self.prog.monstros if id(x) in self._ui]
                 vazio = ""
                 if not self.prog.monstros:
-                    vazio = ("Procurando o chat do jogo… deixe o jogo aberto com o chat "
-                             "visível (linhas “Você obteve…”)."
+                    vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap…"
+                             if self.cfg.get("fonte_leitura") == "npcap" else
+                             "Procurando o chat do jogo… deixe o chat visível.")
                              if not self.cfg.get("regiao") else
                              "Chat encontrado. Aguardando a primeira alma…")
                     tk.Label(self.corpo, text=vazio, fg=COR["suave"],
