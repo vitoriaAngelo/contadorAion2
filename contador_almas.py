@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.27"
+VERSAO = "1.9.28"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3003,6 +3003,16 @@ def main():
                     self._ui[id(m)] = self._linha(m, meta)
             self._lbl_evento = None
             if mostra_rodape:
+                if self.cfg.get("aba") == "almas":
+                    caixa_abismo = tk.Frame(self.corpo, bg=COR["painel"],
+                                            highlightthickness=1, highlightbackground=COR["barra"])
+                    caixa_abismo.pack(fill="x", pady=(self.px(7), 0))
+                    tk.Label(caixa_abismo, text="◈  Abismo", fg=COR["ouro"],
+                             bg=COR["painel"], font=self.f_nome).pack(side="left",
+                                                                        padx=self.px(8), pady=self.px(5))
+                    self._lbl_abismo = tk.Label(caixa_abismo, text="Pontos: —   ·   Kinah: —",
+                                                fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
+                    self._lbl_abismo.pack(side="left", padx=self.px(8))
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
                 rod.pack(fill="x", pady=(self.px(4), 0))
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
@@ -3014,16 +3024,6 @@ def main():
                 self._lbl_odyle_tempo = tk.Label(rod, text="Próximo +15: —", fg=COR["suave"],
                                                  bg=COR["fundo"], font=self.f_peq)
                 self._lbl_odyle_tempo.pack(side="left", padx=(self.px(8), 0))
-                if self.cfg.get("aba") == "almas":
-                    caixa_abismo = tk.Frame(self.corpo, bg=COR["painel"],
-                                            highlightthickness=1, highlightbackground=COR["barra"])
-                    caixa_abismo.pack(fill="x", pady=(self.px(7), 0))
-                    tk.Label(caixa_abismo, text="◈  Abismo", fg=COR["ouro"],
-                             bg=COR["painel"], font=self.f_nome).pack(side="left",
-                                                                        padx=self.px(8), pady=self.px(5))
-                    self._lbl_abismo = tk.Label(caixa_abismo, text="Pontos: —   ·   Kinah: —",
-                                                fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
-                    self._lbl_abismo.pack(side="left", padx=self.px(8))
                 tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
                          font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
                 self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
@@ -5152,6 +5152,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
