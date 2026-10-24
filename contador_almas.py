@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.29"
+VERSAO = "1.9.30"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2849,7 +2849,7 @@ def main():
                 elif self.sincronizacao_pendente:
                     txt, cor = "● aguardando nova sincronização", COR["ouro"]
                 elif not self.rede_sincronizada:
-                    txt, cor = "\u25cf entre novamente no personagem para sincronizar", COR["ouro"]
+                    txt, cor = "\u25cf sincronização pendente", COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -5139,6 +5139,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
 
 
 
