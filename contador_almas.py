@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.32"
+VERSAO = "1.9.33"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3014,12 +3014,6 @@ def main():
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
                                             bg=COR["fundo"], font=self.f_peq)
                 self._lbl_rodape.pack(side="left")
-                self._lbl_odyle = tk.Label(rod, text="Odyle Energy: —", fg=COR["ouro"],
-                                           bg=COR["fundo"], font=self.f_peq)
-                self._lbl_odyle.pack(side="left", padx=(self.px(10), 0))
-                self._lbl_odyle_tempo = tk.Label(rod, text="Próximo +15: —", fg=COR["suave"],
-                                                 bg=COR["fundo"], font=self.f_peq)
-                self._lbl_odyle_tempo.pack(side="left", padx=(self.px(8), 0))
                 tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
                          font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
                 self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
@@ -5148,6 +5142,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
