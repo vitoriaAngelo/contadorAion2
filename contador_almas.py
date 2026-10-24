@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.10"
+VERSAO = "1.9.11"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -245,6 +245,21 @@ RADAR_MAPAS = {
     "altgard": ("Altgard", (1110, 901), .0098227439264612, 4137.781824319782, 4062.9907075320293, .5),
     "abyss": ("Reshanta", (), .009878286530741168, 2047.1930445744983, 2056.9061147139305, 1.0),
 }
+RADAR_RAIO_EXATO = 80
+RADAR_RAIO_ESTIMADO = 140
+
+
+def centro_radar_anunciado(mobs, anterior, agora):
+    """Centro estável dos bichos recebidos; é referência de área, não do jogador."""
+    atuais = [(m[1], m[2]) for m in mobs.values() if agora - m[3] < 60]
+    if not atuais:
+        return anterior
+    x = sum(p[0] for p in atuais) / len(atuais)
+    y = sum(p[1] for p in atuais) / len(atuais)
+    if anterior and agora - anterior[2] < 30:
+        x = anterior[0] * .55 + x * .45
+        y = anterior[1] * .55 + y * .45
+    return x, y, agora
 
 
 def locais_radar(pontos, posicao, catalogo, especies, raio=200):
@@ -3197,7 +3212,7 @@ def main():
             status.pack(fill="x", padx=self.px(7), pady=(self.px(2), self.px(3)))
             conteudo = tk.Frame(radar, bg=COR["painel"])
             conteudo.pack(fill="x", padx=self.px(7))
-            tamanho = self.px(148)
+            tamanho = self.px(180)
             mapa = tk.Canvas(conteudo, width=tamanho, height=tamanho,
                              bg=COR["fundo"], highlightthickness=0)
             mapa.pack(side="left", anchor="n")
@@ -3209,14 +3224,14 @@ def main():
                 row = tk.Frame(lista, bg=COR["painel"])
                 linha = tk.Label(row, text="", fg=COR["texto"], bg=COR["painel"],
                                  font=self.f_peq, anchor="w", justify="left",
-                                 wraplength=self.px(205))
+                                 wraplength=self.px(175))
                 linha.pack(fill="x")
                 detalhe = tk.Label(row, text="", fg=COR["suave"], bg=COR["painel"],
                                    font=self.f_peq, anchor="w", justify="left",
-                                   wraplength=self.px(205))
+                                   wraplength=self.px(175))
                 detalhe.pack(fill="x")
                 rows.append((row, linha, detalhe))
-            legenda = tk.Label(radar, text="● monstro visto   ·   • local de farm conhecido",
+            legenda = tk.Label(radar, text="● bicho com alma   ·   • local de farm   ·   ○ área estimada",
                                fg=COR["suave"], bg=COR["painel"],
                                font=self.f_peq, anchor="w")
             legenda.pack(fill="x", padx=self.px(7), pady=(self.px(3), self.px(5)))
@@ -3250,7 +3265,7 @@ def main():
             if assinatura == self._radar_assinatura:
                 return
             self._radar_assinatura = assinatura
-            tamanho = self.px(148)
+            tamanho = self.px(180)
             if chave not in self._radar_imagens:
                 caminho = os.path.join(BASE, f"radar_mapa_{chave}.jpg")
                 try:
@@ -3264,10 +3279,12 @@ def main():
                                    text="Mapa indisponível", fill=COR["suave"])
                 return
             escala, offset_x, offset_y, fator = meta[2:]
+            estimada = getattr(self, "_radar_pos_estimada_ativa", False)
+            raio_m = RADAR_RAIO_ESTIMADO if estimada else RADAR_RAIO_EXATO
             if pos:
                 px = (offset_x + escala * pos[0]) * fator
                 py = (offset_y + escala * pos[1]) * fator
-                meio = escala * fator * 15000
+                meio = escala * fator * raio_m * 100
                 recorte = imagem.crop((round(px - meio), round(py - meio),
                                        round(px + meio), round(py + meio)))
                 fundo = recorte.resize((tamanho, tamanho), Image.Resampling.BILINEAR)
@@ -3276,14 +3293,14 @@ def main():
             self._radar_foto = ImageTk.PhotoImage(fundo, master=self.root)
             canvas.create_image(0, 0, image=self._radar_foto, anchor="nw")
             if pos:
-                raio = 15000
+                raio = raio_m * 100
                 def ponto(x, y):
                     return (tamanho / 2 + (x - pos[0]) * tamanho / (2 * raio),
                             tamanho / 2 + (y - pos[1]) * tamanho / (2 * raio))
                 for r in conhecidos[:100]:
                     x, y = ponto(r[5], r[6])
-                    canvas.create_oval(x - 2, y - 2, x + 2, y + 2,
-                                       fill="#65d6c4", outline="#163a39")
+                    canvas.create_oval(x - 3, y - 3, x + 3, y + 3,
+                                       fill="#af8240", outline="#453018")
                 for _, npc, xw, yw in mobs:
                     if str(npc) not in especies:
                         continue
@@ -3292,7 +3309,6 @@ def main():
                         canvas.create_oval(x - 4, y - 4, x + 4, y + 4,
                                            fill=COR["ouro"], outline="#251b0b", width=2)
                 x = tamanho / 2
-                estimada = getattr(self, "_radar_pos_estimada_ativa", False)
                 canvas.create_oval(x - 5, x - 5, x + 5, x + 5,
                                    fill="" if estimada else "#70bdff",
                                    outline="#70bdff" if estimada else "white", width=2)
@@ -3309,7 +3325,7 @@ def main():
                     y = (offset_y + escala * yw) * fator * tamanho / imagem.height
                     if 0 <= x <= tamanho and 0 <= y <= tamanho:
                         canvas.create_oval(x - 1, y - 1, x + 1, y + 1,
-                                           fill="#65d6c4", outline="")
+                                           fill="#d6ab56", outline="")
             canvas.create_rectangle(0, 0, tamanho - 1, tamanho - 1,
                                     outline=COR["barra"])
 
@@ -3389,6 +3405,7 @@ def main():
                          ((x - self.radar_posicao[0]) ** 2 +
                           (y - self.radar_posicao[1]) ** 2) > 15_000 ** 2)):
                     self.radar_mobs.clear()
+                    self.radar_posicao_estimada = None
                 self.radar_zona = zona
                 self.radar_posicao = (x, y, agora)
                 for chave, meta in RADAR_MAPAS.items():
@@ -3414,17 +3431,15 @@ def main():
                         if self.radar_mapa_estimado and chave != self.radar_mapa_estimado:
                             self.radar_mobs.clear()
                             self.radar_mobs[entity] = (npc, x, y, agora)
+                            self.radar_posicao_estimada = None
                         self.radar_mapa_estimado = chave
                         if self.radar_posicao is None or agora - self.radar_posicao[2] > 10:
                             self.radar_mapa_escolhido = chave
             elif tipo == "mob_remove":
                 self.radar_mobs.pop(evento[1], None)
-            recentes = [(m[1], m[2]) for m in self.radar_mobs.values()
-                       if agora - m[3] < 60]
-            if recentes:
-                self.radar_posicao_estimada = (
-                    sum(x for x, _ in recentes) / len(recentes),
-                    sum(y for _, y in recentes) / len(recentes), agora)
+            if tipo in ("mob_spawn", "mob_remove"):
+                self.radar_posicao_estimada = centro_radar_anunciado(
+                    self.radar_mobs, self.radar_posicao_estimada, agora)
 
         def _atualizar_radar(self, catalogo=None):
             ui = getattr(self, "_radar_ui", None)
@@ -3447,8 +3462,10 @@ def main():
             linhas = linhas_radar(self.radar_mobs, pos_exata, catalogo,
                                   especies, agora)
             pos_mapa = self._radar_pos_exibicao
+            raio_m = (RADAR_RAIO_ESTIMADO if self._radar_pos_estimada_ativa
+                      else RADAR_RAIO_EXATO)
             conhecidos = locais_radar(self.radar_pontos.get(mapa, {}), pos_mapa,
-                                      catalogo, especies, raio=150)
+                                      catalogo, especies, raio=raio_m)
             self._desenhar_mapa_radar(catalogo, especies, conhecidos)
             for chave, botao in ui[4].items():
                 cor = COR["ouro"] if chave == mapa else COR["suave"]

@@ -2,10 +2,16 @@ import struct
 import unittest
 
 import pet_protocol
-from contador_almas import linhas_radar, locais_radar
+from contador_almas import linhas_radar, locais_radar, centro_radar_anunciado
 
 
 class RadarTest(unittest.TestCase):
+    def test_nearby_area_moves_smoothly_with_spawn_events(self):
+        primeiro = centro_radar_anunciado({1: (2000004, 1000, 2000, 5)}, None, 5)
+        self.assertEqual(primeiro, (1000, 2000, 5))
+        segundo = centro_radar_anunciado({2: (2000004, 2000, 2000, 6)}, primeiro, 6)
+        self.assertEqual(segundo, (1450, 2000, 6))
+
     def test_known_farm_location_is_distinct_from_live_mob(self):
         catalogo = [("1028", "Aberração de Krao", "Nv.2 44/75", "31", "jogo")]
         especies = {"2000004": [1028, "Krao"]}
