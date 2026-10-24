@@ -73,19 +73,6 @@ Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
 três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
 personagem, os valores conhecidos são os últimos salvos no computador; após a
 sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
-Na tela inicial **Almas**, abaixo dos farms, o **Radar de mascotes** mostra um
-mapinha de Verteron, Altgard ou Reshanta, aproximado da área em que você está.
-Os pontos dourados menores são locais de farm conhecidos de pets pendentes;
-os dourados maiores são monstros vistos ao vivo pela captura de rede. A lista
-mostra o pet e quantas almas faltam. Quando
-o jogo informou sua posição há menos de 10 segundos, mostra direção e distância
-aproximada. Uma posição antiga permanece no mapa como referência, mas a
-distância deixa de ser exibida até receber posição nova. É possível escolher o
-mapa no topo do radar. Se o jogo enviar aparições de bichos sem a posição do
-personagem, o radar desliza para a área aproximada conforme bichos entram e
-saem do alcance e omite direção e distância. O centro vazado indica essa área
-estimada, não a posição exata do personagem. Áreas sem dados de posição ou de aparição de monstros
-podem mostrar apenas o mapa e os locais conhecidos.
 A lista de farms na aba inicial **Almas** mostra somente os bichos em acompanhamento. A
 sincronização do catálogo não coloca todos eles na lista de farm.
 

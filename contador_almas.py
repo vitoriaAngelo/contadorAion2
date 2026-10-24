@@ -25,15 +25,13 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.12"
+VERSAO = "1.9.13"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
 ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
-                     "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
-                     "radar_pontos.json", "radar_mapa_verteron.jpg",
-                     "radar_mapa_altgard.jpg", "radar_mapa_abyss.jpg",
-                     "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"]
+                     "pet_protocol.py", "pet_nomes_npcap.json",
+                     "LICENSE-PET-PROTOCOL.txt"]
 
 
 def versao_tupla(v):
@@ -65,18 +63,13 @@ def aplicar_atualizacao(dados_py, pasta):
     extras = {}
     for nome in ARQUIVOS_ATUALIZAR[1:]:
         if os.path.exists(os.path.join(pasta, nome)) or nome in (
-                "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
-                "radar_pontos.json", "radar_mapa_verteron.jpg",
-                "radar_mapa_altgard.jpg", "radar_mapa_abyss.jpg",
-                "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"):
+                "pet_protocol.py", "pet_nomes_npcap.json",
+                "LICENSE-PET-PROTOCOL.txt"):
             try:
                 extras[nome] = baixar_texto(REPO_RAW + nome)
             except Exception:
                 if nome in ("pet_protocol.py", "pet_nomes_npcap.json",
-                            "radar_mascotes.json", "radar_pontos.json",
-                            "radar_mapa_verteron.jpg", "radar_mapa_altgard.jpg",
-                            "radar_mapa_abyss.jpg", "LICENSE-PET-PROTOCOL.txt",
-                            "LICENSE-RADAR.txt"):
+                            "LICENSE-PET-PROTOCOL.txt"):
                     raise
     alvo = os.path.join(pasta, "contador_almas.py")
     if os.path.exists(alvo):
@@ -2298,7 +2291,6 @@ class LeitorRede(threading.Thread):
         self.pedir_deteccao = threading.Event()
         self.areas_proprias = []
         self.ultima = None
-        self.radar_mascotes = carregar_json(os.path.join(BASE, "radar_mascotes.json"), {})
         try:
             with open(os.path.join(BASE, "pet_nomes_npcap.json"), encoding="utf-8") as f:
                 self.nomes = json.load(f)
@@ -2326,8 +2318,6 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("estado_rede", evento[1:]))
                 elif evento[0] == "nickname":
                     self.fila.put(("personagem_rede", evento[1]))
-                elif evento[0] in ("zone", "position", "mob_spawn", "mob_remove"):
-                    self.fila.put(("radar_rede", evento))
 
             pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
@@ -2392,12 +2382,6 @@ def main():
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
             self.prog = Progresso(ARQ_DADOS)
             self.nomes_pets = carregar_json(os.path.join(BASE, "pet_nomes_npcap.json"), {})
-            self.radar_pontos = carregar_json(os.path.join(BASE, "radar_pontos.json"), {})
-            self.radar_mapa_escolhido = self.cfg.get("radar_mapa", "altgard")
-            if self.radar_mapa_escolhido not in RADAR_MAPAS:
-                self.radar_mapa_escolhido = "altgard"
-            self._radar_imagens = {}
-            self._radar_foto = None
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
@@ -2405,21 +2389,6 @@ def main():
             self.rede_conectada = False
             self.rede_pronta = False
             self.rede_sincronizada = False
-            self.radar_mobs = {}
-            self.radar_posicao_estimada = None
-            self.radar_mapa_estimado = None
-            self._radar_pos_visual = None
-            self._radar_mapa_visual = None
-            self._radar_ultimo_frame = time.monotonic()
-            self._radar_cache = None
-            ultima = self.cfg.get("radar_ultima_pos")
-            try:
-                self.radar_posicao = ((float(ultima[1]), float(ultima[2]), 0)
-                                      if isinstance(ultima, list) and len(ultima) == 3 else None)
-                self.radar_zona = int(ultima[0]) if self.radar_posicao else None
-            except (TypeError, ValueError, IndexError):
-                self.radar_posicao = self.radar_zona = None
-            self._radar_ui = None
             self.erro = None
             self.debug = None
             self.ultimas_linhas = []
@@ -2477,8 +2446,6 @@ def main():
                            else Leitor(self.cfg))
             self.leitor.start()
             self.root.after(100, self.consumir)
-            self.root.after(1000, self._radar_pulso)
-            self.root.after(50, self._radar_animar)
             self.root.after(3000, self.reforcar_topo)
             self.root.protocol("WM_DELETE_WINDOW", self.sair)
 
@@ -3000,8 +2967,6 @@ def main():
             else:
                 for m in visiveis:
                     self._ui[id(m)] = self._linha(m, meta)
-            if self.cfg.get("aba", "almas") == "almas":
-                self._montar_radar()
             self._lbl_evento = None
             if mostra_rodape:
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -3106,7 +3071,7 @@ def main():
             proxima = "almas" if atual == destino else destino
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
                       "_od_ui", "_lbl_crono", "_b_crono", "_pets_tree",
-                      "_pets_resumo", "_pets_busca", "_radar_ui", "_lbl_evento",
+                      "_pets_resumo", "_pets_busca", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
             self._abas_visuais[atual] = {
                 "corpo": self.corpo,
@@ -4946,8 +4911,6 @@ def main():
                         pass
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
-                    elif tipo == "radar_rede":
-                        self._ao_radar_rede(dado)
                     elif tipo == "estado_rede":
                         mudou = self.prog.sincronizar_pets(*dado, self.leitor.nomes)
                         self.prog.salvar()  # inclui a data da fotografia, mesmo sem mudanças
@@ -5089,10 +5052,6 @@ def main():
 
         def sair(self):
             self.leitor.parar.set()
-            if self.radar_posicao is not None and self.radar_zona is not None:
-                self.cfg["radar_ultima_pos"] = [self.radar_zona,
-                                                  self.radar_posicao[0],
-                                                  self.radar_posicao[1]]
             if not getattr(self, "minimizado", False):
                 self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
             self.salvar_cfg()

@@ -7,7 +7,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Nome    = "Contador de Almas"
-$Versao  = "1.9.12"
+$Versao  = "1.9.13"
 $Origem  = $PSScriptRoot
 $Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
 $ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
@@ -159,9 +159,6 @@ try {
     Fechar-Contador
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     foreach ($arq in @("contador_almas.py", "pet_protocol.py", "pet_nomes_npcap.json",
-                     "radar_mascotes.json", "radar_pontos.json",
-                     "radar_mapa_verteron.jpg", "radar_mapa_altgard.jpg",
-                     "radar_mapa_abyss.jpg", "LICENSE-RADAR.txt",
                       "LICENSE-PET-PROTOCOL.txt", "icone.ico", "desinstalar.ps1",
                       "requirements.txt", "LICENSE", "README.md")) {
         $de = Join-Path $Origem $arq
@@ -172,9 +169,7 @@ try {
 
     # 5) Verificar arquivos da captura ---------------------------------------
     Passo 5 $total "Verificando os arquivos da leitura de rede..."
-    foreach ($arq in @("pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
-                     "radar_pontos.json", "radar_mapa_verteron.jpg",
-                     "radar_mapa_altgard.jpg", "radar_mapa_abyss.jpg")) {
+    foreach ($arq in @("pet_protocol.py", "pet_nomes_npcap.json")) {
         if (-not (Test-Path (Join-Path $Destino $arq))) { throw "Arquivo ausente: $arq" }
     }
     Ok "Leitura de rede pronta"
