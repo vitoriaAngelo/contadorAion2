@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.16"
+VERSAO = "1.9.17"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2398,6 +2398,7 @@ def main():
             self.cfg = carregar_config()
             self.personagem = self.cfg.get("personagem", "")
             self._assinatura_estado_atual = None
+            self.sincronizacao_pendente = False
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
@@ -2777,6 +2778,9 @@ def main():
             self.lbl_personagem.pack(side="left", padx=(self.px(5), 0))
             self.dica(self.lbl_personagem, lambda: self.personagem or "Personagem ainda não identificado")
             self._atualizar_personagem()
+            self.b_sincronizar = self.botao(h, "↻", lambda e: self.pedir_sincronizacao(), fonte=self.f_peq,
+                                            dica="Sincronizar personagem e progresso da conta")
+            self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
             self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(8), 0))
             # aparece so quando tem versao nova no GitHub
@@ -2857,6 +2861,8 @@ def main():
                     txt, cor = "\u25cf aguardando AION 2\u2026", COR["ouro"]
                 elif not self.rede_pronta:
                     txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
+                elif self.sincronizacao_pendente:
+                    txt, cor = "● aguardando nova sincronização", COR["ouro"]
                 elif not self.rede_sincronizada:
                     txt, cor = "\u25cf entre novamente no personagem para sincronizar", COR["ouro"]
                 else:
@@ -2876,6 +2882,20 @@ def main():
             texto = "· " + (nome[:16] + "…" if len(nome) > 17 else nome) if nome else ""
             if self.lbl_personagem.cget("text") != texto:
                 self.lbl_personagem.configure(text=texto)
+
+        def pedir_sincronizacao(self):
+            self.personagem = ""
+            self.cfg["personagem"] = ""
+            self.cfg.pop("personagem_estado", None)
+            self._assinatura_estado_atual = None
+            self.sincronizacao_pendente = True
+            self.rede_sincronizada = False
+            if hasattr(self, "leitor"):
+                self.leitor.pedir_deteccao.set()
+            self.salvar_cfg()
+            self._atualizar_personagem()
+            self.atualizar_status()
+            registrar("NPCAP: sincronização solicitada pelo usuário")
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -4933,6 +4953,7 @@ def main():
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
                     elif tipo == "estado_rede":
+                        self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
                         self._assinatura_estado_atual = assinatura
                         assinatura_salva = self.cfg.get("personagem_estado")
@@ -4954,6 +4975,7 @@ def main():
                                   f"{len(dado[1])} contadores)")
                         self.atualizar_status()
                     elif tipo == "personagem_rede":
+                        self.sincronizacao_pendente = False
                         if dado != self.personagem:
                             self.personagem = dado
                             self.cfg["personagem"] = dado
@@ -5105,3 +5127,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
