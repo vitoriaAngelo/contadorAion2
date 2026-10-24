@@ -25,12 +25,14 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.8"
+VERSAO = "1.9.9"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
 ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
                      "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
+                     "radar_pontos.json", "radar_mapa_verteron.jpg",
+                     "radar_mapa_altgard.jpg", "radar_mapa_abyss.jpg",
                      "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"]
 
 
@@ -64,12 +66,16 @@ def aplicar_atualizacao(dados_py, pasta):
     for nome in ARQUIVOS_ATUALIZAR[1:]:
         if os.path.exists(os.path.join(pasta, nome)) or nome in (
                 "pet_protocol.py", "pet_nomes_npcap.json", "radar_mascotes.json",
+                "radar_pontos.json", "radar_mapa_verteron.jpg",
+                "radar_mapa_altgard.jpg", "radar_mapa_abyss.jpg",
                 "LICENSE-PET-PROTOCOL.txt", "LICENSE-RADAR.txt"):
             try:
                 extras[nome] = baixar_texto(REPO_RAW + nome)
             except Exception:
                 if nome in ("pet_protocol.py", "pet_nomes_npcap.json",
-                            "radar_mascotes.json", "LICENSE-PET-PROTOCOL.txt",
+                            "radar_mascotes.json", "radar_pontos.json",
+                            "radar_mapa_verteron.jpg", "radar_mapa_altgard.jpg",
+                            "radar_mapa_abyss.jpg", "LICENSE-PET-PROTOCOL.txt",
                             "LICENSE-RADAR.txt"):
                     raise
     alvo = os.path.join(pasta, "contador_almas.py")
@@ -231,6 +237,44 @@ def linhas_radar(mobs, posicao, catalogo, especies, agora):
             direcao = direcoes[round(math.degrees(math.atan2(dx, -dy)) / 45) % 8]
         linhas.append((monstro, pet[1], int(pet[3]), distancia, direcao, visto))
     linhas.sort(key=lambda r: (r[3] is None, r[3] if r[3] is not None else -r[5], r[0]))
+    return linhas
+
+
+RADAR_MAPAS = {
+    "verteron": ("Verteron", (1010, 902), .019583509634873143, 8218.937975984913, 8147.450753846877, .25),
+    "altgard": ("Altgard", (1110, 901), .0098227439264612, 4137.781824319782, 4062.9907075320293, .5),
+    "abyss": ("Reshanta", (), .009878286530741168, 2047.1930445744983, 2056.9061147139305, 1.0),
+}
+
+
+def locais_radar(pontos, posicao, catalogo, especies, raio=200):
+    """Pontos de farm conhecidos perto da última posição, sem afirmar que há mob vivo."""
+    import math
+    if posicao is None:
+        return []
+    pets = {r[0]: r for r in catalogo}
+    x0, y0 = posicao[:2]
+    r_world = raio * 100
+    direcoes = ("N", "NE", "L", "SE", "S", "SO", "O", "NO")
+    linhas = []
+    for npc, coordenadas in pontos.items():
+        especie = especies.get(str(npc))
+        if not especie:
+            continue
+        pet = pets.get(str(especie[0]))
+        if not pet or not str(pet[3]).isdigit() or int(pet[3]) <= 0:
+            continue
+        for x, y in coordenadas:
+            dx, dy = x - x0, y - y0
+            if abs(dx) > r_world or abs(dy) > r_world:
+                continue
+            distancia = math.hypot(dx, dy) / 100
+            if distancia > raio:
+                continue
+            direcao = direcoes[round(math.degrees(math.atan2(dx, -dy)) / 45) % 8]
+            linhas.append((especie[1], pet[1], int(pet[3]), distancia,
+                           direcao, x, y, str(especie[0])))
+    linhas.sort(key=lambda r: r[3])
     return linhas
 
 def imagem_estrela(estado, frac, S, bg, ouro="#f4c46a"):
@@ -2320,6 +2364,12 @@ def main():
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
             self.prog = Progresso(ARQ_DADOS)
             self.nomes_pets = carregar_json(os.path.join(BASE, "pet_nomes_npcap.json"), {})
+            self.radar_pontos = carregar_json(os.path.join(BASE, "radar_pontos.json"), {})
+            self.radar_mapa_escolhido = self.cfg.get("radar_mapa", "altgard")
+            if self.radar_mapa_escolhido not in RADAR_MAPAS:
+                self.radar_mapa_escolhido = "altgard"
+            self._radar_imagens = {}
+            self._radar_foto = None
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
@@ -2328,8 +2378,13 @@ def main():
             self.rede_pronta = False
             self.rede_sincronizada = False
             self.radar_mobs = {}
-            self.radar_posicao = None
-            self.radar_zona = None
+            ultima = self.cfg.get("radar_ultima_pos")
+            try:
+                self.radar_posicao = ((float(ultima[1]), float(ultima[2]), 0)
+                                      if isinstance(ultima, list) and len(ultima) == 3 else None)
+                self.radar_zona = int(ultima[0]) if self.radar_posicao else None
+            except (TypeError, ValueError, IndexError):
+                self.radar_posicao = self.radar_zona = None
             self._radar_ui = None
             self.erro = None
             self.debug = None
@@ -3122,27 +3177,136 @@ def main():
             radar = tk.Frame(self.corpo, bg=COR["painel"],
                              highlightthickness=1, highlightbackground=COR["barra"])
             radar.pack(fill="x", pady=(self.px(7), 0))
-            tk.Label(radar, text="◉ Radar de mascotes", fg=COR["ouro"],
-                     bg=COR["painel"], font=self.f_nome, anchor="w").pack(
-                         fill="x", padx=self.px(7), pady=(self.px(5), 0))
+            topo = tk.Frame(radar, bg=COR["painel"])
+            topo.pack(fill="x", padx=self.px(7), pady=(self.px(5), 0))
+            tk.Label(topo, text="◉ Radar de mascotes", fg=COR["ouro"],
+                     bg=COR["painel"], font=self.f_nome).pack(side="left")
+            mapas = {}
+            for chave in ("verteron", "altgard", "abyss"):
+                botao = tk.Label(topo, text=RADAR_MAPAS[chave][0],
+                                  bg=COR["painel"], fg=COR["suave"],
+                                  font=self.f_peq, cursor="hand2")
+                botao.pack(side="right", padx=(self.px(4), 0))
+                botao.bind("<Button-1>", lambda e, k=chave: self._selecionar_mapa_radar(k))
+                mapas[chave] = botao
             status = tk.Label(radar, text="", fg=COR["suave"], bg=COR["painel"],
                               font=self.f_peq, anchor="w", justify="left",
                               wraplength=self.px(355))
             status.pack(fill="x", padx=self.px(7), pady=(self.px(2), self.px(3)))
+            conteudo = tk.Frame(radar, bg=COR["painel"])
+            conteudo.pack(fill="x", padx=self.px(7))
+            tamanho = self.px(148)
+            mapa = tk.Canvas(conteudo, width=tamanho, height=tamanho,
+                             bg=COR["fundo"], highlightthickness=0)
+            mapa.pack(side="left", anchor="n")
+            lista = tk.Frame(conteudo, bg=COR["painel"])
+            lista.pack(side="left", fill="both", expand=True,
+                       padx=(self.px(7), 0), anchor="n")
             rows = []
             for _ in range(3):
-                row = tk.Frame(radar, bg=COR["painel"])
+                row = tk.Frame(lista, bg=COR["painel"])
                 linha = tk.Label(row, text="", fg=COR["texto"], bg=COR["painel"],
                                  font=self.f_peq, anchor="w", justify="left",
-                                 wraplength=self.px(355))
+                                 wraplength=self.px(205))
                 linha.pack(fill="x")
                 detalhe = tk.Label(row, text="", fg=COR["suave"], bg=COR["painel"],
                                    font=self.f_peq, anchor="w", justify="left",
-                                   wraplength=self.px(355))
+                                   wraplength=self.px(205))
                 detalhe.pack(fill="x")
                 rows.append((row, linha, detalhe))
-            self._radar_ui = (radar, status, rows)
+            legenda = tk.Label(radar, text="● monstro visto   ·   • local de farm conhecido",
+                               fg=COR["suave"], bg=COR["painel"],
+                               font=self.f_peq, anchor="w")
+            legenda.pack(fill="x", padx=self.px(7), pady=(self.px(3), self.px(5)))
+            self._radar_ui = (radar, status, rows, mapa, mapas)
+            self._radar_assinatura = None
             self._atualizar_radar()
+
+        def _selecionar_mapa_radar(self, chave):
+            self.radar_mapa_escolhido = chave
+            self.cfg["radar_mapa"] = chave
+            self.salvar_cfg()
+            self._radar_assinatura = None
+            self._atualizar_radar()
+
+        def _desenhar_mapa_radar(self, catalogo, especies, conhecidos):
+            from PIL import Image, ImageTk
+            ui = self._radar_ui
+            canvas = ui[3]
+            chave = self.radar_mapa_escolhido
+            meta = RADAR_MAPAS[chave]
+            pos = self.radar_posicao if self.radar_zona in meta[1] else None
+            pendentes = {str(r[0]) for r in catalogo
+                         if str(r[3]).isdigit() and int(r[3]) > 0}
+            mobs = tuple(sorted((entity, npc, x, y) for entity, (npc, x, y, _) in
+                                self.radar_mobs.items() if str(npc) in especies and
+                                str(especies[str(npc)][0]) in pendentes))
+            assinatura = (chave, tuple(pos[:2]) if pos else None,
+                          mobs, tuple((r[5], r[6]) for r in conhecidos),
+                          tuple(sorted(pendentes)) if not pos else ())
+            if assinatura == self._radar_assinatura:
+                return
+            self._radar_assinatura = assinatura
+            tamanho = self.px(148)
+            if chave not in self._radar_imagens:
+                caminho = os.path.join(BASE, f"radar_mapa_{chave}.jpg")
+                try:
+                    self._radar_imagens[chave] = Image.open(caminho).convert("RGB")
+                except (OSError, ValueError):
+                    self._radar_imagens[chave] = None
+            imagem = self._radar_imagens[chave]
+            canvas.delete("all")
+            if imagem is None:
+                canvas.create_text(tamanho // 2, tamanho // 2,
+                                   text="Mapa indisponível", fill=COR["suave"])
+                return
+            escala, offset_x, offset_y, fator = meta[2:]
+            if pos:
+                px = (offset_x + escala * pos[0]) * fator
+                py = (offset_y + escala * pos[1]) * fator
+                meio = escala * fator * 15000
+                recorte = imagem.crop((round(px - meio), round(py - meio),
+                                       round(px + meio), round(py + meio)))
+                fundo = recorte.resize((tamanho, tamanho), Image.Resampling.BILINEAR)
+            else:
+                fundo = imagem.resize((tamanho, tamanho), Image.Resampling.BILINEAR)
+            self._radar_foto = ImageTk.PhotoImage(fundo, master=self.root)
+            canvas.create_image(0, 0, image=self._radar_foto, anchor="nw")
+            if pos:
+                raio = 15000
+                def ponto(x, y):
+                    return (tamanho / 2 + (x - pos[0]) * tamanho / (2 * raio),
+                            tamanho / 2 + (y - pos[1]) * tamanho / (2 * raio))
+                for r in conhecidos[:100]:
+                    x, y = ponto(r[5], r[6])
+                    canvas.create_oval(x - 2, y - 2, x + 2, y + 2,
+                                       fill="#65d6c4", outline="#163a39")
+                for _, npc, xw, yw in mobs:
+                    if str(npc) not in especies:
+                        continue
+                    x, y = ponto(xw, yw)
+                    if 0 <= x <= tamanho and 0 <= y <= tamanho:
+                        canvas.create_oval(x - 4, y - 4, x + 4, y + 4,
+                                           fill=COR["ouro"], outline="#251b0b", width=2)
+                x = tamanho / 2
+                canvas.create_oval(x - 5, x - 5, x + 5, x + 5,
+                                   fill="#70bdff", outline="white", width=2)
+            else:
+                pontos = self.radar_pontos.get(chave, {})
+                amostra = []
+                for npc, coordenadas in pontos.items():
+                    especie = especies.get(str(npc))
+                    if especie and str(especie[0]) in pendentes:
+                        amostra.extend(coordenadas)
+                passo = max(1, len(amostra) // 250)
+                for xw, yw in amostra[::passo][:250]:
+                    x = (offset_x + escala * xw) * fator * tamanho / imagem.width
+                    y = (offset_y + escala * yw) * fator * tamanho / imagem.height
+                    if 0 <= x <= tamanho and 0 <= y <= tamanho:
+                        canvas.create_oval(x - 1, y - 1, x + 1, y + 1,
+                                           fill="#65d6c4", outline="")
+            canvas.create_rectangle(0, 0, tamanho - 1, tamanho - 1,
+                                    outline=COR["barra"])
 
         def _imagem_estrelas_pet(self, andamento):
             from PIL import Image, ImageTk
@@ -3222,6 +3386,11 @@ def main():
                     self.radar_mobs.clear()
                 self.radar_zona = zona
                 self.radar_posicao = (x, y, agora)
+                for chave, meta in RADAR_MAPAS.items():
+                    if zona in meta[1]:
+                        self.radar_mapa_escolhido = chave
+                        self.cfg["radar_mapa"] = chave
+                        break
             elif tipo == "position":
                 self.radar_posicao = (evento[1], evento[2], agora)
             elif tipo == "mob_spawn":
@@ -3242,32 +3411,56 @@ def main():
             especies = getattr(getattr(self, "leitor", None), "radar_mascotes", {})
             linhas = linhas_radar(self.radar_mobs, self.radar_posicao, catalogo,
                                   especies, agora)
+            mapa = self.radar_mapa_escolhido
+            pos_mapa = (self.radar_posicao if
+                        self.radar_zona in RADAR_MAPAS[mapa][1] else None)
+            conhecidos = locais_radar(self.radar_pontos.get(mapa, {}), pos_mapa,
+                                      catalogo, especies, raio=150)
+            self._desenhar_mapa_radar(catalogo, especies, conhecidos)
+            for chave, botao in ui[4].items():
+                cor = COR["ouro"] if chave == mapa else COR["suave"]
+                if botao.cget("fg") != cor:
+                    botao.configure(fg=cor)
             if not especies and hasattr(self, "leitor"):
                 mensagem = "Catálogo do radar ausente. Atualize o aplicativo."
             elif not self.rede_sincronizada:
                 mensagem = ("Progresso salvo; entre no personagem para confirmar."
                             if linhas else "Aguardando monstros próximos; entre no personagem para sincronizar.")
             elif self.radar_posicao is None:
-                mensagem = "Aguardando sua posição no jogo."
+                mensagem = "Mapa de locais conhecidos · aguardando sua posição no jogo."
             elif agora - self.radar_posicao[2] > 10:
-                mensagem = "Posição antiga: use uma habilidade para atualizar a distância."
+                mensagem = "Última posição conhecida; use uma habilidade para atualizar."
+            elif not linhas and conhecidos:
+                mensagem = f"{len(conhecidos)} locais de farm próximos · monstros ainda não vistos"
             elif not linhas:
-                mensagem = "Nenhum monstro de pet pendente visto por perto."
+                mensagem = "Nenhum monstro pendente visto por perto."
             else:
                 mensagem = f"{len(linhas)} monstro(s) visto(s) · distância aproximada"
             status = ui[1]
             if status.cget("text") != mensagem:
                 status.configure(text=mensagem)
+            exibidos = [("vivo", item) for item in linhas[:3]]
+            if len(exibidos) < 3 and pos_mapa:
+                vistos = {item[0] for item in linhas}
+                for item in conhecidos:
+                    if item[0] in vistos or any(e[1][0] == item[0] for e in exibidos):
+                        continue
+                    exibidos.append(("local", item))
+                    if len(exibidos) == 3:
+                        break
             for i, (row, titulo, detalhe) in enumerate(ui[2]):
-                if i >= len(linhas):
+                if i >= len(exibidos):
                     if row.winfo_manager():
                         row.pack_forget()
                     continue
-                monstro, pet, faltam, distancia, direcao, _ = linhas[i]
-                prefixo = (f"{direcao}  ~{distancia:.0f} m  " if distancia is not None
-                           else "•  ")
-                linha = prefixo + monstro
-                sub = f"Pet: {pet} · faltam {faltam} almas"
+                tipo, item = exibidos[i]
+                monstro, pet, faltam, distancia, direcao = item[:5]
+                prefixo = "●" if tipo == "vivo" else "•"
+                local = (f"{direcao} ~{distancia:.0f} m" if distancia is not None
+                         and self.radar_posicao and agora - self.radar_posicao[2] <= 10
+                         else "última posição")
+                linha = f"{prefixo} {local}  {monstro}"
+                sub = f"{pet} · faltam {faltam}" + (" · local conhecido" if tipo == "local" else "")
                 if titulo.cget("text") != linha:
                     titulo.configure(text=linha)
                 if detalhe.cget("text") != sub:
@@ -4789,6 +4982,10 @@ def main():
 
         def sair(self):
             self.leitor.parar.set()
+            if self.radar_posicao is not None and self.radar_zona is not None:
+                self.cfg["radar_ultima_pos"] = [self.radar_zona,
+                                                  self.radar_posicao[0],
+                                                  self.radar_posicao[1]]
             if not getattr(self, "minimizado", False):
                 self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
             self.salvar_cfg()

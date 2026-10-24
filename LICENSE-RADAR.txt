@@ -1,6 +1,6 @@
-Radar monster-to-pet IDs and NPC names are adapted from
-SkeeveAN/Aion-DPS-Meter (Client/assets/aion2/pets/pets.json and
-Client/assets/aion2/npcs/npc_names.json).
+Radar monster-to-pet IDs, NPC names, spawn locations, and map tile mosaics are
+adapted from SkeeveAN/Aion-DPS-Meter (Client/assets/aion2/pets/pets.json,
+Client/assets/aion2/npcs/npc_names.json, Client/assets/aion2/maps/).
 https://github.com/SkeeveAN/Aion-DPS-Meter
 
 MIT License

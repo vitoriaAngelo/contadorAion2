@@ -53,6 +53,8 @@ OP_ZONE = b"\x21\x36"
 OP_NPC_SPAWN = b"\x41\x36"
 OP_NPC_REMOVE = b"\x42\x36"
 OP_LOCAL_POSITION = b"\x3c\x37"
+OP_EFFECT = b"\x2a\x38"
+OP_EFFECT_RENEWED = b"\x2b\x38"
 OP_LZ4 = b"\xff\xff"
 
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
@@ -286,6 +288,34 @@ def parse_local_position(payload, own_entity):
         return None
 
 
+def parse_effect_position(payload, own_entity, renewed=False):
+    """Posição do próprio personagem no fim de um efeito que ele lançou."""
+    import math
+    if own_entity is None:
+        return None
+    try:
+        _, p = read_varint(payload, 0)  # alvo
+        if not renewed:
+            if payload[p] != 1:
+                return None
+            p += 1
+        p += 1  # tipo
+        _, p = read_varint(payload, p)  # instância do efeito
+        if p + 20 >= len(payload):
+            return None
+        efeito = struct.unpack_from("<I", payload, p)[0]
+        p += 20  # efeito, duração, flag e relógio do servidor
+        caster, p = read_varint(payload, p)
+        if caster != own_entity or not 10 <= efeito <= 2_999_999_999 or len(payload) - 12 <= p:
+            return None
+        x, y, z = struct.unpack_from("<fff", payload, len(payload) - 12)
+        if not all(math.isfinite(v) for v in (x, y, z)) or not 100 < abs(x) < 500_000 or not 100 < abs(y) < 500_000 or abs(z) >= 50_000:
+            return None
+        return x, y
+    except (IndexError, struct.error):
+        return None
+
+
 def find_sync(buf, need=8):
     """Offset where `need` consecutive frames with known opcodes start
     (or known frames that end exactly at the end of the buffer)."""
@@ -404,6 +434,11 @@ class Decoder:
                             self.emit(("zone",) + zone)
                     elif op == OP_LOCAL_POSITION:
                         position = parse_local_position(payload, self.own_entity)
+                        if position:
+                            self.emit(("position",) + position)
+                    elif op in (OP_EFFECT, OP_EFFECT_RENEWED):
+                        position = parse_effect_position(payload, self.own_entity,
+                                                         op == OP_EFFECT_RENEWED)
                         if position:
                             self.emit(("position",) + position)
                     elif op == OP_NPC_SPAWN:
