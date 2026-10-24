@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.9"
+VERSAO = "1.9.10"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2378,6 +2378,8 @@ def main():
             self.rede_pronta = False
             self.rede_sincronizada = False
             self.radar_mobs = {}
+            self.radar_posicao_estimada = None
+            self.radar_mapa_estimado = None
             ultima = self.cfg.get("radar_ultima_pos")
             try:
                 self.radar_posicao = ((float(ultima[1]), float(ultima[2]), 0)
@@ -3235,13 +3237,14 @@ def main():
             canvas = ui[3]
             chave = self.radar_mapa_escolhido
             meta = RADAR_MAPAS[chave]
-            pos = self.radar_posicao if self.radar_zona in meta[1] else None
+            pos = getattr(self, "_radar_pos_exibicao", None)
             pendentes = {str(r[0]) for r in catalogo
                          if str(r[3]).isdigit() and int(r[3]) > 0}
             mobs = tuple(sorted((entity, npc, x, y) for entity, (npc, x, y, _) in
                                 self.radar_mobs.items() if str(npc) in especies and
                                 str(especies[str(npc)][0]) in pendentes))
             assinatura = (chave, tuple(pos[:2]) if pos else None,
+                          getattr(self, "_radar_pos_estimada_ativa", False),
                           mobs, tuple((r[5], r[6]) for r in conhecidos),
                           tuple(sorted(pendentes)) if not pos else ())
             if assinatura == self._radar_assinatura:
@@ -3289,8 +3292,10 @@ def main():
                         canvas.create_oval(x - 4, y - 4, x + 4, y + 4,
                                            fill=COR["ouro"], outline="#251b0b", width=2)
                 x = tamanho / 2
+                estimada = getattr(self, "_radar_pos_estimada_ativa", False)
                 canvas.create_oval(x - 5, x - 5, x + 5, x + 5,
-                                   fill="#70bdff", outline="white", width=2)
+                                   fill="" if estimada else "#70bdff",
+                                   outline="#70bdff" if estimada else "white", width=2)
             else:
                 pontos = self.radar_pontos.get(chave, {})
                 amostra = []
@@ -3397,8 +3402,29 @@ def main():
                 _, entity, npc, x, y = evento
                 if str(npc) in getattr(self.leitor, "radar_mascotes", {}):
                     self.radar_mobs[entity] = (npc, x, y, agora)
+                    mapas = []
+                    for chave, pontos in self.radar_pontos.items():
+                        coordenadas = pontos.get(str(npc), ())
+                        if coordenadas:
+                            menor = min((x - px) ** 2 + (y - py) ** 2
+                                        for px, py in coordenadas)
+                            mapas.append((menor, chave))
+                    if mapas:
+                        _, chave = min(mapas)
+                        if self.radar_mapa_estimado and chave != self.radar_mapa_estimado:
+                            self.radar_mobs.clear()
+                            self.radar_mobs[entity] = (npc, x, y, agora)
+                        self.radar_mapa_estimado = chave
+                        if self.radar_posicao is None or agora - self.radar_posicao[2] > 10:
+                            self.radar_mapa_escolhido = chave
             elif tipo == "mob_remove":
                 self.radar_mobs.pop(evento[1], None)
+            recentes = [(m[1], m[2]) for m in self.radar_mobs.values()
+                       if agora - m[3] < 60]
+            if recentes:
+                self.radar_posicao_estimada = (
+                    sum(x for x, _ in recentes) / len(recentes),
+                    sum(y for _, y in recentes) / len(recentes), agora)
 
         def _atualizar_radar(self, catalogo=None):
             ui = getattr(self, "_radar_ui", None)
@@ -3409,11 +3435,18 @@ def main():
                                                   self.cfg.get("tiers", [5, 25, 75]))
             agora = time.monotonic()
             especies = getattr(getattr(self, "leitor", None), "radar_mascotes", {})
-            linhas = linhas_radar(self.radar_mobs, self.radar_posicao, catalogo,
-                                  especies, agora)
             mapa = self.radar_mapa_escolhido
-            pos_mapa = (self.radar_posicao if
-                        self.radar_zona in RADAR_MAPAS[mapa][1] else None)
+            pos_exata = (self.radar_posicao if self.radar_zona in RADAR_MAPAS[mapa][1]
+                         and agora - self.radar_posicao[2] <= 10 else None) if self.radar_posicao else None
+            pos_estimada = (self.radar_posicao_estimada
+                            if self.radar_mapa_estimado == mapa and self.radar_posicao_estimada
+                            and agora - self.radar_posicao_estimada[2] <= 60 else None)
+            self._radar_pos_estimada_ativa = pos_exata is None and pos_estimada is not None
+            self._radar_pos_exibicao = pos_exata or pos_estimada or (
+                self.radar_posicao if self.radar_zona in RADAR_MAPAS[mapa][1] else None)
+            linhas = linhas_radar(self.radar_mobs, pos_exata, catalogo,
+                                  especies, agora)
+            pos_mapa = self._radar_pos_exibicao
             conhecidos = locais_radar(self.radar_pontos.get(mapa, {}), pos_mapa,
                                       catalogo, especies, raio=150)
             self._desenhar_mapa_radar(catalogo, especies, conhecidos)
@@ -3423,6 +3456,8 @@ def main():
                     botao.configure(fg=cor)
             if not especies and hasattr(self, "leitor"):
                 mensagem = "Catálogo do radar ausente. Atualize o aplicativo."
+            elif self._radar_pos_estimada_ativa:
+                mensagem = f"{len(linhas)} bichos vistos · área aproximada pelos monstros"
             elif not self.rede_sincronizada:
                 mensagem = ("Progresso salvo; entre no personagem para confirmar."
                             if linhas else "Aguardando monstros próximos; entre no personagem para sincronizar.")
@@ -3457,7 +3492,7 @@ def main():
                 monstro, pet, faltam, distancia, direcao = item[:5]
                 prefixo = "●" if tipo == "vivo" else "•"
                 local = (f"{direcao} ~{distancia:.0f} m" if distancia is not None
-                         and self.radar_posicao and agora - self.radar_posicao[2] <= 10
+                         else "na área" if self._radar_pos_estimada_ativa
                          else "última posição")
                 linha = f"{prefixo} {local}  {monstro}"
                 sub = f"{pet} · faltam {faltam}" + (" · local conhecido" if tipo == "local" else "")
