@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.21"
+VERSAO = "1.9.22"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3146,20 +3146,22 @@ def main():
         # ---------------- catálogo completo de pets ----------------
         def _montar_pets(self):
             from tkinter import ttk
-            topo = tk.Frame(self.corpo, bg=COR["fundo"])
-            topo.pack(fill="x", pady=(0, self.px(4)))
-            tk.Label(topo, text="Buscar", fg=COR["suave"], bg=COR["fundo"],
+            topo = tk.Frame(self.corpo, bg=COR["painel"], padx=self.px(8), pady=self.px(6))
+            topo.pack(fill="x", pady=(0, self.px(5)))
+            tk.Label(topo, text="Pets", fg=COR["ouro"], bg=COR["painel"],
+                     font=self.f_nome).pack(side="left", padx=(0, self.px(8)))
+            tk.Label(topo, text="Buscar", fg=COR["suave"], bg=COR["painel"],
                      font=self.f_peq).pack(side="left", padx=(0, self.px(5)))
             self._pets_busca = tk.StringVar()
             busca = tk.Entry(topo, textvariable=self._pets_busca, font=self.f_nome,
-                             fg=COR["texto"], bg=COR["painel"],
+                             fg=COR["texto"], bg=COR["barra"],
                              insertbackground=COR["texto"], relief="flat")
             busca.pack(side="left", fill="x", expand=True)
             busca.bind("<KeyRelease>", lambda e: self._atualizar_pets())
             self._pets_so_incompletos = tk.BooleanVar(value=False)
             tk.Checkbutton(topo, text="Só incompletos", variable=self._pets_so_incompletos,
-                           command=self._atualizar_pets, fg=COR["suave"], bg=COR["fundo"],
-                           activebackground=COR["fundo"], activeforeground=COR["texto"],
+                           command=self._atualizar_pets, fg=COR["texto"], bg=COR["painel"],
+                           activebackground=COR["painel"], activeforeground=COR["ouro"],
                            selectcolor=COR["painel"], font=self.f_peq).pack(side="right")
 
             estilo = ttk.Style(self.root)
@@ -3168,9 +3170,9 @@ def main():
                 estilo.theme_use("clam")
             estilo.configure("Pets.Treeview", background=COR["painel"],
                              fieldbackground=COR["painel"], foreground=COR["texto"],
-                             rowheight=self.px(29), font=self.f_peq, borderwidth=0)
+                             rowheight=self.px(32), font=self.f_peq, borderwidth=0)
             estilo.configure("Pets.Treeview.Heading", background=COR["barra"],
-                             foreground=COR["texto"], font=self.f_peq,
+                             foreground=COR["ouro"], font=self.f_peq,
                              relief="flat", padding=(self.px(3), self.px(5)))
             estilo.map("Pets.Treeview.Heading",
                        background=[("active", COR["barra"])],
@@ -5131,6 +5133,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
