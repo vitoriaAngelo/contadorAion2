@@ -114,6 +114,18 @@ class LeituraNpcap(unittest.TestCase):
             p.somar_pet(1036, 'Lupyllini', 1)
             self.assertEqual(p.monstros[-1]['qtd'], 25)
 
+    def test_primeira_alma_na_lista_parte_do_total_sincronizado_da_conta(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            p = ca.Progresso(os.path.join(pasta, 'progresso.json'))
+            nomes = {'1142': 'Aberração Deformada'}
+            self.assertTrue(p.sincronizar_pets({1142: 2}, {1142: 44}, nomes))
+            self.assertEqual(p.monstros, [])
+            m = p.somar_pet(1142, nomes['1142'], 1)
+            self.assertEqual(m['qtd'], 75)
+            self.assertEqual(p.pet_estado['1142'], 75)
+            linha = next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')
+            self.assertEqual(linha[2:], ('Nv.2 45/75', '30', 'jogo'))
+
     def test_catalogo_antigo_sai_da_aba_de_farm_sem_perder_os_valores(self):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
             caminho = os.path.join(pasta, 'progresso.json')

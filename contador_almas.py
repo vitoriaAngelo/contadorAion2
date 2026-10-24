@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.15"
+VERSAO = "1.9.16"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1597,17 +1597,25 @@ class Progresso:
         """Usa o identificador do jogo; nomes parecidos nunca sao misturados."""
         pet_id = str(pet_id)
         anterior_oculto = self.pets_ocultos.pop(pet_id, 0)
+        confirmado = self.pet_estado.get(pet_id)
         m = next((x for x in self.monstros if x.get("pet_id") == pet_id), None)
         if m is None:
             m = next((x for x in self.monstros if not x.get("pet_id")
                       and normalizar(x["nome"]) == normalizar(nome)), None)
         if m is None:
-            m = {"nome": nome, "qtd": anterior_oculto, "apelidos": [], "atualizado": 0}
+            # Ao aparecer pela primeira vez na lista, começa no total que já foi
+            # sincronizado da conta, em vez de começar em zero.
+            base = confirmado if confirmado is not None else anterior_oculto
+            m = {"nome": nome, "qtd": base, "apelidos": [], "atualizado": 0}
             self.monstros.append(m)
+        elif confirmado is not None and m["qtd"] != confirmado:
+            # O estado completo do jogo é a fonte correta caso a linha local
+            # tenha ficado antiga ou tenha sido criada antes da sincronização.
+            m["qtd"] = confirmado
         m["pet_id"] = pet_id
         m["qtd"] += n
         if self.pet_estado_em is not None or pet_id in self.pet_estado:
-            self.pet_estado[pet_id] = min(105, self.pet_estado.get(pet_id, m["qtd"] - n) + n)
+            self.pet_estado[pet_id] = min(105, m["qtd"])
         m["atualizado"] = m["ultima_alma"] = time.time()
         self._anotar_dia(m["nome"], n)
         return m
