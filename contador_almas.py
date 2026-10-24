@@ -11,6 +11,7 @@ Funciona como o OBS: apenas olha os pixels da tela.
 import asyncio
 import ctypes
 import difflib
+import hashlib
 import json
 import os
 import queue
@@ -25,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.14"
+VERSAO = "1.9.15"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -37,6 +38,14 @@ ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requ
 def versao_tupla(v):
     n = [int(x) for x in re.findall(r"\d+", str(v))[:3]]
     return tuple(n + [0] * (3 - len(n)))
+
+
+def assinatura_estado_pets(levels, points):
+    """Identifica a coleção do personagem sem guardar os dados no config."""
+    dados = [sorted((int(k), int(v)) for k, v in levels.items()),
+             sorted((int(k), int(v)) for k, v in points.items())]
+    bruto = json.dumps(dados, separators=(",", ":")).encode("ascii")
+    return hashlib.sha256(bruto).hexdigest()[:20]
 
 
 def baixar_texto(url, timeout=20):
@@ -2380,6 +2389,7 @@ def main():
         def __init__(self):
             self.cfg = carregar_config()
             self.personagem = self.cfg.get("personagem", "")
+            self._assinatura_estado_atual = None
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
@@ -4915,6 +4925,18 @@ def main():
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
                     elif tipo == "estado_rede":
+                        assinatura = assinatura_estado_pets(dado[0], dado[1])
+                        self._assinatura_estado_atual = assinatura
+                        assinatura_salva = self.cfg.get("personagem_estado")
+                        if self.personagem and assinatura_salva and assinatura != assinatura_salva:
+                            registrar("NPCAP: personagem mudou; nome anterior removido")
+                            self.personagem = ""
+                            self.cfg["personagem"] = ""
+                            self.cfg.pop("personagem_estado", None)
+                            self._atualizar_personagem()
+                        elif self.personagem and not assinatura_salva:
+                            self.cfg["personagem_estado"] = assinatura
+                        self.salvar_cfg()
                         mudou = self.prog.sincronizar_pets(*dado, self.leitor.nomes)
                         self.prog.salvar()  # inclui a data da fotografia, mesmo sem mudanças
                         if mudou:
@@ -4927,17 +4949,17 @@ def main():
                         if dado != self.personagem:
                             self.personagem = dado
                             self.cfg["personagem"] = dado
+                            if self._assinatura_estado_atual:
+                                self.cfg["personagem_estado"] = self._assinatura_estado_atual
                             self.salvar_cfg()
                             self._atualizar_personagem()
-                            registrar("NPCAP: personagem identificado")
+                            registrar("NPCAP: personagem identificado: " + dado)
                     elif tipo == "conexao_rede":
                         self.rede_conectada = bool(dado)
                         if not dado:
                             self.rede_pronta = False
                             self.rede_sincronizada = False
-                            self.radar_mobs.clear()
-                            self.radar_posicao = None
-                            self.radar_zona = None
+                            self._assinatura_estado_atual = None
                         self.atualizar_status()
                     elif tipo == "rede_pronta":
                         self.rede_pronta = True

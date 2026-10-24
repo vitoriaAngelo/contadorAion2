@@ -24,6 +24,11 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_assinatura_distingue_estado_de_outro_personagem(self):
+        a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
+        self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))
+        self.assertNotEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 11}))
+
     def test_nome_do_proprio_personagem_no_login(self):
         nome = 'Vitória'.encode('utf-8')
         payload = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
