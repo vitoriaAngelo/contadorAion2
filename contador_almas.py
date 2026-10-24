@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.11"
+VERSAO = "1.9.12"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -260,6 +260,19 @@ def centro_radar_anunciado(mobs, anterior, agora):
         x = anterior[0] * .55 + x * .45
         y = anterior[1] * .55 + y * .45
     return x, y, agora
+
+
+def avancar_centro_radar(atual, destino, intervalo):
+    """Desloca a câmera sem saltos; mudanças grandes de região são imediatas."""
+    import math
+    if atual is None or destino is None:
+        return destino
+    dx, dy = destino[0] - atual[0], destino[1] - atual[1]
+    distancia = math.hypot(dx, dy)
+    if distancia > 30000 or distancia < 30:
+        return destino[:2]
+    fator = 1 - math.exp(-max(0, min(intervalo, .2)) / .23)
+    return atual[0] + dx * fator, atual[1] + dy * fator
 
 
 def locais_radar(pontos, posicao, catalogo, especies, raio=200):
@@ -2395,6 +2408,10 @@ def main():
             self.radar_mobs = {}
             self.radar_posicao_estimada = None
             self.radar_mapa_estimado = None
+            self._radar_pos_visual = None
+            self._radar_mapa_visual = None
+            self._radar_ultimo_frame = time.monotonic()
+            self._radar_cache = None
             ultima = self.cfg.get("radar_ultima_pos")
             try:
                 self.radar_posicao = ((float(ultima[1]), float(ultima[2]), 0)
@@ -2461,6 +2478,7 @@ def main():
             self.leitor.start()
             self.root.after(100, self.consumir)
             self.root.after(1000, self._radar_pulso)
+            self.root.after(50, self._radar_animar)
             self.root.after(3000, self.reforcar_topo)
             self.root.protocol("WM_DELETE_WINDOW", self.sair)
 
@@ -3244,6 +3262,7 @@ def main():
             self.cfg["radar_mapa"] = chave
             self.salvar_cfg()
             self._radar_assinatura = None
+            self._radar_mapa_visual = None
             self._atualizar_radar()
 
         def _desenhar_mapa_radar(self, catalogo, especies, conhecidos):
@@ -3252,7 +3271,7 @@ def main():
             canvas = ui[3]
             chave = self.radar_mapa_escolhido
             meta = RADAR_MAPAS[chave]
-            pos = getattr(self, "_radar_pos_exibicao", None)
+            pos = self._radar_pos_visual
             pendentes = {str(r[0]) for r in catalogo
                          if str(r[3]).isdigit() and int(r[3]) > 0}
             mobs = tuple(sorted((entity, npc, x, y) for entity, (npc, x, y, _) in
@@ -3273,8 +3292,8 @@ def main():
                 except (OSError, ValueError):
                     self._radar_imagens[chave] = None
             imagem = self._radar_imagens[chave]
-            canvas.delete("all")
             if imagem is None:
+                canvas.delete("all")
                 canvas.create_text(tamanho // 2, tamanho // 2,
                                    text="Mapa indisponível", fill=COR["suave"])
                 return
@@ -3291,7 +3310,13 @@ def main():
             else:
                 fundo = imagem.resize((tamanho, tamanho), Image.Resampling.BILINEAR)
             self._radar_foto = ImageTk.PhotoImage(fundo, master=self.root)
-            canvas.create_image(0, 0, image=self._radar_foto, anchor="nw")
+            fundo_item = canvas.find_withtag("radar_fundo")
+            if fundo_item:
+                canvas.itemconfigure(fundo_item[0], image=self._radar_foto)
+            else:
+                canvas.create_image(0, 0, image=self._radar_foto, anchor="nw",
+                                    tags="radar_fundo")
+            canvas.delete("radar_marcas")
             if pos:
                 raio = raio_m * 100
                 def ponto(x, y):
@@ -3300,18 +3325,22 @@ def main():
                 for r in conhecidos[:100]:
                     x, y = ponto(r[5], r[6])
                     canvas.create_oval(x - 3, y - 3, x + 3, y + 3,
-                                       fill="#af8240", outline="#453018")
+                                       fill="#af8240", outline="#453018",
+                                       tags="radar_marcas")
                 for _, npc, xw, yw in mobs:
                     if str(npc) not in especies:
                         continue
                     x, y = ponto(xw, yw)
                     if 0 <= x <= tamanho and 0 <= y <= tamanho:
                         canvas.create_oval(x - 4, y - 4, x + 4, y + 4,
-                                           fill=COR["ouro"], outline="#251b0b", width=2)
-                x = tamanho / 2
-                canvas.create_oval(x - 5, x - 5, x + 5, x + 5,
+                                           fill=COR["ouro"], outline="#251b0b",
+                                           width=2, tags="radar_marcas")
+                alvo = getattr(self, "_radar_pos_exibicao", pos)
+                x, y = ponto(alvo[0], alvo[1])
+                canvas.create_oval(x - 5, y - 5, x + 5, y + 5,
                                    fill="" if estimada else "#70bdff",
-                                   outline="#70bdff" if estimada else "white", width=2)
+                                   outline="#70bdff" if estimada else "white",
+                                   width=2, tags="radar_marcas")
             else:
                 pontos = self.radar_pontos.get(chave, {})
                 amostra = []
@@ -3325,9 +3354,11 @@ def main():
                     y = (offset_y + escala * yw) * fator * tamanho / imagem.height
                     if 0 <= x <= tamanho and 0 <= y <= tamanho:
                         canvas.create_oval(x - 1, y - 1, x + 1, y + 1,
-                                           fill="#d6ab56", outline="")
-            canvas.create_rectangle(0, 0, tamanho - 1, tamanho - 1,
-                                    outline=COR["barra"])
+                                           fill="#d6ab56", outline="",
+                                           tags="radar_marcas")
+            if not canvas.find_withtag("radar_borda"):
+                canvas.create_rectangle(0, 0, tamanho - 1, tamanho - 1,
+                                        outline=COR["barra"], tags="radar_borda")
 
         def _imagem_estrelas_pet(self, andamento):
             from PIL import Image, ImageTk
@@ -3395,6 +3426,24 @@ def main():
                 self._atualizar_radar()
             self.root.after(500, self._radar_pulso)
 
+        def _radar_animar(self):
+            agora = time.monotonic()
+            intervalo = agora - self._radar_ultimo_frame
+            self._radar_ultimo_frame = agora
+            if (self.cfg.get("aba", "almas") == "almas" and
+                    self._radar_cache is not None and self._radar_ui and
+                    self._radar_ui[0].winfo_exists()):
+                alvo = getattr(self, "_radar_pos_exibicao", None)
+                if alvo is not None and self._radar_pos_visual is not None:
+                    proxima = avancar_centro_radar(self._radar_pos_visual,
+                                                   alvo, intervalo)
+                    dx = proxima[0] - self._radar_pos_visual[0]
+                    dy = proxima[1] - self._radar_pos_visual[1]
+                    if dx * dx + dy * dy >= 40 * 40 or proxima == alvo[:2]:
+                        self._radar_pos_visual = proxima
+                        self._desenhar_mapa_radar(*self._radar_cache)
+            self.root.after(50, self._radar_animar)
+
         def _ao_radar_rede(self, evento):
             tipo = evento[0]
             agora = time.monotonic()
@@ -3459,6 +3508,11 @@ def main():
             self._radar_pos_estimada_ativa = pos_exata is None and pos_estimada is not None
             self._radar_pos_exibicao = pos_exata or pos_estimada or (
                 self.radar_posicao if self.radar_zona in RADAR_MAPAS[mapa][1] else None)
+            if self._radar_mapa_visual != mapa or self._radar_pos_visual is None:
+                self._radar_pos_visual = (self._radar_pos_exibicao[:2]
+                                          if self._radar_pos_exibicao else None)
+                self._radar_mapa_visual = mapa
+                self._radar_assinatura = None
             linhas = linhas_radar(self.radar_mobs, pos_exata, catalogo,
                                   especies, agora)
             pos_mapa = self._radar_pos_exibicao
@@ -3466,6 +3520,7 @@ def main():
                       else RADAR_RAIO_EXATO)
             conhecidos = locais_radar(self.radar_pontos.get(mapa, {}), pos_mapa,
                                       catalogo, especies, raio=raio_m)
+            self._radar_cache = (catalogo, especies, conhecidos)
             self._desenhar_mapa_radar(catalogo, especies, conhecidos)
             for chave, botao in ui[4].items():
                 cor = COR["ouro"] if chave == mapa else COR["suave"]

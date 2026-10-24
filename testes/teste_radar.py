@@ -2,10 +2,18 @@ import struct
 import unittest
 
 import pet_protocol
-from contador_almas import linhas_radar, locais_radar, centro_radar_anunciado
+from contador_almas import (linhas_radar, locais_radar,
+                            centro_radar_anunciado, avancar_centro_radar)
 
 
 class RadarTest(unittest.TestCase):
+    def test_radar_camera_eases_nearby_moves_and_snaps_teleports(self):
+        passo = avancar_centro_radar((0, 0), (1000, 0, 1), .05)
+        self.assertGreater(passo[0], 0)
+        self.assertLess(passo[0], 1000)
+        self.assertEqual(avancar_centro_radar((0, 0), (40000, 0, 1), .05),
+                         (40000, 0))
+
     def test_nearby_area_moves_smoothly_with_spawn_events(self):
         primeiro = centro_radar_anunciado({1: (2000004, 1000, 2000, 5)}, None, 5)
         self.assertEqual(primeiro, (1000, 2000, 5))

@@ -82,7 +82,7 @@ o jogo informou sua posição há menos de 10 segundos, mostra direção e dist�
 aproximada. Uma posição antiga permanece no mapa como referência, mas a
 distância deixa de ser exibida até receber posição nova. É possível escolher o
 mapa no topo do radar. Se o jogo enviar aparições de bichos sem a posição do
-personagem, o radar acompanha uma área aproximada conforme bichos entram e
+personagem, o radar desliza para a área aproximada conforme bichos entram e
 saem do alcance e omite direção e distância. O centro vazado indica essa área
 estimada, não a posição exata do personagem. Áreas sem dados de posição ou de aparição de monstros
 podem mostrar apenas o mapa e os locais conhecidos.
