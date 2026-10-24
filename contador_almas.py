@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.20"
+VERSAO = "1.9.21"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3156,6 +3156,11 @@ def main():
                              insertbackground=COR["texto"], relief="flat")
             busca.pack(side="left", fill="x", expand=True)
             busca.bind("<KeyRelease>", lambda e: self._atualizar_pets())
+            self._pets_so_incompletos = tk.BooleanVar(value=False)
+            tk.Checkbutton(topo, text="Só incompletos", variable=self._pets_so_incompletos,
+                           command=self._atualizar_pets, fg=COR["suave"], bg=COR["fundo"],
+                           activebackground=COR["fundo"], activeforeground=COR["texto"],
+                           selectcolor=COR["painel"], font=self.f_peq).pack(side="right")
 
             estilo = ttk.Style(self.root)
             # O tema nativo do Windows ignora as cores do cabeçalho do Treeview.
@@ -3396,6 +3401,8 @@ def main():
             busca = normalizar(self._pets_busca.get()).replace(" ", "")
             visiveis = [r for r in linhas if busca in normalizar(r[1]).replace(" ", "")
                         or busca in r[0]]
+            if self._pets_so_incompletos.get():
+                visiveis = [r for r in visiveis if r[3] != "0"]
             ids = tuple(r[0] for r in visiveis)
             if tuple(tree.get_children()) != ids:
                 tree.delete(*tree.get_children())
@@ -4956,7 +4963,14 @@ def main():
                         elif self.personagem and not assinatura_salva:
                             self.cfg["personagem_estado"] = assinatura
                         self.salvar_cfg()
+                        estado_anterior = dict(self.prog.pet_estado)
                         mudou = self.prog.sincronizar_pets(*dado, self.leitor.nomes)
+                        completados = [self.leitor.nomes.get(str(pid), f"Pet #{pid}")
+                                       for pid, total in self.prog.pet_estado.items()
+                                       if total >= 105 and estado_anterior.get(pid, 0) < 105]
+                        if completados:
+                            self.root.bell()
+                            registrar("PET COMPLETO: " + ", ".join(completados))
                         self.prog.salvar()  # inclui a data da fotografia, mesmo sem mudanças
                         if mudou:
                             self.render_em_breve()
@@ -5117,6 +5131,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
