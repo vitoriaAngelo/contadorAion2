@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.13"
+VERSAO = "1.9.14"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -87,7 +87,10 @@ def aplicar_atualizacao(dados_py, pasta):
         with open(tmp, "wb") as f:
             f.write(dados)
         os.replace(tmp, os.path.join(pasta, nome))
-    return extras.get("requirements.txt", req_antes) != req_antes
+    # O contador roda elevado para abrir o Npcap. Nesse modo o Python pode não
+    # enxergar pacotes instalados com --user; mantenha as dependências junto ao app.
+    return (extras.get("requirements.txt", req_antes) != req_antes or
+            not os.path.isdir(os.path.join(pasta, "psutil")))
 
 
 def esperar_processo(pid, limite=15.0):
@@ -4550,8 +4553,8 @@ def main():
                     exe = sys.executable
                     if exe.lower().endswith("pythonw.exe"):
                         exe = exe[:-len("pythonw.exe")] + "python.exe"
-                    subprocess.run([exe, "-m", "pip", "install", "--user", "-q",
-                                    "--disable-pip-version-check", "-r",
+                    subprocess.run([exe, "-m", "pip", "install", "--target", BASE,
+                                    "--upgrade", "-q", "--disable-pip-version-check", "-r",
                                     os.path.join(BASE, "requirements.txt")],
                                    capture_output=True, timeout=600,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

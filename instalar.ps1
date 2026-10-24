@@ -7,7 +7,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Nome    = "Contador de Almas"
-$Versao  = "1.9.13"
+$Versao  = "1.9.14"
 $Origem  = $PSScriptRoot
 $Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
 $ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
@@ -141,7 +141,8 @@ try {
 
     # 2) Bibliotecas ----------------------------------------------------------
     Passo 2 $total "Instalando as bibliotecas de captura Npcap..."
-    $cod = Rodar $py @("-m", "pip", "install", "--user", "--upgrade", "--disable-pip-version-check", "-q", "-r", (Join-Path $Origem "requirements.txt"))
+    New-Item -ItemType Directory -Force -Path $Destino | Out-Null
+    $cod = Rodar $py @("-m", "pip", "install", "--target", $Destino, "--upgrade", "--disable-pip-version-check", "-q", "-r", (Join-Path $Origem "requirements.txt"))
     if ($cod -ne 0) { throw "Falha ao instalar as bibliotecas do Python" }
     Ok "Bibliotecas instaladas"
 
