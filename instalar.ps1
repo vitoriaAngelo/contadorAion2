@@ -7,7 +7,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Nome    = "Contador de Almas"
-$Versao  = "1.9.26"
+$Versao  = "1.9.27"
 $Origem  = $PSScriptRoot
 $Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
 $ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
@@ -224,6 +224,7 @@ catch {
     Write-Host "    Se precisar de ajuda, mande um print desta janela."
     exit 1
 }
+
 
 
 
