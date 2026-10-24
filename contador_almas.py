@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.28"
+VERSAO = "1.9.29"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2812,7 +2812,7 @@ def main():
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
             self.b_pets.pack(side="right")
-            self.b_inicio = self.botao(h, "⌂", lambda e: self.alternar_aba("almas"),
+            self.b_inicio = self.botao(h, "🏠", lambda e: self.alternar_aba("almas"),
                                        cor=COR["ouro"], dica="Voltar ao início: almas recebidas")
             self.b_inicio.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher(),
@@ -2821,19 +2821,6 @@ def main():
             self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal,
                        dica="Op\u00e7\u00f5es (cor, letra, volume, chat...)").pack(side="right")
-            # som do aviso de evento: colorido = ligado, cinza riscado = mudo
-            import tkinter.font as tkfont
-            self.fontes["som_mudo"] = tkfont.Font(root=self.root, family="Segoe UI",
-                                                  size=self.fontes["botao"].cget("size"),
-                                                  overstrike=1)
-            self.b_som = tk.Label(h, text="\u266a", bg=COR["fundo"], cursor="hand2",
-                                  padx=self.px(4))
-            self.b_som.bind("<Button-1>", lambda e: self.alternar_som())
-            self.dica(self.b_som, lambda: "Som do aviso ligado (toca 1 min antes dos eventos). Clique para desligar"
-                      if self.cfg.get("aviso_som", True) else "Som do aviso desligado. Clique para ligar")
-            self.b_som.pack(side="right")
-            self._pintar_som()
-
             for w in (h, t, self.lbl_status):
                 w.bind("<ButtonPress-1>", self._arrastar_ini)
                 w.bind("<B1-Motion>", self._arrastar)
@@ -5152,6 +5139,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
