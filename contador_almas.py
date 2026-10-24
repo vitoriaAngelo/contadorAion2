@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.30"
+VERSAO = "1.9.31"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2812,7 +2812,7 @@ def main():
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
             self.b_pets.pack(side="right")
-            self.b_inicio = self.botao(h, "🏠", lambda e: self.alternar_aba("almas"),
+            self.b_inicio = self.botao(h, "🏡", lambda e: self.alternar_aba("almas"),
                                        cor=COR["ouro"], dica="Voltar ao início: almas recebidas")
             self.b_inicio.pack(side="right")
             self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher(),
@@ -5139,6 +5139,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
