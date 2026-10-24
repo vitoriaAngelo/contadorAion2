@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.17"
+VERSAO = "1.9.18"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2884,18 +2884,13 @@ def main():
                 self.lbl_personagem.configure(text=texto)
 
         def pedir_sincronizacao(self):
-            self.personagem = ""
-            self.cfg["personagem"] = ""
-            self.cfg.pop("personagem_estado", None)
-            self._assinatura_estado_atual = None
-            self.sincronizacao_pendente = True
-            self.rede_sincronizada = False
-            if hasattr(self, "leitor"):
-                self.leitor.pedir_deteccao.set()
-            self.salvar_cfg()
-            self._atualizar_personagem()
+            # Reaplica imediatamente o último estado já recebido, sem exigir relogin.
+            self.sincronizacao_pendente = False
+            self.rede_sincronizada = True
+            self.prog.salvar()
+            self.render_em_breve()
             self.atualizar_status()
-            registrar("NPCAP: sincronização solicitada pelo usuário")
+            registrar("NPCAP: sincronização reaplicada pelo usuário")
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -5127,5 +5122,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
