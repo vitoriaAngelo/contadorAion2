@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.18"
+VERSAO = "1.9.19"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2773,12 +2773,13 @@ def main():
                          fg=COR["alma"], bg=COR["fundo"], font=self.f_titulo)
             t.pack(side="left")
             self.lbl_titulo = t
-            self.lbl_personagem = tk.Label(h, text="", fg=COR["suave"],
-                                           bg=COR["fundo"], font=self.f_peq)
-            self.lbl_personagem.pack(side="left", padx=(self.px(5), 0))
+            self.lbl_personagem = tk.Label(h, text="", fg=COR["texto"],
+                                           bg=COR["painel"], font=self.f_peq,
+                                           padx=self.px(7), pady=self.px(2))
+            self.lbl_personagem.pack(side="left", padx=(self.px(7), 0))
             self.dica(self.lbl_personagem, lambda: self.personagem or "Personagem ainda não identificado")
             self._atualizar_personagem()
-            self.b_sincronizar = self.botao(h, "↻", lambda e: self.pedir_sincronizacao(), fonte=self.f_peq,
+            self.b_sincronizar = self.botao(h, "⟳", lambda e: self.pedir_sincronizacao(), cor=COR["ouro"], fonte=self.f_peq,
                                             dica="Sincronizar personagem e progresso da conta")
             self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
             self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
