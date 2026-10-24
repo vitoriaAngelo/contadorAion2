@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.19"
+VERSAO = "1.9.20"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2803,12 +2803,6 @@ def main():
                                      dica=lambda: "Voltar para o modo normal" if self.cfg.get("compacto")
                                      else "Modo compacto (uma linha por bicho)")
             self.b_modo.pack(side="right")
-            # aba de informacoes: resets e almas do dia/semana
-            self.b_aba = self.botao(h, "\u2726" if self.cfg.get("aba") == "info" else "\u25f7",
-                                    lambda e: self.alternar_aba("info"),
-                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "info"
-                                    else "Info: quanto falta para o reset di\u00e1rio e o semanal")
-            self.b_aba.pack(side="right")
             self.b_od = self.botao(h, "\u2726" if self.cfg.get("aba") == "od" else "\u25c6",
                                    lambda e: self.alternar_aba("od"),
                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
@@ -5123,6 +5117,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
