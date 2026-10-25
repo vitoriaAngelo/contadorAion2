@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.33"
+VERSAO = "1.9.34"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2396,7 +2396,11 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
-            self.personagem = self.cfg.get("personagem", "")
+            # O nome salvo pode pertencer ao personagem anterior; só exibimos
+            # um nome depois que o Npcap identificar a sessão atual.
+            self.personagem = ""
+            self.cfg["personagem"] = ""
+            self.cfg.pop("personagem_estado", None)
             self._assinatura_estado_atual = None
             self.sincronizacao_pendente = False
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
@@ -5142,6 +5146,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
