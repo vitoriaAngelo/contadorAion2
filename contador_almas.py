@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.35"
+VERSAO = "1.9.36"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1614,8 +1614,9 @@ class Progresso:
             m["qtd"] = confirmado
         m["pet_id"] = pet_id
         m["qtd"] += n
-        if self.pet_estado_em is not None or pet_id in self.pet_estado:
-            self.pet_estado[pet_id] = min(105, m["qtd"])
+        # Todo ganho recebido pelo Npcap também atualiza o total exibido na
+        # coleção, mesmo antes de chegar uma fotografia completa da conta.
+        self.pet_estado[pet_id] = min(105, m["qtd"])
         m["atualizado"] = m["ultima_alma"] = time.time()
         self._anotar_dia(m["nome"], n)
         return m
@@ -5146,6 +5147,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
