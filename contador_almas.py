@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.36"
+VERSAO = "1.9.37"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2400,8 +2400,8 @@ def main():
             # O nome salvo pode pertencer ao personagem anterior; só exibimos
             # um nome depois que o Npcap identificar a sessão atual.
             self.personagem = ""
-            self.cfg["personagem"] = ""
-            self.cfg.pop("personagem_estado", None)
+            self._personagem_candidato = self.cfg.get("personagem", "")
+            self._assinatura_personagem_candidato = self.cfg.get("personagem_estado")
             self._assinatura_estado_atual = None
             self.sincronizacao_pendente = False
             VOLUME_AVISO["v"] = float(self.cfg.get("volume_aviso", 0.5))
@@ -2863,7 +2863,7 @@ def main():
                 elif self.sincronizacao_pendente:
                     txt, cor = "● aguardando nova sincronização", COR["ouro"]
                 elif not self.rede_sincronizada:
-                    txt, cor = "\u25cf sincronização pendente", COR["ouro"]
+                    txt, cor = "\u25cf aguardando dados da conta", COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -2883,13 +2883,12 @@ def main():
                 self.lbl_personagem.configure(text=texto)
 
         def pedir_sincronizacao(self):
-            # Reaplica imediatamente o último estado já recebido, sem exigir relogin.
-            self.sincronizacao_pendente = False
-            self.rede_sincronizada = True
-            self.prog.salvar()
-            self.render_em_breve()
+            # A captura é somente de leitura: aguarda o próximo estado completo
+            # enviado pelo jogo e não marca dados antigos como atuais.
+            self.sincronizacao_pendente = True
+            self.rede_sincronizada = False
             self.atualizar_status()
-            registrar("NPCAP: sincronização reaplicada pelo usuário")
+            registrar("NPCAP: aguardando o próximo estado completo da conta")
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -4970,8 +4969,19 @@ def main():
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
                         self._assinatura_estado_atual = assinatura
                         assinatura_salva = self.cfg.get("personagem_estado")
-                        if self.personagem and assinatura_salva and assinatura != assinatura_salva:
-                            registrar("NPCAP: personagem mudou; nome anterior removido")
+                        candidato = self._personagem_candidato
+                        if candidato and self._assinatura_personagem_candidato == assinatura:
+                            self.personagem = candidato
+                            self._personagem_candidato = ""
+                            self._assinatura_personagem_candidato = None
+                            self.cfg["personagem"] = candidato
+                            self.cfg["personagem_estado"] = assinatura
+                            self._atualizar_personagem()
+                            registrar("NPCAP: personagem confirmado pelo estado da conta: " + candidato)
+                        elif candidato:
+                            registrar("NPCAP: estado atual diferente do personagem salvo; aguardando nome do jogo")
+                            self._personagem_candidato = ""
+                            self._assinatura_personagem_candidato = None
                             self.personagem = ""
                             self.cfg["personagem"] = ""
                             self.cfg.pop("personagem_estado", None)
@@ -4996,6 +5006,8 @@ def main():
                         self.atualizar_status()
                     elif tipo == "personagem_rede":
                         self.sincronizacao_pendente = False
+                        self._personagem_candidato = ""
+                        self._assinatura_personagem_candidato = None
                         if dado != self.personagem:
                             self.personagem = dado
                             self.cfg["personagem"] = dado
@@ -5147,6 +5159,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
