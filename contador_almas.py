@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.38"
+VERSAO = "1.9.39"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2340,7 +2340,7 @@ class LeitorRede(threading.Thread):
                 elif evento[0] == "nickname":
                     self.fila.put(("personagem_rede", evento[1]))
 
-            pet_protocol.run_sniffer(receber, self.parar)
+            pet_protocol.run_sniffer(receber, self.parar, self.pedir_deteccao)
         except Exception as e:
             if not self.parar.is_set():
                 self.fila.put(("erro", str(e)))
@@ -2883,12 +2883,13 @@ def main():
                 self.lbl_personagem.configure(text=texto)
 
         def pedir_sincronizacao(self):
-            # A captura é somente de leitura: aguarda o próximo estado completo
-            # enviado pelo jogo e não marca dados antigos como atuais.
+            # Reinicia o decodificador e analisa os próximos pacotes da sessão.
             self.sincronizacao_pendente = True
             self.rede_sincronizada = False
+            if hasattr(self, "leitor") and hasattr(self.leitor, "pedir_deteccao"):
+                self.leitor.pedir_deteccao.set()
             self.atualizar_status()
-            registrar("NPCAP: aguardando o próximo estado completo da conta")
+            registrar("NPCAP: nova leitura dos próximos pacotes solicitada")
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -4404,6 +4405,8 @@ def main():
             menu = tk.Menu(self.root, tearoff=0)
             if self.cfg.get("fonte_leitura") == "npcap":
                 menu.add_command(label="Leitura: Npcap (rede)", state="disabled")
+                menu.add_command(label="Ler dados atuais agora",
+                                 command=self.pedir_sincronizacao)
             else:
                 menu.add_command(label="Detectar o chat automaticamente", command=self.detectar_chat)
                 menu.add_command(label="Selecionar \u00e1rea do chat na m\u00e3o\u2026", command=self.selecionar_regiao)
@@ -5159,6 +5162,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
