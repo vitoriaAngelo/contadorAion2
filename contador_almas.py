@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.39"
+VERSAO = "1.9.40"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2309,7 +2309,6 @@ class LeitorRede(threading.Thread):
         self.ativo = threading.Event()
         self.ativo.set()
         self.parar = threading.Event()
-        self.pedir_deteccao = threading.Event()
         self.areas_proprias = []
         self.ultima = None
         try:
@@ -2340,7 +2339,7 @@ class LeitorRede(threading.Thread):
                 elif evento[0] == "nickname":
                     self.fila.put(("personagem_rede", evento[1]))
 
-            pet_protocol.run_sniffer(receber, self.parar, self.pedir_deteccao)
+            pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
             if not self.parar.is_set():
                 self.fila.put(("erro", str(e)))
@@ -2861,7 +2860,7 @@ def main():
                 elif not self.rede_pronta:
                     txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
                 elif self.sincronizacao_pendente:
-                    txt, cor = "● aguardando nova sincronização", COR["ouro"]
+                    txt, cor = "● reentre no personagem para ler os dados atuais", COR["ouro"]
                 elif not self.rede_sincronizada:
                     txt, cor = "\u25cf aguardando dados da conta", COR["ouro"]
                 else:
@@ -2883,13 +2882,11 @@ def main():
                 self.lbl_personagem.configure(text=texto)
 
         def pedir_sincronizacao(self):
-            # Reinicia o decodificador e analisa os próximos pacotes da sessão.
+            # A coleção completa só chega em um pacote enviado pelo jogo ao entrar
+            # no mundo. Npcap é passivo: reiniciar o decoder não solicita esse estado.
             self.sincronizacao_pendente = True
-            self.rede_sincronizada = False
-            if hasattr(self, "leitor") and hasattr(self.leitor, "pedir_deteccao"):
-                self.leitor.pedir_deteccao.set()
             self.atualizar_status()
-            registrar("NPCAP: nova leitura dos próximos pacotes solicitada")
+            registrar("NPCAP: sincronização atual solicitada; aguardando estado enviado ao entrar no personagem")
 
         def leitor_ativo(self):
             return hasattr(self, "leitor") and self.leitor.ativo.is_set()
@@ -4405,7 +4402,7 @@ def main():
             menu = tk.Menu(self.root, tearoff=0)
             if self.cfg.get("fonte_leitura") == "npcap":
                 menu.add_command(label="Leitura: Npcap (rede)", state="disabled")
-                menu.add_command(label="Ler dados atuais agora",
+                menu.add_command(label="Ler dados atuais (reentrar no personagem)",
                                  command=self.pedir_sincronizacao)
             else:
                 menu.add_command(label="Detectar o chat automaticamente", command=self.detectar_chat)

@@ -462,7 +462,7 @@ class Decoder:
 
 # ---------------------------------------------------------------- capture
 
-def run_sniffer(emit, stop_event=None, reset_event=None):
+def run_sniffer(emit, stop_event=None):
     """Captures passively until stop_event is set; emits decoded events."""
     import psutil
     from scapy.all import IP, TCP, IPv6, AsyncSniffer, Raw, conf
@@ -488,20 +488,6 @@ def run_sniffer(emit, stop_event=None, reset_event=None):
     decoder = Decoder(emit)
     lock = threading.Lock()
     recent_packets = {}
-
-    def reset_decoder():
-        while stop_event is None or not stop_event.is_set():
-            if reset_event is None or not reset_event.wait(0.25):
-                continue
-            with lock:
-                decoder.streams.clear()
-                decoder.ready = False
-                recent_packets.clear()
-            reset_event.clear()
-            log("decoder reset; reading new packets")
-
-    if reset_event is not None:
-        threading.Thread(target=reset_decoder, daemon=True).start()
 
     def on_packet(p):
         if TCP in p and p[TCP].dport in game_ports:
