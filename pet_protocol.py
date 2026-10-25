@@ -316,7 +316,7 @@ def parse_effect_position(payload, own_entity, renewed=False):
         return None
 
 
-def find_sync(buf, need=8):
+def find_sync(buf, need=3):
     """Offset where `need` consecutive frames with known opcodes start
     (or known frames that end exactly at the end of the buffer)."""
     n = len(buf)
@@ -417,13 +417,17 @@ class Decoder:
                                 self.emit(("gain", pid, amount))
                     elif op == OP_STATE:
                         try:
-                            self.emit(("state",) + parse_state(payload))
+                            levels, points = parse_state(payload)
+                            log("state decoded", "levels", len(levels),
+                                "points", len(points))
+                            self.emit(("state", levels, points))
                         except Exception as e:
                             log("state parse:", type(e).__name__)
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:
                             self.own_entity, _ = read_varint(payload, 0)
+                            log("nickname decoded", nome)
                             self.emit(("nickname", nome))
                         else:
                             log("nickname ignored", "payload_len", len(payload),
