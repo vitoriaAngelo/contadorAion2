@@ -13,6 +13,7 @@ Wire format (server -> client):
 import json
 import hashlib
 import os
+import re
 import struct
 import sys
 import threading
@@ -221,7 +222,10 @@ def parse_nickname(payload):
         nome = payload[i:i + tamanho].decode("utf-8")
         if not (1 <= len(nome) <= 40 and any(c.isalpha() for c in nome) and
                 all(c.isalnum() or c in "_-" for c in nome)):
-            return None
+            nome = None
+        if nome is None:
+            candidatos = re.findall(rb"[A-Za-z][A-Za-z0-9_-]{2,39}", payload)
+            return candidatos[0].decode("ascii") if candidatos else None
         i += tamanho
         servidor = struct.unpack_from("<H", payload, i)[0]
         classe = payload[i + 2]
@@ -229,7 +233,8 @@ def parse_nickname(payload):
             return None
         return nome
     except (IndexError, UnicodeDecodeError, ValueError, struct.error):
-        return None
+        candidatos = re.findall(rb"[A-Za-z][A-Za-z0-9_-]{2,39}", payload)
+        return candidatos[0].decode("ascii") if candidatos else None
 
 
 def parse_zone(payload):
