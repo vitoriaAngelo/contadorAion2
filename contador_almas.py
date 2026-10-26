@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.40"
+VERSAO = "1.9.41"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2470,7 +2470,15 @@ def main():
 
             self.leitor = (LeitorRede(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
                            else Leitor(self.cfg))
+            # No modo Npcap, almas vêm da rede e os ODs continuam vindo só do
+            # chat. O OCR roda em paralelo, mas suas linhas de alma são ignoradas.
+            self.leitor_ocr = (Leitor(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
+                               else None)
+            self.erro_od = None
+            self.motor_ocr_nome = "iniciando leitura do chat"
             self.leitor.start()
+            if self.leitor_ocr:
+                self.leitor_ocr.start()
             self.root.after(100, self.consumir)
             self.root.after(3000, self.reforcar_topo)
             self.root.protocol("WM_DELETE_WINDOW", self.sair)
@@ -2564,12 +2572,20 @@ def main():
                 except Exception:
                     pass
             self.leitor.areas_proprias = areas
+            if self.leitor_ocr:
+                self.leitor_ocr.areas_proprias = areas
             self.root.after(300, self.atualizar_areas_proprias)
 
         def detectar_chat(self):
+            self.erro_od = None
             self.status_extra = "procurando o chat…"
             self.atualizar_status()
-            self.leitor.pedir_deteccao.set()
+            leitor = self.leitor_ocr or self.leitor
+            if hasattr(leitor, "pedir_deteccao"):
+                leitor.pedir_deteccao.set()
+
+        def leitor_imagem(self):
+            return self.leitor_ocr or self.leitor
         def px(self, v):
             return int(round(v * self.k))
 
@@ -2863,6 +2879,8 @@ def main():
                     txt, cor = "● reentre no personagem para ler os dados atuais", COR["ouro"]
                 elif not self.rede_sincronizada:
                     txt, cor = "\u25cf aguardando dados da conta", COR["ouro"]
+                elif self.erro_od:
+                    txt, cor = "\u25cf leitura de OD indisponível; confira o chat", COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -2894,9 +2912,13 @@ def main():
         def alternar_pausa(self):
             if self.leitor.ativo.is_set():
                 self.leitor.ativo.clear()
+                if self.leitor_ocr:
+                    self.leitor_ocr.ativo.clear()
             else:
                 self.rastreador.reiniciar()  # nao conta o que apareceu enquanto pausado
                 self.leitor.ativo.set()
+                if self.leitor_ocr:
+                    self.leitor_ocr.ativo.set()
             self.atualizar_status()
 
         def alternar_recolher(self):
@@ -4401,7 +4423,12 @@ def main():
         def menu_principal(self, e):
             menu = tk.Menu(self.root, tearoff=0)
             if self.cfg.get("fonte_leitura") == "npcap":
-                menu.add_command(label="Leitura: Npcap (rede)", state="disabled")
+                menu.add_command(label="Almas: Npcap · ODs: leitura do chat", state="disabled")
+                menu.add_command(label="Detectar chat para ODs", command=self.detectar_chat)
+                menu.add_command(label="Selecionar área do chat para ODs…",
+                                 command=self.selecionar_regiao)
+                menu.add_command(label="Ver leitura do chat / ODs…", command=self.abrir_debug)
+                menu.add_separator()
                 menu.add_command(label="Ler dados atuais (reentrar no personagem)",
                                  command=self.pedir_sincronizacao)
             else:
@@ -4708,9 +4735,10 @@ def main():
             para mandar a quem esta ajudando."""
             import zipfile, platform
             try:
-                if self.leitor.ultima:
-                    self.leitor.ultima[0].save(os.path.join(BASE, "captura_original.png"))
-                    self.leitor.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
+                leitor_imagem = self.leitor_imagem()
+                if leitor_imagem.ultima:
+                    leitor_imagem.ultima[0].save(os.path.join(BASE, "captura_original.png"))
+                    leitor_imagem.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
                 # print da tela inteira (onde o chat deveria estar)
                 try:
                     import mss
@@ -4827,6 +4855,7 @@ def main():
                 sel.destroy()
                 self.cfg["regiao"] = {"left": v["left"] + l, "top": v["top"] + t,
                                       "width": w, "height": h}
+                self.erro_od = None
                 self.status_extra = None
                 registrar(f"AREA ESCOLHIDA NA MAO: {self.cfg['regiao']}")
                 self.salvar_cfg()
@@ -4899,10 +4928,11 @@ def main():
             self.mostrar_debug(self.ultimas_linhas, [])
 
         def salvar_captura(self):
-            if not self.leitor.ultima:
+            leitor_imagem = self.leitor_imagem()
+            if not leitor_imagem.ultima:
                 self.dialogo(messagebox.showinfo, APP_NOME, "Nada capturado ainda.")
                 return
-            bruta, tratada = self.leitor.ultima
+            bruta, tratada = leitor_imagem.ultima
             bruta.save(os.path.join(BASE, "captura_original.png"))
             tratada.save(os.path.join(BASE, "captura_tratada.png"))
             self.abrir_pasta()
@@ -4913,7 +4943,7 @@ def main():
             self.salvar_padroes()
 
         def atualizar_previa(self):
-            par = self.leitor.ultima if hasattr(self, "leitor") else None
+            par = self.leitor_imagem().ultima if hasattr(self, "leitor") else None
             if not par or not hasattr(self, "lbl_prev1"):
                 return
             from PIL import ImageTk
@@ -4930,8 +4960,12 @@ def main():
             if not (self.debug and self.debug.winfo_exists()):
                 return
             info = f"Motor: {self.motor_nome}"
+            if self.leitor_ocr:
+                info += f" · OD: {self.motor_ocr_nome}"
             if self.erro:
                 info += f"\nERRO: {self.erro}"
+            if self.erro_od:
+                info += f"\nERRO OD: {self.erro_od}"
             reg = self.cfg.get("regiao")
             info += f"\n\u00c1rea: {reg if reg else 'n\u00e3o escolhida'}"
             self.lbl_motor.configure(text=info)
@@ -4953,6 +4987,37 @@ def main():
 
         # ---------------- loop ----------------
         def consumir(self):
+            if self.leitor_ocr:
+                while True:
+                    try:
+                        tipo_od, dado_od = self.leitor_ocr.fila.get_nowait()
+                    except queue.Empty:
+                        break
+                    if tipo_od == "linhas":
+                        self.ao_ler(dado_od[0], None, dado_od[1], somente_od=True)
+                    elif tipo_od == "linhas_pos":
+                        self.ao_ler([t for t, _, _ in dado_od[0]], dado_od[0],
+                                    dado_od[1], somente_od=True)
+                    elif tipo_od == "motor":
+                        self.motor_ocr_nome = dado_od
+                    elif tipo_od == "regiao":
+                        if dado_od:
+                            self.cfg["regiao"] = dado_od
+                            self.salvar_cfg()
+                            self.rastreador.reiniciar()
+                            self.erro_od = None
+                            registrar(f"ÁREA DO CHAT PARA OD: {dado_od}")
+                        else:
+                            self.erro_od = "chat não localizado"
+                            registrar("OD: chat não localizado; selecione a área do chat no menu")
+                        self.atualizar_status()
+                        self.mostrar_debug(self.ultimas_linhas, [])
+                    elif tipo_od == "erro":
+                        self.erro_od = str(dado_od)
+                        registrar("ERRO OCR OD: " + self.erro_od)
+                        self.atualizar_status()
+                    elif tipo_od == "aviso":
+                        registrar("AVISO OCR OD: " + str(dado_od))
             try:
                 while True:
                     tipo, dado = self.leitor.fila.get_nowait()
@@ -5081,7 +5146,7 @@ def main():
             except Exception as e:
                 registrar(f"ERRO ao registrar alma da rede: {e}")
 
-        def ao_ler(self, linhas, itens=None, t0=None):
+        def ao_ler(self, linhas, itens=None, t0=None, somente_od=False):
             self.ultimas_linhas = linhas
             if t0:
                 # mede o atraso (captura -> resultado) para o diagnostico
@@ -5095,6 +5160,8 @@ def main():
                 nomes = self.rastreador.quadro_pos(itens, t0)
             else:
                 nomes = self.rastreador.quadro(linhas, t0)
+            if somente_od:
+                nomes = [n for n in nomes if n.startswith("\u00a7OD:")]
             for n in nomes:
                 if n.startswith("\u00a7OD:"):
                     tipo = n[4:]
@@ -5108,11 +5175,12 @@ def main():
                 self.prog.salvar()  # grava uma vez so, mesmo com varias almas
             # diagnostico: captura a cada 10s e registro do que leu/contou
             agora = time.time()
-            if agora - getattr(self, "_ultimo_save", 0) > 10 and self.leitor.ultima:
+            leitor_imagem = self.leitor_imagem()
+            if agora - getattr(self, "_ultimo_save", 0) > 10 and leitor_imagem.ultima:
                 self._ultimo_save = agora
                 try:
-                    self.leitor.ultima[0].save(os.path.join(BASE, "captura_original.png"))
-                    self.leitor.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
+                    leitor_imagem.ultima[0].save(os.path.join(BASE, "captura_original.png"))
+                    leitor_imagem.ultima[1].save(os.path.join(BASE, "captura_tratada.png"))
                 except Exception:
                     pass
             almas = [l for l in linhas if self.rastreador.extrator.nome_em(l) or od_em(l)]
@@ -5139,6 +5207,8 @@ def main():
 
         def sair(self):
             self.leitor.parar.set()
+            if self.leitor_ocr:
+                self.leitor_ocr.parar.set()
             if not getattr(self, "minimizado", False):
                 self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
             self.salvar_cfg()
