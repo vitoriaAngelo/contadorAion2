@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.42"
+VERSAO = "1.9.43"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -518,6 +518,13 @@ def formatar_relogio(segundos):
     h, resto = divmod(segundos, 3600)
     m, s_ = divmod(resto, 60)
     return f"{h}:{m:02d}:{s_:02d}" if h else f"{m:02d}:{s_:02d}"
+
+
+def formatar_tempo_farm(segundos):
+    segundos = max(0, int(segundos))
+    horas, resto = divmod(segundos, 3600)
+    minutos, segundos = divmod(resto, 60)
+    return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
 
 def proximo_evento(eventos, agora=None):
@@ -3064,6 +3071,21 @@ def main():
                                                 text=f"Pontos: +{pontos_fmt}   ·   Kinah: —",
                                                 fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
                     self._lbl_abismo.pack(side="left", padx=self.px(8))
+                    tempo = tk.Frame(caixa_abismo, bg=COR["painel"])
+                    tempo.pack(fill="x", padx=self.px(8), pady=(0, self.px(5)))
+                    tk.Label(tempo, text="Tempo de farm", fg=COR["suave"],
+                             bg=COR["painel"], font=self.f_peq).pack(side="left")
+                    self._lbl_crono_home = tk.Label(
+                        tempo, text="", fg=COR["texto"], bg=COR["painel"],
+                        font=self.fontes["relogio"])
+                    self._lbl_crono_home.pack(side="left", padx=(self.px(6), 0))
+                    self._b_crono_home = self.botao(
+                        tempo, "▶", lambda e: self.crono_alternar(), fonte=self.f_peq,
+                        dica=lambda: "Pausar o cronômetro" if self._crono().get("inicio")
+                        else "Começar o cronômetro")
+                    self._b_crono_home.pack(side="right")
+                    self.botao(tempo, "↺", lambda e: self.crono_zerar(),
+                               fonte=self.f_peq, dica="Zerar o cronômetro").pack(side="right")
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
                 rod.pack(fill="x", pady=(self.px(4), 0))
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
@@ -3165,7 +3187,8 @@ def main():
             atual = self.cfg.get("aba", "almas")
             proxima = "almas" if atual == destino else destino
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
-                      "_od_ui", "_lbl_crono", "_b_crono", "_pets_tree",
+                      "_od_ui", "_lbl_crono", "_b_crono", "_lbl_crono_home",
+                      "_b_crono_home", "_pets_tree",
                       "_pets_resumo", "_pets_busca", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
             self._abas_visuais[atual] = {
@@ -3767,7 +3790,7 @@ def main():
                 if nome.cget("fg") != cn:
                     nome.configure(fg=cn)
 
-        # ---------------- cronometro da aba OD ----------------
+        # ---------------- cronometro de farm (compartilhado entre as abas) ----------------
         def _crono(self):
             return self.cfg.setdefault("cronometro", {"acum": 0.0, "inicio": None})
 
@@ -3794,24 +3817,30 @@ def main():
             self._atualizar_crono()
 
         def _atualizar_crono(self):
-            lbl = getattr(self, "_lbl_crono", None)
-            if lbl is None:
-                return
-            try:
-                if not lbl.winfo_exists():
-                    return
-            except Exception:
-                return
-            seg = int(self.crono_segundos())
-            h, r = divmod(seg, 3600)
-            txt = f"{h:02d}:{r // 60:02d}:{r % 60:02d}"
+            txt = formatar_tempo_farm(self.crono_segundos())
             rodando = bool(self._crono().get("inicio"))
             cor = COR["alma"] if rodando else COR["suave"]
-            if lbl.cget("text") != txt or lbl.cget("fg") != cor:
-                lbl.configure(text=txt, fg=cor)
             ic = "\u2016" if rodando else "\u25b6"
-            if self._b_crono.cget("text") != ic:
-                self._b_crono.configure(text=ic)
+            pares = [(getattr(self, "_lbl_crono", None), getattr(self, "_b_crono", None)),
+                     (getattr(self, "_lbl_crono_home", None),
+                      getattr(self, "_b_crono_home", None))]
+            for aba in getattr(self, "_abas_visuais", {}).values():
+                pares.extend(((aba.get("_lbl_crono"), aba.get("_b_crono")),
+                              (aba.get("_lbl_crono_home"), aba.get("_b_crono_home"))))
+            vistos = set()
+            for lbl, botao in pares:
+                if lbl is None or id(lbl) in vistos:
+                    continue
+                vistos.add(id(lbl))
+                try:
+                    if not lbl.winfo_exists():
+                        continue
+                    if lbl.cget("text") != txt or lbl.cget("fg") != cor:
+                        lbl.configure(text=txt, fg=cor)
+                    if botao is not None and botao.winfo_exists() and botao.cget("text") != ic:
+                        botao.configure(text=ic)
+                except Exception:
+                    continue
 
         def od_ajustar(self, tipo, n):
             self.prog.od[tipo] = max(0, self.prog.od.get(tipo, 0) + n)
@@ -3889,6 +3918,7 @@ def main():
             except Exception:
                 pass
             try:
+                self._atualizar_crono()
                 if self.cfg.get("aba") == "info":
                     self._atualizar_info()
                 elif self.cfg.get("aba") == "od":
@@ -5253,6 +5283,10 @@ def main():
             self.leitor.parar.set()
             if self.leitor_ocr:
                 self.leitor_ocr.parar.set()
+            c = self._crono()
+            if c.get("inicio"):
+                c["acum"] = self.crono_segundos()
+                c["inicio"] = None
             if not getattr(self, "minimizado", False):
                 self.cfg["posicao"] = [self.root.winfo_x(), self.root.winfo_y()]
             self.salvar_cfg()

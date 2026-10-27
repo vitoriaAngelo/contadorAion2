@@ -34,6 +34,7 @@ Depois de instalado, a pasta que você extraiu pode ser apagada.
 - Abra o contador. Ele aguarda a conexão do AION 2; o chat pode ficar fechado.
 - Mate monstros: cada alma soma no monstro certo.
 - Na aba inicial, os avisos do chat com ganho de Pontos do Abismo são somados durante a sessão; as almas continuam sendo lidas pelo Npcap.
+- O painel do Abismo também tem um cronômetro de farm com iniciar/pausar e zerar; ele mostra horas, minutos e segundos.
 
 Em cada monstro:
 

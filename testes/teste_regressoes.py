@@ -8,6 +8,10 @@ import contador_almas as ca
 
 
 class Regressoes(unittest.TestCase):
+    def test_tempo_de_farm_mostra_horas_acima_de_99(self):
+        self.assertEqual(ca.formatar_tempo_farm(3661), '01:01:01')
+        self.assertEqual(ca.formatar_tempo_farm(360000), '100:00:00')
+
     def test_nomes_ambiguos_e_palavras_extras(self):
         with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
             p = ca.Progresso(os.path.join(pasta, 'p.json'))
