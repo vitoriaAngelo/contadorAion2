@@ -48,6 +48,11 @@ MAX_LEVEL = len(REQ)
 
 OP_STATE = b"\x00\x90"
 OP_GAIN = b"\x0d\x90"
+OP_ABYSS_PROGRESS = b"\x84\x56"
+OP_ABYSS_SNAPSHOT = b"\x83\x56"
+OP_INVENTORY_CHANGE = b"\x1b\x56"
+ABYSS_POINT_ACHIEVEMENT = 230111500
+KINAH_ITEM_ID = 930100001
 OP_NICKNAME = b"\x33\x36"
 OP_ZONE = b"\x21\x36"
 OP_NPC_SPAWN = b"\x41\x36"
@@ -60,7 +65,7 @@ OP_LZ4 = b"\xff\xff"
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
 # segment; grows as new opcodes show up.
 KNOWN_OPS = {bytes.fromhex(h) for h in (
-    "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8456 "
+    "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8356 8456 "
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
 
@@ -206,6 +211,50 @@ def parse_gain(payload):
         raise ValueError("invalid soul gain payload")
     return [struct.unpack_from("<II", payload, 1 + i * 8)
             for i in range(count)]
+
+
+def parse_abyss_progress(payload):
+    """Retorna o total atual de AP do evento de conquista GetItem (0x8456)."""
+    if not payload:
+        return None
+    count = payload[0]
+    if len(payload) != 1 + count * 17:
+        return None
+    for i in range(count):
+        offset = 1 + i * 17
+        achievement, total = struct.unpack_from("<II", payload, offset)
+        if achievement == ABYSS_POINT_ACHIEVEMENT:
+            return total
+    return None
+
+
+def parse_abyss_snapshot(payload):
+    """Total já acumulado no snapshot de conquistas enviado ao entrar no jogo."""
+    try:
+        count, offset = read_varint(payload, 0)
+    except IndexError:
+        return None
+    if count > 100_000 or len(payload) != offset + count * 17:
+        return None
+    for i in range(count):
+        record = offset + i * 17
+        achievement, total = struct.unpack_from("<II", payload, record)
+        if achievement == ABYSS_POINT_ACHIEVEMENT:
+            return total
+    return None
+
+
+def parse_kinah_change(payload):
+    """Extrai uma alteração de Kinah do registro de inventário 0x1b56."""
+    # kind u8, cabeçalho e instância u32, item u32, quantidade u64
+    if len(payload) < 23 or payload[0] != 1 or payload[1] not in (0, 1, 2):
+        return None
+    item = struct.unpack_from("<I", payload, 11)[0]
+    if item != KINAH_ITEM_ID:
+        return None
+    instance = struct.unpack_from("<I", payload, 3)[0]
+    quantity = struct.unpack_from("<Q", payload, 15)[0]
+    return payload[1], instance, quantity
 
 
 def parse_nickname(payload):
@@ -402,6 +451,8 @@ class Decoder:
         self.ready = False
         self.own_entity = None
         self.zone_id = None
+        self.abyss_progress = None
+        self.kinah_instances = {}
 
     def segment(self, conn, seq, data):
         stream = self.streams.setdefault(conn, Stream())
@@ -423,6 +474,30 @@ class Decoder:
                             self.emit(("state", levels, points))
                         except Exception as e:
                             log("state parse:", type(e).__name__)
+                    elif op == OP_ABYSS_PROGRESS:
+                        total = parse_abyss_progress(payload)
+                        if total is not None:
+                            previous = self.abyss_progress
+                            self.abyss_progress = total
+                            if previous is not None and total > previous:
+                                self.emit(("abyss_points", total - previous))
+                    elif op == OP_ABYSS_SNAPSHOT:
+                        total = parse_abyss_snapshot(payload)
+                        if total is not None:
+                            self.abyss_progress = total
+                    elif op == OP_INVENTORY_CHANGE:
+                        change = parse_kinah_change(payload)
+                        if change:
+                            kind, instance, quantity = change
+                            previous = self.kinah_instances.get(instance)
+                            if kind == 2 or quantity == 0:
+                                self.kinah_instances.pop(instance, None)
+                            else:
+                                self.kinah_instances[instance] = quantity
+                                if kind == 0 and previous is None and quantity:
+                                    self.emit(("kinah_gain", quantity))
+                                elif previous is not None and quantity > previous:
+                                    self.emit(("kinah_gain", quantity - previous))
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:

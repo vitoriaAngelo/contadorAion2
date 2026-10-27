@@ -24,6 +24,57 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_snapshot_define_base_de_pontos_antes_dos_ganhos(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        snapshot = frame(pp.OP_ABYSS_SNAPSHOT,
+                         b'\x01' + struct.pack('<IIQB', pp.ABYSS_POINT_ACHIEVEMENT,
+                                               17000, 1_800_000_000_000, 1))
+        ganho = frame(pp.OP_ABYSS_PROGRESS,
+                      b'\x01' + struct.pack('<IIQB', pp.ABYSS_POINT_ACHIEVEMENT,
+                                            17150, 1_800_000_001_000, 1))
+        dec.segment('jogo', 1000, snapshot)
+        dec.segment('jogo', 1000 + len(snapshot), ganho)
+        self.assertEqual(eventos, [('ready',), ('abyss_points', 150)])
+
+    def test_pontos_abismo_somam_diferenca_do_evento_de_conquista(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+
+        def progresso(total):
+            return b'\x01' + struct.pack('<IIQB', pp.ABYSS_POINT_ACHIEVEMENT,
+                                         total, 1_800_000_000_000, 1)
+
+        primeiro = frame(pp.OP_ABYSS_PROGRESS, progresso(17000))
+        segundo = frame(pp.OP_ABYSS_PROGRESS, progresso(17980))
+        repetido = frame(pp.OP_ABYSS_PROGRESS, progresso(17980))
+        dec.segment('jogo', 1000, primeiro)
+        dec.segment('jogo', 1000 + len(primeiro), segundo)
+        dec.segment('jogo', 1000 + len(primeiro) + len(segundo), repetido)
+        self.assertEqual(eventos, [('ready',), ('abyss_points', 980)])
+
+    def test_kinah_soma_aumentos_de_inventario_sem_recontar_saldo(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+
+        def alteracao(kind, instancia, quantidade):
+            payload = bytearray(23)
+            payload[0] = 1
+            payload[1] = kind
+            struct.pack_into('<I', payload, 3, instancia)
+            struct.pack_into('<I', payload, 11, pp.KINAH_ITEM_ID)
+            struct.pack_into('<Q', payload, 15, quantidade)
+            return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+        primeiro = alteracao(0, 123, 363)
+        segundo = alteracao(1, 123, 726)
+        repetido = alteracao(1, 123, 726)
+        dec.segment('jogo', 1000, primeiro)
+        dec.segment('jogo', 1000 + len(primeiro), segundo)
+        dec.segment('jogo', 1000 + len(primeiro) + len(segundo), repetido)
+        self.assertEqual(eventos, [('ready',), ('kinah_gain', 363),
+                                   ('kinah_gain', 363)])
+
     def test_assinatura_distingue_estado_de_outro_personagem(self):
         a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
         self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))

@@ -12,8 +12,9 @@ isso permite contar várias almas de uma vez sem reler o histórico do chat.
 
 - Farmando em grupo: as almas que caem para outra pessoa ("Fulano obteve Alma: X (Vinculado)…") **não** contam para você.
 - **Não** lê a memória do jogo, não envia pacotes e não pede login.
-- O chat pode estar aberto ou fechado. Pacotes brutos não são salvos.
+- Almas, ganhos de Pontos do Abismo e aumentos de Kinah são lidos pelos eventos de rede; o contador não lê o chat. Os ganhos de AP e Kinah são somados desde que o contador foi aberto. Pacotes brutos não são salvos.
 - Aparece na stream (OBS / Discord) — dá para usar como fonte de **Captura de Janela**.
+- Na aba inicial, o painel do Abismo mostra os Pontos do Abismo e o Kinah ganhos durante a sessão, junto do cronômetro de farm.
 
 > ⚠️ **Aviso:** é um programa de terceiros, não oficial. A compatibilidade com o jogo e seu anti-cheat não é garantida. Use por sua conta e risco.
 

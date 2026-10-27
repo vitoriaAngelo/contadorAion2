@@ -2,11 +2,10 @@
 """
 Contador de Almas - overlay para Aion 2.
 
-Captura uma pequena area da tela (o chat / log do sistema), le o texto com OCR
-e, quando aparece a mensagem de alma de um monstro, soma +1 no contador dele.
+Recebe passivamente pelo Npcap os eventos que o jogo envia ao proprio PC e
+atualiza os contadores de almas, Pontos do Abismo e Kinah.
 
-NAO le a memoria do jogo, NAO intercepta a rede e NAO pede login.
-Funciona como o OBS: apenas olha os pixels da tela.
+NAO le a memoria do jogo, NAO envia pacotes e NAO pede login.
 """
 import asyncio
 import ctypes
@@ -26,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.43"
+VERSAO = "1.9.44"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -839,29 +838,6 @@ def compacto(s):
     return normalizar(s).replace(" ", "")
 
 
-def pontos_abismo_em(linha):
-    """Extrai somente um ganho explicitamente descrito como pontos do Abismo."""
-    if not linha:
-        return None
-    texto = sem_acento(linha).lower()
-    rotulo = r"(?:abyss\s+points?|pontos?\s+(?:do\s+|de\s+)?abismo)"
-    verbo = r"(?:(?:obtained|received|gained|obteve|ganhou|recebeu|obtidos?)\s*)?"
-    padroes = (
-        rf"(?P<valor>\d[\d.,]*)\s*{rotulo}",
-        rf"{rotulo}\s*{verbo}(?:[+:x\u00d7-]\s*)?(?P<valor>\d[\d.,]*)",
-    )
-    for padrao in padroes:
-        m = re.search(padrao, texto, re.I)
-        if m:
-            try:
-                valor = int(re.sub(r"[.,]", "", m.group("valor")))
-                if 0 < valor <= 1_000_000:
-                    return valor
-            except ValueError:
-                pass
-    return None
-
-
 def _melhor_janela(s, alvo, folga=1):
     """Procura em s (so letras) o trecho mais parecido com alvo.
     Devolve (nota, inicio, fim)."""
@@ -967,9 +943,8 @@ class Rastreador:
             return []
         nomes_C = []
         for _, raw in C:
-            ganho_abismo = pontos_abismo_em(raw)
-            n = f"\u00a7AP:{ganho_abismo}" if ganho_abismo is not None else self.extrator.nome_em(raw)
-            if n and not n.startswith("\u00a7AP:"):
+            n = self.extrator.nome_em(raw)
+            if n:
                 c = self.canon(n)
                 if c is None:
                     # monstro ainda nao cadastrado: so aceita leitura nitida
@@ -985,8 +960,7 @@ class Rastreador:
             return []
         # linha de alma vira uma chave limpa: o lixo do cenario no fim da
         # linha muda a cada quadro e nao pode atrapalhar a comparacao
-        C = [("abismo " + n[4:], raw) if n and n.startswith("\u00a7AP:") else
-             ("alma " + compacto(n), raw) if n else (k, raw) for (k, raw), n in par]
+        C = [("alma " + compacto(n), raw) if n else (k, raw) for (k, raw), n in par]
         nomes_C = [n for _, n in par]
         P, self.ant = self.ant, C
 
@@ -1020,9 +994,6 @@ class Rastreador:
         k = normalizar(raw)
         if len(k) < 3:
             return None
-        ganho_abismo = pontos_abismo_em(raw)
-        if ganho_abismo is not None:
-            return (f"abyss points {ganho_abismo}", f"\u00a7AP:{ganho_abismo}")
         od = od_em(raw)
         if od:
             return ("alma od_" + od[0].lower().replace(" ", "_"), "\u00a7OD:" + od[0])
@@ -2365,6 +2336,8 @@ class LeitorRede(threading.Thread):
                 if evento[0] == "gain" and self.ativo.is_set():
                     _, pet_id, quantidade = evento
                     self.fila.put(("alma_rede", (pet_id, quantidade)))
+                elif evento[0] in ("abyss_points", "kinah_gain") and self.ativo.is_set():
+                    self.fila.put(evento)
                 elif evento[0] == "conn":
                     self.fila.put(("conexao_rede", evento[1]))
                 elif evento[0] == "ready":
@@ -2431,6 +2404,8 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
+            # A leitura do jogo é passiva pelo Npcap; o chat não é fonte de dados.
+            self.cfg["fonte_leitura"] = "npcap"
             # O nome salvo pode pertencer ao personagem anterior; só exibimos
             # um nome depois que o Npcap identificar a sessão atual.
             self.personagem = ""
@@ -2447,6 +2422,7 @@ def main():
                                          self.prog.comeco_de_outro)
             self.destaque = {}
             self.pontos_abismo = 0  # ganho desde que o contador foi aberto
+            self.kinah_abismo = 0
             self.motor_nome = "iniciando Npcap..."
             self.rede_conectada = False
             self.rede_pronta = False
@@ -2504,17 +2480,11 @@ def main():
             self.corpo.pack(fill="both", expand=True)
             self.render()
 
-            self.leitor = (LeitorRede(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
-                           else Leitor(self.cfg))
-            # No modo Npcap, almas vêm da rede e os ODs continuam vindo só do
-            # chat. O OCR roda em paralelo, mas suas linhas de alma são ignoradas.
-            self.leitor_ocr = (Leitor(self.cfg) if self.cfg.get("fonte_leitura") == "npcap"
-                               else None)
+            self.leitor = LeitorRede(self.cfg)
+            self.leitor_ocr = None
             self.erro_od = None
             self.motor_ocr_nome = "iniciando leitura do chat"
             self.leitor.start()
-            if self.leitor_ocr:
-                self.leitor_ocr.start()
             self.root.after(100, self.consumir)
             self.root.after(3000, self.reforcar_topo)
             self.root.protocol("WM_DELETE_WINDOW", self.sair)
@@ -2915,8 +2885,6 @@ def main():
                     txt, cor = "● reentre no personagem para ler os dados atuais", COR["ouro"]
                 elif not self.rede_sincronizada:
                     txt, cor = "\u25cf aguardando dados da conta", COR["ouro"]
-                elif self.erro_od:
-                    txt, cor = "\u25cf leitura de OD indisponível; confira o chat", COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -3067,8 +3035,9 @@ def main():
                              bg=COR["painel"], font=self.f_nome).pack(side="left",
                                                                         padx=self.px(8), pady=self.px(5))
                     pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
+                    kinah_fmt = f"{self.kinah_abismo:,}".replace(",", ".")
                     self._lbl_abismo = tk.Label(caixa_abismo,
-                                                text=f"Pontos: +{pontos_fmt}   ·   Kinah: —",
+                                                text=f"Pontos: +{pontos_fmt}   ·   Kinah: +{kinah_fmt}",
                                                 fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
                     self._lbl_abismo.pack(side="left", padx=self.px(8))
                     tempo = tk.Frame(caixa_abismo, bg=COR["painel"])
@@ -4484,12 +4453,7 @@ def main():
         def menu_principal(self, e):
             menu = tk.Menu(self.root, tearoff=0)
             if self.cfg.get("fonte_leitura") == "npcap":
-                menu.add_command(label="Almas: Npcap · ODs: leitura do chat", state="disabled")
-                menu.add_command(label="Detectar chat para ODs", command=self.detectar_chat)
-                menu.add_command(label="Selecionar área do chat para ODs…",
-                                 command=self.selecionar_regiao)
-                menu.add_command(label="Ver leitura do chat / ODs…", command=self.abrir_debug)
-                menu.add_separator()
+                menu.add_command(label="Leitura do jogo: Npcap", state="disabled")
                 menu.add_command(label="Ler dados atuais (reentrar no personagem)",
                                  command=self.pedir_sincronizacao)
             else:
@@ -5090,6 +5054,19 @@ def main():
                         pass
                     elif tipo == "alma_rede":
                         self.ao_alma_rede(*dado)
+                    elif tipo in ("abyss_points", "kinah_gain"):
+                        quantidade = int(dado)
+                        if quantidade > 0:
+                            if tipo == "abyss_points":
+                                self.pontos_abismo += quantidade
+                                nome = "pontos"
+                                total = self.pontos_abismo
+                            else:
+                                self.kinah_abismo += quantidade
+                                nome = "Kinah"
+                                total = self.kinah_abismo
+                            self._atualizar_abismo()
+                            registrar(f"NPCAP: +{quantidade} {nome} no Abismo (sessão: {total})")
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
@@ -5207,6 +5184,16 @@ def main():
             except Exception as e:
                 registrar(f"ERRO ao registrar alma da rede: {e}")
 
+        def _atualizar_abismo(self):
+            pontos = f"{self.pontos_abismo:,}".replace(",", ".")
+            kinah = f"{self.kinah_abismo:,}".replace(",", ".")
+            if getattr(self, "_lbl_abismo", None):
+                try:
+                    self._lbl_abismo.configure(
+                        text=f"Pontos: +{pontos}   ·   Kinah: +{kinah}")
+                except tk.TclError:
+                    pass
+
         def ao_ler(self, linhas, itens=None, t0=None, somente_od=False):
             self.ultimas_linhas = linhas
             if t0:
@@ -5229,18 +5216,6 @@ def main():
                     tipo = n[4:]
                     self.prog.od[tipo] = self.prog.od.get(tipo, 0) + 1
                     self.destaque["\u00a7od:" + tipo] = time.time()
-                    continue
-                if n.startswith("\u00a7AP:"):
-                    ganho = int(n[4:])
-                    self.pontos_abismo += ganho
-                    pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
-                    if getattr(self, "_lbl_abismo", None):
-                        try:
-                            self._lbl_abismo.configure(
-                                text=f"Pontos: +{pontos_fmt}   \u00b7   Kinah: —")
-                        except tk.TclError:
-                            pass
-                    registrar(f"ABISMO: +{ganho} pontos (sessão: {pontos_fmt})")
                     continue
                 m = self.prog.somar(n, 1, salvar=False)
                 self.destaque[normalizar(m["nome"])] = time.time()
