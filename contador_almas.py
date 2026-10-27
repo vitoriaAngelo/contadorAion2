@@ -26,7 +26,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.41"
+VERSAO = "1.9.42"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -832,6 +832,29 @@ def compacto(s):
     return normalizar(s).replace(" ", "")
 
 
+def pontos_abismo_em(linha):
+    """Extrai somente um ganho explicitamente descrito como pontos do Abismo."""
+    if not linha:
+        return None
+    texto = sem_acento(linha).lower()
+    rotulo = r"(?:abyss\s+points?|pontos?\s+(?:do\s+|de\s+)?abismo)"
+    verbo = r"(?:(?:obtained|received|gained|obteve|ganhou|recebeu|obtidos?)\s*)?"
+    padroes = (
+        rf"(?P<valor>\d[\d.,]*)\s*{rotulo}",
+        rf"{rotulo}\s*{verbo}(?:[+:x\u00d7-]\s*)?(?P<valor>\d[\d.,]*)",
+    )
+    for padrao in padroes:
+        m = re.search(padrao, texto, re.I)
+        if m:
+            try:
+                valor = int(re.sub(r"[.,]", "", m.group("valor")))
+                if 0 < valor <= 1_000_000:
+                    return valor
+            except ValueError:
+                pass
+    return None
+
+
 def _melhor_janela(s, alvo, folga=1):
     """Procura em s (so letras) o trecho mais parecido com alvo.
     Devolve (nota, inicio, fim)."""
@@ -937,8 +960,9 @@ class Rastreador:
             return []
         nomes_C = []
         for _, raw in C:
-            n = self.extrator.nome_em(raw)
-            if n:
+            ganho_abismo = pontos_abismo_em(raw)
+            n = f"\u00a7AP:{ganho_abismo}" if ganho_abismo is not None else self.extrator.nome_em(raw)
+            if n and not n.startswith("\u00a7AP:"):
                 c = self.canon(n)
                 if c is None:
                     # monstro ainda nao cadastrado: so aceita leitura nitida
@@ -954,7 +978,8 @@ class Rastreador:
             return []
         # linha de alma vira uma chave limpa: o lixo do cenario no fim da
         # linha muda a cada quadro e nao pode atrapalhar a comparacao
-        C = [("alma " + compacto(n), raw) if n else (k, raw) for (k, raw), n in par]
+        C = [("abismo " + n[4:], raw) if n and n.startswith("\u00a7AP:") else
+             ("alma " + compacto(n), raw) if n else (k, raw) for (k, raw), n in par]
         nomes_C = [n for _, n in par]
         P, self.ant = self.ant, C
 
@@ -988,6 +1013,9 @@ class Rastreador:
         k = normalizar(raw)
         if len(k) < 3:
             return None
+        ganho_abismo = pontos_abismo_em(raw)
+        if ganho_abismo is not None:
+            return (f"abyss points {ganho_abismo}", f"\u00a7AP:{ganho_abismo}")
         od = od_em(raw)
         if od:
             return ("alma od_" + od[0].lower().replace(" ", "_"), "\u00a7OD:" + od[0])
@@ -2411,6 +2439,7 @@ def main():
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
+            self.pontos_abismo = 0  # ganho desde que o contador foi aberto
             self.motor_nome = "iniciando Npcap..."
             self.rede_conectada = False
             self.rede_pronta = False
@@ -3030,7 +3059,9 @@ def main():
                     tk.Label(caixa_abismo, text="◈  Abismo", fg=COR["ouro"],
                              bg=COR["painel"], font=self.f_nome).pack(side="left",
                                                                         padx=self.px(8), pady=self.px(5))
-                    self._lbl_abismo = tk.Label(caixa_abismo, text="Pontos: —   ·   Kinah: —",
+                    pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
+                    self._lbl_abismo = tk.Label(caixa_abismo,
+                                                text=f"Pontos: +{pontos_fmt}   ·   Kinah: —",
                                                 fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
                     self._lbl_abismo.pack(side="left", padx=self.px(8))
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -5161,12 +5192,25 @@ def main():
             else:
                 nomes = self.rastreador.quadro(linhas, t0)
             if somente_od:
-                nomes = [n for n in nomes if n.startswith("\u00a7OD:")]
+                nomes = [n for n in nomes if n.startswith("\u00a7OD:") or
+                         n.startswith("\u00a7AP:")]
             for n in nomes:
                 if n.startswith("\u00a7OD:"):
                     tipo = n[4:]
                     self.prog.od[tipo] = self.prog.od.get(tipo, 0) + 1
                     self.destaque["\u00a7od:" + tipo] = time.time()
+                    continue
+                if n.startswith("\u00a7AP:"):
+                    ganho = int(n[4:])
+                    self.pontos_abismo += ganho
+                    pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
+                    if getattr(self, "_lbl_abismo", None):
+                        try:
+                            self._lbl_abismo.configure(
+                                text=f"Pontos: +{pontos_fmt}   \u00b7   Kinah: —")
+                        except tk.TclError:
+                            pass
+                    registrar(f"ABISMO: +{ganho} pontos (sessão: {pontos_fmt})")
                     continue
                 m = self.prog.somar(n, 1, salvar=False)
                 self.destaque[normalizar(m["nome"])] = time.time()

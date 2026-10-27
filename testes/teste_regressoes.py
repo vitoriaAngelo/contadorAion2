@@ -37,6 +37,27 @@ class Regressoes(unittest.TestCase):
         self.assertEqual(r.quadro_pos(antigo, 4), [])
         self.assertEqual(r.quadro_pos(antigo, 5), [])
 
+    def test_ganho_de_pontos_do_abismo_sem_recontar_chat(self):
+        self.assertEqual(ca.pontos_abismo_em('Voce obteve 150 Pontos do Abismo'), 150)
+        self.assertEqual(ca.pontos_abismo_em('+75 Abyss Points'), 75)
+        self.assertEqual(ca.pontos_abismo_em('Abyss Points: 1,250'), 1250)
+        self.assertEqual(ca.pontos_abismo_em('Pontos do Abismo obtidos 40'), 40)
+        self.assertIsNone(ca.pontos_abismo_em('Voce obteve 463 Kinah'))
+
+        r = ca.Rastreador(ca.PADROES_PADRAO)
+        quadro = lambda linhas: [(t, 100 + i * 30, 18) for i, t in enumerate(linhas)]
+        antigo = ['Voce obteve 123 Kinah.']
+        primeiro = antigo + ['Voce obteve 150 Pontos do Abismo']
+        segundo = primeiro + ['Voce obteve 124 Kinah.',
+                              'Voce obteve 150 Pontos do Abismo']
+
+        self.assertEqual(r.quadro_pos(quadro(antigo), 0), [])
+        self.assertEqual(r.quadro_pos(quadro(primeiro), 1), ['§AP:150'])
+        self.assertEqual(r.quadro_pos(quadro(primeiro), 2), [])
+        self.assertEqual(r.quadro_pos(quadro(segundo), 3), ['§AP:150'])
+        self.assertEqual(r.quadro_pos(quadro(segundo), 4), [])
+        self.assertEqual(r.quadro_pos(quadro(primeiro), 5), [])
+
 
 if __name__ == '__main__':
     unittest.main()

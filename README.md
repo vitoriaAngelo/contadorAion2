@@ -33,6 +33,7 @@ Depois de instalado, a pasta que você extraiu pode ser apagada.
 - Abra o jogo em **Janela sem bordas** (em tela cheia exclusiva o overlay não aparece por cima).
 - Abra o contador. Ele aguarda a conexão do AION 2; o chat pode ficar fechado.
 - Mate monstros: cada alma soma no monstro certo.
+- Na aba inicial, os avisos do chat com ganho de Pontos do Abismo são somados durante a sessão; as almas continuam sendo lidas pelo Npcap.
 
 Em cada monstro:
 
