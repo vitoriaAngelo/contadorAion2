@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.68"
+VERSAO = "1.9.69"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2846,16 +2846,11 @@ def main():
                        dica="Fechar o contador").pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar(),
                        dica="Minimizar (vai para a barra de tarefas)").pack(side="right")
-            # alterna modo normal / compacto
-            self.b_modo = self.botao(h, "\u25a4" if self.cfg.get("compacto") else "\u2261",
-                                     lambda e: self.alternar_compacto(),
-                                     dica=lambda: "Voltar para o modo normal" if self.cfg.get("compacto")
-                                     else "Modo compacto (uma linha por bicho)")
-            self.b_modo.pack(side="right")
-            self.b_od = self.botao(h, "\u25c6",
-                                   lambda e: self.alternar_aba("od"),
-                                   dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
-                                   else "Contador de OD (OD, Fino, Puro, Radiante)")
+            self.b_od = self.botao(h, "Materiais",
+                                   lambda e: self.alternar_aba(
+                                       self.cfg.get("aba") if self.cfg.get("aba") in ("od", "materiais") else "od"),
+                                   fonte=self.f_nome,
+                                   dica="ODs e materiais de coleta")
             self.b_od.pack(side="right")
             self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
                                      lambda e: self.alternar_aba("pets"),
@@ -3206,7 +3201,7 @@ def main():
 
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
-            return {"info": "\u25f7 Info", "od": "\u25c6 OD", "materiais": "\u25c6 OD",
+            return {"info": "\u25f7 Info", "od": "Materiais", "materiais": "Materiais",
                     "pets": "\u2661 Pets"}.get(self.cfg.get("aba"), "\u2726 Almas")
 
         def selecionar_coleta(self, destino):
@@ -3246,7 +3241,7 @@ def main():
             self.salvar_cfg()
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
-            self.b_od.configure(text="\u25c6")
+            self.b_od.configure(text="Materiais")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
 
