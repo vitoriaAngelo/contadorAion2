@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.65"
+VERSAO = "1.9.66"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -5267,6 +5267,8 @@ def main():
 
         # ---------------- loop ----------------
         def consumir(self):
+            coleta_alterada = False
+            ultimo_grupo = None
             if self.leitor_ocr:
                 while True:
                     try:
@@ -5298,8 +5300,9 @@ def main():
                         self.atualizar_status()
                     elif tipo_od == "aviso":
                         registrar("AVISO OCR OD: " + str(dado_od))
+            limite_fila = time.perf_counter() + 0.008
             try:
-                while True:
+                while time.perf_counter() < limite_fila:
                     tipo, dado = self.leitor.fila.get_nowait()
                     if tipo == "linhas":
                         self.ao_ler(dado[0], None, dado[1])
@@ -5327,9 +5330,8 @@ def main():
                         quantidade = int(quantidade)
                         if od_tipo in OD_TIPOS and quantidade > 0:
                             self.prog.od[od_tipo] = self.prog.od.get(od_tipo, 0) + quantidade
-                            self.prog.salvar()
+                            coleta_alterada = True
                             self.destaque["\u00a7od:" + od_tipo] = time.time()
-                            self._atualizar_od()
                             registrar(f"NPCAP: +{quantidade} {od_tipo}")
                     elif tipo == "gather_gain":
                         item_id, quantidade = dado
@@ -5338,13 +5340,9 @@ def main():
                         if item_id in GATHER_ITEM_TYPES and quantidade > 0:
                             chave = str(item_id)
                             self.prog.materiais[chave] = self.prog.materiais.get(chave, 0) + quantidade
-                            self.prog.salvar()
+                            coleta_alterada = True
                             self.destaque["\u00a7material:" + chave] = time.time()
-                            if self.cfg.get("aba") == "od":
-                                self.material_selecionar(GATHER_ITEM_TYPES[item_id][0])
-                            self._atualizar_materiais()
-                            if self.cfg.get("aba") == "od" and getattr(self, "_materiais_ui", None):
-                                self._materiais_ui[1].master.yview_moveto(0)
+                            ultimo_grupo = GATHER_ITEM_TYPES[item_id][0]
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
@@ -5446,7 +5444,15 @@ def main():
                         self.mostrar_debug(self.ultimas_linhas, [])
             except queue.Empty:
                 pass
-            self.root.after(100, self.consumir)
+            if coleta_alterada:
+                self.prog.salvar()
+                if self.cfg.get("aba") == "od":
+                    if ultimo_grupo is not None:
+                        self.material_selecionar(ultimo_grupo)
+                    self._atualizar_od()
+                    if ultimo_grupo is not None and getattr(self, "_materiais_ui", None):
+                        self._materiais_ui[1].master.yview_moveto(0)
+            self.root.after(10 if not self.leitor.fila.empty() else 50, self.consumir)
 
         def ao_alma_rede(self, pet_id, quantidade):
             try:
