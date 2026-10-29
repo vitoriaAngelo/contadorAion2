@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.57"
+VERSAO = "1.9.58"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3003,6 +3003,10 @@ def main():
                 self.root.after(500, self.render_em_breve)
                 return
             self._estrutura = estrutura
+            # A reconstrução invalida os widgets da aba anterior antes de
+            # qualquer atualizador tentar acessá-los novamente.
+            self._materiais_ui = None
+            self._od_ui = None
             for w in self.corpo.winfo_children():
                 w.destroy()
             self._ui = {}
@@ -3743,8 +3747,8 @@ def main():
             self._b_crono.pack(side="left")
             self.botao(barra, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
                        dica="Zerar o cron\u00f4metro").pack(side="left")
-            self._atualizar_od()
             self._montar_materiais()
+            self._atualizar_od()
 
         def _montar_materiais(self):
             from tkinter import ttk
