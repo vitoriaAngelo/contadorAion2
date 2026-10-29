@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.61"
+VERSAO = "1.9.62"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3806,8 +3806,22 @@ def main():
                 botao.bind("<Leave>", lambda e, g=grupo, b=botao:
                            b.configure(fg=COR["ouro"] if g == self._material_grupo
                                        else COR["suave"]))
-                botao.pack(side="left", fill="x", expand=True, padx=self.px(2))
                 self._material_botoes[grupo] = botao
+            botoes = list(self._material_botoes.values())
+            def ajustar_categorias(e):
+                colunas = 4 if e.width >= self.px(380) else 2
+                if getattr(seletores, "_colunas", None) == colunas:
+                    return
+                seletores._colunas = colunas
+                for coluna in range(4):
+                    seletores.columnconfigure(coluna, weight=1 if coluna < colunas else 0,
+                                               uniform="categorias")
+                for i, botao in enumerate(botoes):
+                    botao.grid(row=i // colunas, column=i % colunas, sticky="ew",
+                               padx=self.px(2), pady=self.px(2))
+            seletores.bind("<Configure>", ajustar_categorias)
+            resumo.bind("<Configure>", lambda e: resumo.configure(wraplength=max(80, e.width)))
+            resumo.pack_configure(fill="x")
             caixa = tk.Frame(area, bg=COR["painel"])
             caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
             canvas = tk.Canvas(caixa, bg=COR["painel"], highlightthickness=0,
@@ -3875,21 +3889,24 @@ def main():
                            OD_CORES["OD Puro"] if "Pure" in nome else
                            OD_CORES["OD Fino"] if "Fine" in nome or "Fresh" in nome
                            else OD_CORES["OD"])
+                    interno.columnconfigure(1, weight=1)
                     tk.Label(interno, text="\u25c6", fg=cor, bg=COR["painel"],
-                             font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(4)))
+                             font=self.fontes["botao"]).grid(row=0, column=0, padx=(0, self.px(4)))
                     rotulo = ({610620013: "Normal", 610620014: "Fine",
                                610620015: "Pure", 610620016: "Radiant"}.get(int(item_id), nome)
                               if grupo == "Minérios" else nome)
                     titulo = tk.Label(interno, text=rotulo, fg=COR["texto"], bg=COR["painel"],
-                                      font=self.f_nome)
-                    titulo.pack(side="left")
+                                      font=self.f_nome, anchor="w", justify="left")
+                    titulo.grid(row=0, column=1, sticky="ew")
+                    titulo.bind("<Configure>", lambda e, t=titulo:
+                                t.configure(wraplength=max(self.px(40), e.width)))
                     self.botao(interno, "+", lambda e, i=item_id: self.material_ajustar(i, 1),
-                               fonte=self.fontes["botao_b"]).pack(side="right")
+                               fonte=self.fontes["botao_b"]).grid(row=0, column=4)
                     self.botao(interno, "\u2212", lambda e, i=item_id: self.material_ajustar(i, -1),
-                               fonte=self.fontes["botao_b"]).pack(side="right")
+                               fonte=self.fontes["botao_b"]).grid(row=0, column=3)
                     numero = tk.Label(interno, text="", fg=COR["alma"], bg=COR["painel"],
                                       font=self.fontes["titulo"], cursor="hand2", width=5, anchor="e")
-                    numero.pack(side="right", padx=(0, self.px(2)))
+                    numero.grid(row=0, column=2, padx=(self.px(4), self.px(2)))
                     numero.bind("<Button-1>", lambda e, i=item_id: self.material_definir(i))
                     self.dica(numero, f"{nome}: clique para digitar a quantidade")
                     widgets[item_id] = (titulo, numero)
