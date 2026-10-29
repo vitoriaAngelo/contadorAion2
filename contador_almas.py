@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.58"
+VERSAO = "1.9.59"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3832,6 +3832,7 @@ def main():
                 linhas.sort(key=lambda l: int(l[2]))
             else:
                 linhas.sort(key=lambda l: l[1])
+            linhas.sort(key=lambda l: -self.destaque.get("\u00a7material:" + l[2], 0))
             for grupo, nome, item_id, quantidade in linhas:
                 if item_id not in widgets:
                     linha = tk.Frame(area, bg=COR["painel"],
@@ -3872,6 +3873,12 @@ def main():
                 cor_nome = COR["novo"] if novo else COR["texto"]
                 if titulo.cget("fg") != cor_nome:
                     titulo.configure(fg=cor_nome)
+            # Reposiciona os mesmos cartões somente quando a ordem muda.
+            for indice, (_, _, item_id, _) in enumerate(linhas):
+                frame = widgets[item_id][0].master.master
+                atual = area.pack_slaves()
+                if atual[indice] != frame:
+                    frame.pack_configure(before=atual[indice])
 
         def material_selecionar(self, grupo):
             if grupo == self._material_grupo:
@@ -5265,7 +5272,11 @@ def main():
                             self.prog.materiais[chave] = self.prog.materiais.get(chave, 0) + quantidade
                             self.prog.salvar()
                             self.destaque["\u00a7material:" + chave] = time.time()
+                            if self.cfg.get("aba") == "od":
+                                self.material_selecionar(GATHER_ITEM_TYPES[item_id][0])
                             self._atualizar_materiais()
+                            if self.cfg.get("aba") == "od" and getattr(self, "_materiais_ui", None):
+                                self._materiais_ui[1].master.yview_moveto(0)
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
