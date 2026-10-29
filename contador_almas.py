@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.59"
+VERSAO = "1.9.60"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3758,7 +3758,7 @@ def main():
             topo.pack(fill="x", padx=self.px(8))
             tk.Label(topo, text="Materiais coletados", fg=COR["ouro"],
                      bg=COR["painel"], font=self.f_nome).pack(side="left")
-            self.botao(topo, "↺ Zerar", lambda e: self.material_zerar(),
+            self.botao(topo, "↺ Zerar Materiais", lambda e: self.material_zerar(),
                        fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
             resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
                               font=self.f_peq, wraplength=self.px(270), justify="left")
