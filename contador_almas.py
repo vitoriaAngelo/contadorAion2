@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.67"
+VERSAO = "1.9.68"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2857,10 +2857,6 @@ def main():
                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
                                    else "Contador de OD (OD, Fino, Puro, Radiante)")
             self.b_od.pack(side="right")
-            self.b_materiais = self.botao(h, "Materiais",
-                                          lambda e: self.alternar_aba("materiais"),
-                                          fonte=self.f_peq, dica="Materiais coletados")
-            self.b_materiais.pack(side="right")
             self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
@@ -3060,6 +3056,18 @@ def main():
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
                 tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
+                if self.cfg.get("aba") in ("od", "materiais"):
+                    abas_coleta = tk.Frame(self.corpo, bg=COR["fundo"])
+                    abas_coleta.pack(fill="x", pady=(self.px(3), self.px(7)))
+                    for destino, rotulo in (("od", "ODs"), ("materiais", "Materiais")):
+                        ativo = self.cfg.get("aba") == destino
+                        b = self.botao(abas_coleta, rotulo,
+                                       lambda e, d=destino: self.selecionar_coleta(d),
+                                       cor=COR["alma"] if ativo else COR["suave"],
+                                       fonte=self.f_nome)
+                        b.configure(bg=COR["painel"] if ativo else COR["fundo"],
+                                    pady=self.px(6), padx=self.px(12))
+                        b.pack(side="left", fill="x", expand=True, padx=self.px(2))
                 if self.cfg.get("aba") == "od":
                     self._montar_od()
                 elif self.cfg.get("aba") == "materiais":
@@ -3198,8 +3206,12 @@ def main():
 
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
-            return {"info": "\u25f7 Info", "od": "\u25c6 OD", "materiais": "Materiais",
+            return {"info": "\u25f7 Info", "od": "\u25c6 OD", "materiais": "\u25c6 OD",
                     "pets": "\u2661 Pets"}.get(self.cfg.get("aba"), "\u2726 Almas")
+
+        def selecionar_coleta(self, destino):
+            if self.cfg.get("aba") != destino:
+                self.alternar_aba(destino)
 
         def alternar_aba(self, destino="info"):
             """Botao da aba: abre a aba; clicando de novo volta para as almas."""
