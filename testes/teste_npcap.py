@@ -97,6 +97,34 @@ class LeituraNpcap(unittest.TestCase):
             esperados.append(('od_gain', tipo, 2))
         self.assertEqual(eventos, esperados)
 
+    def test_materiais_coletados_contam_variacao_sem_repetir_pacote(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+
+        def item(kind, instancia, item_id, quantidade):
+            payload = bytearray(23)
+            payload[0], payload[1] = 1, kind
+            struct.pack_into('<I', payload, 3, instancia)
+            struct.pack_into('<I', payload, 11, item_id)
+            struct.pack_into('<Q', payload, 15, quantidade)
+            return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+        pacotes = [item(0, 201, 610620013, 2),
+                   item(1, 201, 610620013, 5),
+                   item(1, 201, 610620013, 5),
+                   item(0, 202, 610670043, 1),
+                   item(0, 203, 610650012, 3),
+                   item(0, 204, 610680050, 4)]
+        sequencia = 1000
+        for pacote in pacotes:
+            dec.segment('jogo', sequencia, pacote)
+            sequencia += len(pacote)
+        self.assertEqual(eventos, [('ready',), ('gather_gain', 610620013, 2),
+                                   ('gather_gain', 610620013, 3),
+                                   ('gather_gain', 610670043, 1),
+                                   ('gather_gain', 610650012, 3),
+                                   ('gather_gain', 610680050, 4)])
+
     def test_assinatura_distingue_estado_de_outro_personagem(self):
         a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
         self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))

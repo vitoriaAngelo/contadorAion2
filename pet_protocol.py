@@ -59,6 +59,34 @@ OD_ITEM_TYPES = {
     610610015: "OD Puro",
     610610016: "OD Radiante",
 }
+# IDs de materiais de coleta do catálogo do jogo. O nome permanece em inglês
+# quando é assim que a base de itens o identifica.
+GATHER_ITEM_TYPES = {}
+for _item, _name in enumerate(("Orichalcum Ore", "Fine Orichalcum Ore",
+                               "Pure Orichalcum Ore", "Radiant Orichalcum Ore"), 610620013):
+    GATHER_ITEM_TYPES[_item] = ("Minérios", _name)
+for _item, _name in zip((610650011, 610650012, 610650013, 610650014,
+                         610650015, 610650016, 610650017, 610650018),
+                        ("Yggdrasil Log", "Asvata Log", "Fine Yggdrasil Log",
+                         "Fine Asvata Log", "Pure Yggdrasil Log", "Pure Asvata Log",
+                         "Radiant Yggdrasil Log", "Radiant Asvata Log")):
+    GATHER_ITEM_TYPES[_item] = ("Madeiras", _name)
+for _item, _name in enumerate(("Aria", "Targena", "Azpha", "Calendula",
+                               "Fresh Aria", "Fresh Targena", "Fresh Azpha",
+                               "Fresh Calendula"), 610670041):
+    GATHER_ITEM_TYPES[_item] = ("Ervas", _name)
+GATHER_ITEM_TYPES.update({
+    610680043: ("Culinária", "Coriolus"),
+    610680044: ("Culinária", "Kukuru"),
+    610680045: ("Culinária", "Mela"),
+    610680047: ("Culinária", "Inina"),
+    610680048: ("Culinária", "Cypri"),
+    610680049: ("Culinária", "Morfa"),
+    610680050: ("Culinária", "Ohkra"),
+    610680051: ("Culinária", "Raydam"),
+    610680053: ("Culinária", "Conide"),
+    610680054: ("Culinária", "Pujery"),
+})
 OP_NICKNAME = b"\x33\x36"
 OP_ZONE = b"\x21\x36"
 OP_NPC_SPAWN = b"\x41\x36"
@@ -505,6 +533,8 @@ class Decoder:
                                     self.emit(("kinah_gain", ganho))
                                 elif item in OD_ITEM_TYPES and ganho > 0:
                                     self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
+                                elif item in GATHER_ITEM_TYPES and ganho > 0:
+                                    self.emit(("gather_gain", item, ganho))
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:

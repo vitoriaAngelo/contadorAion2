@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.51"
+VERSAO = "1.9.52"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -1486,6 +1486,8 @@ class Progresso:
                            (dados.get("pet_estado") or {}).items()}
         self.pet_estado_em = dados.get("pet_estado_em")
         self.od = {t: int((dados.get("od") or {}).get(t, 0)) for t in OD_TIPOS}
+        self.materiais = {str(k): max(0, int(v)) for k, v in
+                          (dados.get("materiais") or {}).items()}
         # almas por dia do jogo (o dia vira no reset das 04:00)
         self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
         for m in self.monstros:
@@ -1515,7 +1517,8 @@ class Progresso:
     def salvar(self):
         try:
             salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias,
-                                      "od": self.od, "pets_ocultos": self.pets_ocultos,
+                                      "od": self.od, "materiais": self.materiais,
+                                      "pets_ocultos": self.pets_ocultos,
                                       "pet_estado": self.pet_estado,
                                       "pet_estado_em": self.pet_estado_em})
         except Exception:
@@ -2336,9 +2339,9 @@ class LeitorRede(threading.Thread):
                 if evento[0] == "gain" and self.ativo.is_set():
                     _, pet_id, quantidade = evento
                     self.fila.put(("alma_rede", (pet_id, quantidade)))
-                elif evento[0] in ("abyss_points", "kinah_gain", "od_gain") and self.ativo.is_set():
-                    if evento[0] == "od_gain":
-                        self.fila.put(("od_gain", (evento[1], evento[2])))
+                elif evento[0] in ("abyss_points", "kinah_gain", "od_gain", "gather_gain") and self.ativo.is_set():
+                    if evento[0] in ("od_gain", "gather_gain"):
+                        self.fila.put((evento[0], (evento[1], evento[2])))
                     else:
                         self.fila.put(evento)
                 elif evento[0] == "conn":
@@ -3163,7 +3166,7 @@ def main():
             atual = self.cfg.get("aba", "almas")
             proxima = "almas" if atual == destino else destino
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
-                      "_od_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
+                      "_od_ui", "_materiais_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
                       "_b_crono_home", "_pets_tree",
                       "_pets_resumo", "_pets_busca", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
@@ -3741,12 +3744,66 @@ def main():
             self.botao(barra, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
                        dica="Zerar o cron\u00f4metro").pack(side="left")
             self._atualizar_od()
+            self._montar_materiais()
+
+        def _montar_materiais(self):
+            from tkinter import ttk
+            from pet_protocol import GATHER_ITEM_TYPES
+            area = tk.Frame(self.corpo, bg=COR["painel"])
+            area.pack(fill="both", expand=True, pady=(self.px(6), 0))
+            tk.Label(area, text="Materiais coletados", fg=COR["ouro"],
+                     bg=COR["painel"], font=self.f_nome).pack(anchor="w", padx=self.px(8))
+            resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
+                              font=self.f_peq, wraplength=self.px(270), justify="left")
+            resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(2), self.px(4)))
+            tabela = ttk.Treeview(area, columns=("grupo", "quantidade"), show="tree headings",
+                                  height=6, selectmode="none")
+            tabela.heading("#0", text="Material")
+            tabela.heading("grupo", text="Tipo")
+            tabela.heading("quantidade", text="Qtd.")
+            tabela.column("#0", width=self.px(145), stretch=True)
+            tabela.column("grupo", width=self.px(72), stretch=False)
+            tabela.column("quantidade", width=self.px(45), anchor="e", stretch=False)
+            tabela.pack(fill="both", expand=True, padx=self.px(6), pady=(0, self.px(6)))
+            self._materiais_ui = (resumo, tabela)
+            self._atualizar_materiais()
+
+        def _atualizar_materiais(self):
+            from pet_protocol import GATHER_ITEM_TYPES
+            ui = getattr(self, "_materiais_ui", None)
+            if not ui or self.cfg.get("aba") != "od":
+                return
+            resumo, tabela = ui
+            grupos = ("Minérios", "Ervas", "Madeiras", "Culinária")
+            totais = {grupo: 0 for grupo in grupos}
+            linhas = []
+            for item_id, quantidade in self.prog.materiais.items():
+                if quantidade > 0 and int(item_id) in GATHER_ITEM_TYPES:
+                    grupo, nome = GATHER_ITEM_TYPES[int(item_id)]
+                    totais[grupo] += quantidade
+                    linhas.append((grupo, nome, item_id, quantidade))
+            texto = "  ·  ".join(f"{grupo}: {totais[grupo]}" for grupo in grupos)
+            if resumo.cget("text") != texto:
+                resumo.configure(text=texto)
+            linhas.sort(key=lambda l: (grupos.index(l[0]), l[1]))
+            atuais = set(tabela.get_children())
+            desejados = {item_id for _, _, item_id, _ in linhas}
+            for item_id in atuais - desejados:
+                tabela.delete(item_id)
+            for pos, (grupo, nome, item_id, quantidade) in enumerate(linhas):
+                if item_id in atuais:
+                    tabela.item(item_id, text=nome, values=(grupo, quantidade))
+                    tabela.move(item_id, "", pos)
+                else:
+                    tabela.insert("", pos, iid=item_id, text=nome,
+                                  values=(grupo, quantidade))
 
         def _atualizar_od(self):
             ui = getattr(self, "_od_ui", None)
             if not ui or self.cfg.get("aba") != "od":
                 return
             self._atualizar_crono()
+            self._atualizar_materiais()
             agora = time.time()
             for tipo, (nome, n) in ui.items():
                 try:
@@ -5081,6 +5138,16 @@ def main():
                             self.destaque["\u00a7od:" + od_tipo] = time.time()
                             self._atualizar_od()
                             registrar(f"NPCAP: +{quantidade} {od_tipo}")
+                    elif tipo == "gather_gain":
+                        item_id, quantidade = dado
+                        from pet_protocol import GATHER_ITEM_TYPES
+                        quantidade = int(quantidade)
+                        if item_id in GATHER_ITEM_TYPES and quantidade > 0:
+                            chave = str(item_id)
+                            self.prog.materiais[chave] = self.prog.materiais.get(chave, 0) + quantidade
+                            self.prog.salvar()
+                            self._atualizar_materiais()
+                            registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
