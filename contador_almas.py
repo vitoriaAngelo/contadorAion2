@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.53"
+VERSAO = "1.9.54"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3747,6 +3747,7 @@ def main():
             self._montar_materiais()
 
         def _montar_materiais(self):
+            from tkinter import ttk
             area = tk.Frame(self.corpo, bg=COR["painel"])
             area.pack(fill="both", expand=True, pady=(self.px(6), 0))
             tk.Label(area, text="Materiais coletados", fg=COR["ouro"],
@@ -3758,7 +3759,18 @@ def main():
             caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
             canvas = tk.Canvas(caixa, bg=COR["painel"], highlightthickness=0,
                                height=self.px(150))
-            barra = tk.Scrollbar(caixa, orient="vertical", command=canvas.yview)
+            estilo = ttk.Style(self.root)
+            if estilo.theme_use() != "clam":
+                estilo.theme_use("clam")
+            estilo.configure("Materiais.Vertical.TScrollbar",
+                             background=COR["barra"], troughcolor=COR["fundo"],
+                             arrowcolor=COR["suave"], bordercolor=COR["fundo"],
+                             lightcolor=COR["barra"], darkcolor=COR["barra"])
+            estilo.map("Materiais.Vertical.TScrollbar",
+                       background=[("active", COR["destaque"]),
+                                   ("pressed", COR["destaque"])])
+            barra = ttk.Scrollbar(caixa, orient="vertical", command=canvas.yview,
+                                  style="Materiais.Vertical.TScrollbar")
             canvas.configure(yscrollcommand=barra.set)
             barra.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
