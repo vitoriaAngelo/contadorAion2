@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.63"
+VERSAO = "1.9.64"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3835,7 +3835,7 @@ def main():
             caixa = tk.Frame(area, bg=COR["painel"])
             caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
             canvas = tk.Canvas(caixa, bg=COR["painel"], highlightthickness=0,
-                               height=self.px(150))
+                               height=self.px(90))
             estilo = ttk.Style(self.root)
             if estilo.theme_use() != "clam":
                 estilo.theme_use("clam")
@@ -3852,6 +3852,8 @@ def main():
             barra.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
             linhas = tk.Frame(canvas, bg=COR["painel"])
+            linhas.columnconfigure(0, weight=1, uniform="material")
+            linhas.columnconfigure(1, weight=1, uniform="material")
             janela = canvas.create_window((0, 0), window=linhas, anchor="nw")
             linhas.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
             canvas.bind("<Configure>", lambda e: canvas.itemconfigure(janela, width=e.width))
@@ -3895,9 +3897,8 @@ def main():
                 if item_id not in widgets:
                     linha = tk.Frame(area, bg=COR["painel"],
                                      highlightthickness=1, highlightbackground=COR["barra"])
-                    linha.pack(fill="x", pady=(0, self.px(5)))
                     interno = tk.Frame(linha, bg=COR["painel"])
-                    interno.pack(fill="x", padx=self.px(8), pady=self.px(7))
+                    interno.pack(fill="x", padx=self.px(5), pady=self.px(3))
                     cor = (OD_CORES["OD Radiante"] if "Radiant" in nome else
                            OD_CORES["OD Puro"] if "Pure" in nome else
                            OD_CORES["OD Fino"] if "Fine" in nome or "Fresh" in nome
@@ -3920,7 +3921,7 @@ def main():
                     self.botao(interno, "\u2212", lambda e, i=item_id: self.material_ajustar(i, -1),
                                fonte=self.fontes["botao_b"]).grid(row=0, column=3)
                     numero = tk.Label(interno, text="", fg=COR["alma"], bg=COR["painel"],
-                                      font=self.fontes["titulo"], cursor="hand2", width=5, anchor="e")
+                                      font=self.f_nome, cursor="hand2", width=3, anchor="e")
                     numero.grid(row=0, column=2, padx=(self.px(4), self.px(2)))
                     numero.bind("<Button-1>", lambda e, i=item_id: self.material_definir(i))
                     self.dica(numero, f"{nome}: clique para digitar a quantidade")
@@ -3936,12 +3937,14 @@ def main():
                 cor_nome = COR["novo"] if novo else COR["texto"]
                 if titulo.cget("fg") != cor_nome:
                     titulo.configure(fg=cor_nome)
-            # Reposiciona os mesmos cartões somente quando a ordem muda.
+            # Duas colunas, preservando os cartões e o mais recente primeiro.
             for indice, (_, _, item_id, _) in enumerate(linhas):
                 frame = widgets[item_id][0].master.master
-                atual = area.pack_slaves()
-                if atual[indice] != frame:
-                    frame.pack_configure(before=atual[indice])
+                posicao = (indice // 2, indice % 2)
+                if getattr(frame, "_posicao_grade", None) != posicao:
+                    frame.grid(row=posicao[0], column=posicao[1], sticky="nsew",
+                               padx=self.px(2), pady=self.px(2))
+                    frame._posicao_grade = posicao
 
         def material_selecionar(self, grupo):
             if grupo == self._material_grupo:
