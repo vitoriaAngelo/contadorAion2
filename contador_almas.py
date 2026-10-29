@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.62"
+VERSAO = "1.9.63"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3723,6 +3723,12 @@ def main():
             bg = COR["painel"]
             self._od_ui = {}
             compacto = bool(self.cfg.get("compacto"))
+            titulo_od = tk.Frame(self.corpo, bg=COR["fundo"])
+            titulo_od.pack(fill="x", pady=(self.px(4), self.px(8)))
+            tk.Label(titulo_od, text="ODs", fg=COR["alma"], bg=COR["fundo"],
+                     font=self.fontes["titulo"]).pack(side="left")
+            tk.Label(titulo_od, text="COLETA", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="right")
             if compacto:
                 # grade 2x2 com nomes curtos (a cor do losango diz qual e)
                 grade = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -3731,7 +3737,8 @@ def main():
                 grade.columnconfigure(1, weight=1, uniform="od")
             for i, tipo in enumerate(OD_TIPOS):
                 if compacto:
-                    f = tk.Frame(grade, bg=bg)
+                    f = tk.Frame(grade, bg=bg, highlightthickness=1,
+                                 highlightbackground=COR["barra"])
                     f.grid(row=i // 2, column=i % 2, sticky="ew",
                            padx=(0, self.px(2)) if i % 2 == 0 else (self.px(2), 0),
                            pady=(0, self.px(3)))
@@ -3739,8 +3746,9 @@ def main():
                     l.pack(fill="x", padx=self.px(6), pady=self.px(3))
                     rotulo = tipo.replace("OD ", "") if tipo != "OD" else "OD"
                 else:
-                    f = tk.Frame(self.corpo, bg=bg)
-                    f.pack(fill="x", pady=(0, self.px(3)))
+                    f = tk.Frame(self.corpo, bg=bg, highlightthickness=1,
+                                 highlightbackground=COR["barra"])
+                    f.pack(fill="x", pady=(0, self.px(5)))
                     l = tk.Frame(f, bg=bg)
                     l.pack(fill="x", padx=self.px(8), pady=self.px(5))
                     rotulo = tipo
@@ -3762,7 +3770,7 @@ def main():
                     x.bind("<Button-3>", lambda e: self.menu_od(e))
                 self._od_ui[tipo] = (nome, n)
             barra = tk.Frame(self.corpo, bg=COR["fundo"])
-            barra.pack(fill="x")
+            barra.pack(fill="x", pady=(self.px(5), self.px(5)))
             self.botao(barra, "\u21ba Zerar ODs", lambda e: self.od_zerar(),
                        fonte=self.f_peq, dica="Zerar os 4 contadores de OD (pergunta antes)").pack(side="right")
             # cronometro (para medir quanto OD voce faz por tempo)
@@ -3783,12 +3791,13 @@ def main():
 
         def _montar_materiais(self):
             from tkinter import ttk
-            area = tk.Frame(self.corpo, bg=COR["painel"])
-            area.pack(fill="both", expand=True, pady=(self.px(6), 0))
+            area = tk.Frame(self.corpo, bg=COR["painel"], highlightthickness=1,
+                            highlightbackground=COR["barra"])
+            area.pack(fill="both", expand=True, pady=(self.px(8), 0))
             topo = tk.Frame(area, bg=COR["painel"])
-            topo.pack(fill="x", padx=self.px(8))
-            tk.Label(topo, text="Materiais coletados", fg=COR["ouro"],
-                     bg=COR["painel"], font=self.f_nome).pack(side="left")
+            topo.pack(fill="x", padx=self.px(10), pady=(self.px(10), self.px(2)))
+            tk.Label(topo, text="Materiais", fg=COR["ouro"],
+                     bg=COR["painel"], font=self.fontes["titulo"]).pack(side="left")
             self.botao(topo, "↺ Zerar Materiais", lambda e: self.material_zerar(),
                        fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
             resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
@@ -3802,7 +3811,8 @@ def main():
                 botao = self.botao(seletores, grupo,
                                    lambda e, g=grupo: self.material_selecionar(g),
                                    fonte=self.f_peq)
-                botao.configure(pady=self.px(6), padx=self.px(7))
+                botao.configure(pady=self.px(7), padx=self.px(7),
+                                highlightthickness=1, highlightbackground=COR["barra"])
                 botao.bind("<Leave>", lambda e, g=grupo, b=botao:
                            b.configure(fg=COR["ouro"] if g == self._material_grupo
                                        else COR["suave"]))
@@ -3873,6 +3883,9 @@ def main():
                 fundo = COR["barra"] if grupo == self._material_grupo else COR["painel"]
                 if botao.cget("bg") != fundo:
                     botao.configure(bg=fundo)
+                borda = COR["ouro"] if grupo == self._material_grupo else COR["barra"]
+                if botao.cget("highlightbackground") != borda:
+                    botao.configure(highlightbackground=borda)
             if self._material_grupo == "Minérios":
                 linhas.sort(key=lambda l: int(l[2]))
             else:
@@ -3889,6 +3902,8 @@ def main():
                            OD_CORES["OD Puro"] if "Pure" in nome else
                            OD_CORES["OD Fino"] if "Fine" in nome or "Fresh" in nome
                            else OD_CORES["OD"])
+                    tk.Frame(linha, bg=cor, width=self.px(2)).place(
+                        x=0, y=0, relheight=1)
                     interno.columnconfigure(1, weight=1)
                     tk.Label(interno, text="\u25c6", fg=cor, bg=COR["painel"],
                              font=self.fontes["botao"]).grid(row=0, column=0, padx=(0, self.px(4)))
