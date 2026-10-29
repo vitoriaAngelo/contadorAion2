@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.48"
+VERSAO = "1.9.49"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2407,6 +2407,7 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
+            self.cfg["recolhido"] = False
             # A leitura do jogo é passiva pelo Npcap; o chat não é fonte de dados.
             self.cfg["fonte_leitura"] = "npcap"
             # O nome salvo pode pertencer ao personagem anterior; só exibimos
@@ -2856,10 +2857,6 @@ def main():
             self.b_inicio.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
             self.dica(self.b_inicio, "Voltar ao início: almas recebidas")
             self.b_inicio.pack(side="right")
-            self.b_recolher = self.botao(h, "\u25be", lambda e: self.alternar_recolher(),
-                                         dica=lambda: "Mostrar todos os bichos" if self.cfg.get("recolhido")
-                                         else "Recolher: mostrar s\u00f3 os 3 \u00faltimos que pegaram alma")
-            self.b_recolher.pack(side="right")
             self.botao(h, "\u2699", self.menu_principal,
                        dica="Op\u00e7\u00f5es (cor, letra, volume, chat...)").pack(side="right")
             for w in (h, t, self.lbl_status):
@@ -3004,7 +3001,6 @@ def main():
                 w.destroy()
             self._ui = {}
             self._lbl_rodape = None
-            self.b_recolher.configure(text="\u25b8" if self.cfg.get("recolhido") else "\u25be")
             if vazio:
                 tk.Label(self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
                          font=self.f_peq, wraplength=self.px(240),
