@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.46"
+VERSAO = "1.9.47"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2832,7 +2832,7 @@ def main():
                                      dica=lambda: "Voltar para o modo normal" if self.cfg.get("compacto")
                                      else "Modo compacto (uma linha por bicho)")
             self.b_modo.pack(side="right")
-            self.b_od = self.botao(h, "\u2726" if self.cfg.get("aba") == "od" else "\u25c6",
+            self.b_od = self.botao(h, "\u25c6",
                                    lambda e: self.alternar_aba("od"),
                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
                                    else "Contador de OD (OD, Fino, Puro, Radiante)")
@@ -3184,7 +3184,7 @@ def main():
             self.salvar_cfg()
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
-            self.b_od.configure(text="\u2726" if aba == "od" else "\u25c6")
+            self.b_od.configure(text="\u25c6")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
 
