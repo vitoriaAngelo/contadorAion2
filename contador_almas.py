@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.64"
+VERSAO = "1.9.65"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3744,14 +3744,16 @@ def main():
                            pady=(0, self.px(3)))
                     l = tk.Frame(f, bg=bg)
                     l.pack(fill="x", padx=self.px(6), pady=self.px(3))
-                    rotulo = tipo.replace("OD ", "") if tipo != "OD" else "OD"
+                    rotulo = {"OD": "Normal", "OD Fino": "Fine",
+                              "OD Puro": "Pure", "OD Radiante": "Radiant"}[tipo]
                 else:
                     f = tk.Frame(self.corpo, bg=bg, highlightthickness=1,
                                  highlightbackground=COR["barra"])
                     f.pack(fill="x", pady=(0, self.px(5)))
                     l = tk.Frame(f, bg=bg)
                     l.pack(fill="x", padx=self.px(8), pady=self.px(5))
-                    rotulo = tipo
+                    rotulo = {"OD": "Odyle", "OD Fino": "Fine Odyle",
+                              "OD Puro": "Pure Odyle", "OD Radiante": "Radiant Odyle"}[tipo]
                 tk.Label(l, text="\u25c6", fg=OD_CORES[tipo], bg=bg,
                          font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(4 if compacto else 6)))
                 nome = tk.Label(l, text=rotulo, fg=COR["texto"], bg=bg, font=self.f_nome)
