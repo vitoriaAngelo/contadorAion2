@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.50"
+VERSAO = "1.9.51"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2976,6 +2976,8 @@ def main():
                          bool(self.cfg.get("compacto")), self.cfg.get("tamanho_letra"),
                          tuple(self.cfg.get("tiers", [5, 25, 75])), meta, self.cfg.get("max_linhas"))
             if estrutura == getattr(self, "_estrutura", None):
+                if self.cfg.get("aba", "almas") == "almas":
+                    self._atualizar_abismo()
                 if self.cfg.get("aba") == "info":
                     self._atualizar_info()
                 elif self.cfg.get("aba") == "od":
@@ -3034,17 +3036,19 @@ def main():
                     caixa_abismo = tk.Frame(self.corpo, bg=COR["painel"],
                                             highlightthickness=1, highlightbackground=COR["barra"])
                     caixa_abismo.pack(fill="x", pady=(self.px(7), 0))
+                    caixa_abismo.columnconfigure(1, weight=1)
                     tk.Label(caixa_abismo, text="◈  Abismo", fg=COR["ouro"],
-                             bg=COR["painel"], font=self.f_nome).pack(side="left",
-                                                                        padx=self.px(8), pady=self.px(5))
+                             bg=COR["painel"], font=self.f_nome).grid(
+                                 row=0, column=0, sticky="w", padx=self.px(8), pady=self.px(5))
                     pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
                     kinah_fmt = f"{self.kinah_abismo:,}".replace(",", ".")
                     self._lbl_abismo = tk.Label(caixa_abismo,
                                                 text=f"Pontos: +{pontos_fmt}   ·   Kinah: +{kinah_fmt}",
                                                 fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
-                    self._lbl_abismo.pack(side="left", padx=self.px(8))
+                    self._lbl_abismo.grid(row=0, column=1, sticky="e", padx=self.px(8))
                     tempo = tk.Frame(caixa_abismo, bg=COR["painel"])
-                    tempo.pack(fill="x", padx=self.px(8), pady=(0, self.px(5)))
+                    tempo.grid(row=1, column=0, columnspan=2, sticky="ew",
+                               padx=self.px(8), pady=(0, self.px(5)))
                     tk.Label(tempo, text="Tempo de farm", fg=COR["suave"],
                              bg=COR["painel"], font=self.f_peq).pack(side="left")
                     self._lbl_crono_home = tk.Label(
@@ -3159,7 +3163,7 @@ def main():
             atual = self.cfg.get("aba", "almas")
             proxima = "almas" if atual == destino else destino
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
-                      "_od_ui", "_lbl_crono", "_b_crono", "_lbl_crono_home",
+                      "_od_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
                       "_b_crono_home", "_pets_tree",
                       "_pets_resumo", "_pets_busca", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
