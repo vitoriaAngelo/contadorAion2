@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.54"
+VERSAO = "1.9.55"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3750,8 +3750,12 @@ def main():
             from tkinter import ttk
             area = tk.Frame(self.corpo, bg=COR["painel"])
             area.pack(fill="both", expand=True, pady=(self.px(6), 0))
-            tk.Label(area, text="Materiais coletados", fg=COR["ouro"],
-                     bg=COR["painel"], font=self.f_nome).pack(anchor="w", padx=self.px(8))
+            topo = tk.Frame(area, bg=COR["painel"])
+            topo.pack(fill="x", padx=self.px(8))
+            tk.Label(topo, text="Materiais coletados", fg=COR["ouro"],
+                     bg=COR["painel"], font=self.f_nome).pack(side="left")
+            self.botao(topo, "↺ Zerar", lambda e: self.material_zerar(),
+                       fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
             resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
                               font=self.f_peq, wraplength=self.px(270), justify="left")
             resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(2), self.px(4)))
@@ -3852,6 +3856,21 @@ def main():
                 self.prog.materiais[item_id] = valor
                 self.prog.salvar()
                 self._atualizar_materiais()
+
+        def material_zerar(self):
+            if not self.dialogo(messagebox.askyesno, APP_NOME,
+                                "Zerar todos os materiais coletados? Os ODs não serão alterados."):
+                return
+            self.prog.materiais.clear()
+            self.prog.salvar()
+            ui = getattr(self, "_materiais_ui", None)
+            if ui:
+                _, _, widgets = ui
+                for titulo, _ in widgets.values():
+                    titulo.master.master.destroy()
+                widgets.clear()
+            self._atualizar_materiais()
+            registrar("MATERIAIS ZERADOS PELO USUARIO")
 
         def _atualizar_od(self):
             ui = getattr(self, "_od_ui", None)
