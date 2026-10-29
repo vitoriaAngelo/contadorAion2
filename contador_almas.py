@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.49"
+VERSAO = "1.9.50"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2955,12 +2955,13 @@ def main():
 
             rodape = ""
             mostra_rodape = True  # evento e versao sempre aparecem embaixo
-            if todos and mostra_rodape:
-                rodape = f"{len(concl)}/{len(todos)} conclu\u00eddos"
+            if mostra_rodape:
+                concl_visiveis = sum(m["qtd"] >= meta for m in lista)
+                rodape = f"{concl_visiveis}/{len(lista)} conclu\u00eddos"
                 if ocultos:
                     rodape += f"  \u00b7  +{ocultos} ocultos"
             vazio = ""
-            if not todos:
+            if not lista:
                 vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap\u2026"
                          if self.cfg.get("fonte_leitura") == "npcap" else
                          "Procurando o chat do jogo\u2026 deixe o jogo aberto com o chat "
@@ -4372,7 +4373,7 @@ def main():
                 del self._ui[id(m)]
                 restantes = [x for x in self.prog.monstros if id(x) in self._ui]
                 vazio = ""
-                if not self.prog.monstros:
+                if not restantes:
                     vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap…"
                              if self.cfg.get("fonte_leitura") == "npcap" else
                              ("Procurando o chat do jogo… deixe o chat visível."
@@ -4393,9 +4394,8 @@ def main():
                         self._rolagem = None
                 if self._lbl_rodape:
                     meta = int(self.cfg["meta"])
-                    concluidos = sum(x["qtd"] >= meta for x in self.prog.monstros)
-                    rodape = (f"{concluidos}/{len(self.prog.monstros)} concluídos"
-                              if self.prog.monstros else "")
+                    concluidos = sum(x["qtd"] >= meta for x in restantes)
+                    rodape = f"{concluidos}/{len(restantes)} concluídos"
                     self._lbl_rodape.configure(text=rodape)
 
         def ajustar(self, m, n):
