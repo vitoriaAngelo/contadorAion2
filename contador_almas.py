@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.52"
+VERSAO = "1.9.53"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3747,8 +3747,6 @@ def main():
             self._montar_materiais()
 
         def _montar_materiais(self):
-            from tkinter import ttk
-            from pet_protocol import GATHER_ITEM_TYPES
             area = tk.Frame(self.corpo, bg=COR["painel"])
             area.pack(fill="both", expand=True, pady=(self.px(6), 0))
             tk.Label(area, text="Materiais coletados", fg=COR["ouro"],
@@ -3756,16 +3754,20 @@ def main():
             resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
                               font=self.f_peq, wraplength=self.px(270), justify="left")
             resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(2), self.px(4)))
-            tabela = ttk.Treeview(area, columns=("grupo", "quantidade"), show="tree headings",
-                                  height=6, selectmode="none")
-            tabela.heading("#0", text="Material")
-            tabela.heading("grupo", text="Tipo")
-            tabela.heading("quantidade", text="Qtd.")
-            tabela.column("#0", width=self.px(145), stretch=True)
-            tabela.column("grupo", width=self.px(72), stretch=False)
-            tabela.column("quantidade", width=self.px(45), anchor="e", stretch=False)
-            tabela.pack(fill="both", expand=True, padx=self.px(6), pady=(0, self.px(6)))
-            self._materiais_ui = (resumo, tabela)
+            caixa = tk.Frame(area, bg=COR["painel"])
+            caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
+            canvas = tk.Canvas(caixa, bg=COR["painel"], highlightthickness=0,
+                               height=self.px(150))
+            barra = tk.Scrollbar(caixa, orient="vertical", command=canvas.yview)
+            canvas.configure(yscrollcommand=barra.set)
+            barra.pack(side="right", fill="y")
+            canvas.pack(side="left", fill="both", expand=True)
+            linhas = tk.Frame(canvas, bg=COR["painel"])
+            janela = canvas.create_window((0, 0), window=linhas, anchor="nw")
+            linhas.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(janela, width=e.width))
+            canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-int(e.delta / 120), "units"))
+            self._materiais_ui = (resumo, linhas, {})
             self._atualizar_materiais()
 
         def _atualizar_materiais(self):
@@ -3773,12 +3775,12 @@ def main():
             ui = getattr(self, "_materiais_ui", None)
             if not ui or self.cfg.get("aba") != "od":
                 return
-            resumo, tabela = ui
+            resumo, area, widgets = ui
             grupos = ("Minérios", "Ervas", "Madeiras", "Culinária")
             totais = {grupo: 0 for grupo in grupos}
             linhas = []
             for item_id, quantidade in self.prog.materiais.items():
-                if quantidade > 0 and int(item_id) in GATHER_ITEM_TYPES:
+                if int(item_id) in GATHER_ITEM_TYPES:
                     grupo, nome = GATHER_ITEM_TYPES[int(item_id)]
                     totais[grupo] += quantidade
                     linhas.append((grupo, nome, item_id, quantidade))
@@ -3786,17 +3788,58 @@ def main():
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
             linhas.sort(key=lambda l: (grupos.index(l[0]), l[1]))
-            atuais = set(tabela.get_children())
-            desejados = {item_id for _, _, item_id, _ in linhas}
-            for item_id in atuais - desejados:
-                tabela.delete(item_id)
-            for pos, (grupo, nome, item_id, quantidade) in enumerate(linhas):
-                if item_id in atuais:
-                    tabela.item(item_id, text=nome, values=(grupo, quantidade))
-                    tabela.move(item_id, "", pos)
-                else:
-                    tabela.insert("", pos, iid=item_id, text=nome,
-                                  values=(grupo, quantidade))
+            for grupo, nome, item_id, quantidade in linhas:
+                if item_id not in widgets:
+                    linha = tk.Frame(area, bg=COR["painel"])
+                    linha.pack(fill="x", pady=(0, self.px(3)))
+                    interno = tk.Frame(linha, bg=COR["painel"])
+                    interno.pack(fill="x", padx=self.px(5), pady=self.px(3))
+                    cor = (OD_CORES["OD Radiante"] if "Radiant" in nome else
+                           OD_CORES["OD Puro"] if "Pure" in nome else
+                           OD_CORES["OD Fino"] if "Fine" in nome or "Fresh" in nome
+                           else OD_CORES["OD"])
+                    tk.Label(interno, text="\u25c6", fg=cor, bg=COR["painel"],
+                             font=self.fontes["botao"]).pack(side="left", padx=(0, self.px(4)))
+                    titulo = tk.Label(interno, text=nome, fg=COR["texto"], bg=COR["painel"],
+                                      font=self.f_nome)
+                    titulo.pack(side="left")
+                    self.botao(interno, "+", lambda e, i=item_id: self.material_ajustar(i, 1),
+                               fonte=self.fontes["botao_b"]).pack(side="right")
+                    self.botao(interno, "\u2212", lambda e, i=item_id: self.material_ajustar(i, -1),
+                               fonte=self.fontes["botao_b"]).pack(side="right")
+                    numero = tk.Label(interno, text="", fg=COR["alma"], bg=COR["painel"],
+                                      font=self.f_nome, cursor="hand2", width=5, anchor="e")
+                    numero.pack(side="right", padx=(0, self.px(2)))
+                    numero.bind("<Button-1>", lambda e, i=item_id: self.material_definir(i))
+                    self.dica(numero, f"{nome}: clique para digitar a quantidade")
+                    widgets[item_id] = (titulo, numero)
+                titulo, numero = widgets[item_id]
+                valor = str(quantidade)
+                if numero.cget("text") != valor:
+                    numero.configure(text=valor)
+                novo = time.time() - self.destaque.get("\u00a7material:" + item_id, 0) < 2.5
+                cor = COR["novo"] if novo else COR["alma"]
+                if numero.cget("fg") != cor:
+                    numero.configure(fg=cor)
+                cor_nome = COR["novo"] if novo else COR["texto"]
+                if titulo.cget("fg") != cor_nome:
+                    titulo.configure(fg=cor_nome)
+
+        def material_ajustar(self, item_id, delta):
+            atual = self.prog.materiais.get(item_id, 0)
+            self.prog.materiais[item_id] = max(0, atual + delta)
+            self.prog.salvar()
+            self._atualizar_materiais()
+
+        def material_definir(self, item_id):
+            from pet_protocol import GATHER_ITEM_TYPES
+            nome = GATHER_ITEM_TYPES[int(item_id)][1]
+            valor = self.dialogo(simpledialog.askinteger, APP_NOME, f"Quantos {nome} você coletou?",
+                                 initialvalue=self.prog.materiais.get(item_id, 0), minvalue=0)
+            if valor is not None:
+                self.prog.materiais[item_id] = valor
+                self.prog.salvar()
+                self._atualizar_materiais()
 
         def _atualizar_od(self):
             ui = getattr(self, "_od_ui", None)
@@ -5146,6 +5189,7 @@ def main():
                             chave = str(item_id)
                             self.prog.materiais[chave] = self.prog.materiais.get(chave, 0) + quantidade
                             self.prog.salvar()
+                            self.destaque["\u00a7material:" + chave] = time.time()
                             self._atualizar_materiais()
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
                     elif tipo == "estado_rede":
