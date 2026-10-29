@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.44"
+VERSAO = "1.9.45"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2336,8 +2336,11 @@ class LeitorRede(threading.Thread):
                 if evento[0] == "gain" and self.ativo.is_set():
                     _, pet_id, quantidade = evento
                     self.fila.put(("alma_rede", (pet_id, quantidade)))
-                elif evento[0] in ("abyss_points", "kinah_gain") and self.ativo.is_set():
-                    self.fila.put(evento)
+                elif evento[0] in ("abyss_points", "kinah_gain", "od_gain") and self.ativo.is_set():
+                    if evento[0] == "od_gain":
+                        self.fila.put(("od_gain", (evento[1], evento[2])))
+                    else:
+                        self.fila.put(evento)
                 elif evento[0] == "conn":
                     self.fila.put(("conexao_rede", evento[1]))
                 elif evento[0] == "ready":
@@ -5067,6 +5070,15 @@ def main():
                                 total = self.kinah_abismo
                             self._atualizar_abismo()
                             registrar(f"NPCAP: +{quantidade} {nome} no Abismo (sessão: {total})")
+                    elif tipo == "od_gain":
+                        od_tipo, quantidade = dado
+                        quantidade = int(quantidade)
+                        if od_tipo in OD_TIPOS and quantidade > 0:
+                            self.prog.od[od_tipo] = self.prog.od.get(od_tipo, 0) + quantidade
+                            self.prog.salvar()
+                            self.destaque["\u00a7od:" + od_tipo] = time.time()
+                            self._atualizar_od()
+                            registrar(f"NPCAP: +{quantidade} {od_tipo}")
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])

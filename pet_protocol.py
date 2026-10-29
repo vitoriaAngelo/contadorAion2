@@ -53,6 +53,12 @@ OP_ABYSS_SNAPSHOT = b"\x83\x56"
 OP_INVENTORY_CHANGE = b"\x1b\x56"
 ABYSS_POINT_ACHIEVEMENT = 230111500
 KINAH_ITEM_ID = 930100001
+OD_ITEM_TYPES = {
+    610610013: "OD",
+    610610014: "OD Fino",
+    610610015: "OD Puro",
+    610610016: "OD Radiante",
+}
 OP_NICKNAME = b"\x33\x36"
 OP_ZONE = b"\x21\x36"
 OP_NPC_SPAWN = b"\x41\x36"
@@ -244,17 +250,15 @@ def parse_abyss_snapshot(payload):
     return None
 
 
-def parse_kinah_change(payload):
-    """Extrai uma alteração de Kinah do registro de inventário 0x1b56."""
-    # kind u8, cabeçalho e instância u32, item u32, quantidade u64
+def parse_inventory_change(payload):
+    """Extrai o item, tipo de alteração, instância e quantidade do 0x1b56."""
+    # marcador, kind u8, instância u32, item u32, quantidade u64
     if len(payload) < 23 or payload[0] != 1 or payload[1] not in (0, 1, 2):
         return None
     item = struct.unpack_from("<I", payload, 11)[0]
-    if item != KINAH_ITEM_ID:
-        return None
     instance = struct.unpack_from("<I", payload, 3)[0]
     quantity = struct.unpack_from("<Q", payload, 15)[0]
-    return payload[1], instance, quantity
+    return payload[1], instance, item, quantity
 
 
 def parse_nickname(payload):
@@ -452,7 +456,7 @@ class Decoder:
         self.own_entity = None
         self.zone_id = None
         self.abyss_progress = None
-        self.kinah_instances = {}
+        self.inventory_instances = {}
 
     def segment(self, conn, seq, data):
         stream = self.streams.setdefault(conn, Stream())
@@ -486,18 +490,21 @@ class Decoder:
                         if total is not None:
                             self.abyss_progress = total
                     elif op == OP_INVENTORY_CHANGE:
-                        change = parse_kinah_change(payload)
+                        change = parse_inventory_change(payload)
                         if change:
-                            kind, instance, quantity = change
-                            previous = self.kinah_instances.get(instance)
+                            kind, instance, item, quantity = change
+                            previous = self.inventory_instances.get(instance)
                             if kind == 2 or quantity == 0:
-                                self.kinah_instances.pop(instance, None)
+                                self.inventory_instances.pop(instance, None)
                             else:
-                                self.kinah_instances[instance] = quantity
-                                if kind == 0 and previous is None and quantity:
-                                    self.emit(("kinah_gain", quantity))
-                                elif previous is not None and quantity > previous:
-                                    self.emit(("kinah_gain", quantity - previous))
+                                self.inventory_instances[instance] = (item, quantity)
+                                old_quantity = previous[1] if previous and previous[0] == item else None
+                                ganho = quantity if kind == 0 and old_quantity is None else (
+                                    quantity - old_quantity if old_quantity is not None else 0)
+                                if item == KINAH_ITEM_ID and ganho > 0:
+                                    self.emit(("kinah_gain", ganho))
+                                elif item in OD_ITEM_TYPES and ganho > 0:
+                                    self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:

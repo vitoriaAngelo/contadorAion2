@@ -75,6 +75,28 @@ class LeituraNpcap(unittest.TestCase):
         self.assertEqual(eventos, [('ready',), ('kinah_gain', 363),
                                    ('kinah_gain', 363)])
 
+    def test_od_coletado_atualiza_tipo_e_quantidade_pelo_inventario(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+
+        def item(instancia, item_id, quantidade):
+            payload = bytearray(23)
+            payload[0] = 1
+            payload[1] = 0
+            struct.pack_into('<I', payload, 3, instancia)
+            struct.pack_into('<I', payload, 11, item_id)
+            struct.pack_into('<Q', payload, 15, quantidade)
+            return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+        atual = 1000
+        esperados = [('ready',)]
+        for instancia, (item_id, tipo) in enumerate(pp.OD_ITEM_TYPES.items(), 10):
+            dados = item(instancia, item_id, 2)
+            dec.segment('jogo', atual, dados)
+            atual += len(dados)
+            esperados.append(('od_gain', tipo, 2))
+        self.assertEqual(eventos, esperados)
+
     def test_assinatura_distingue_estado_de_outro_personagem(self):
         a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
         self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))

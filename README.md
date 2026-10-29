@@ -70,7 +70,7 @@ O nome do personagem identificado pelo Npcap aparece ao lado do título e é atu
 ao trocar de personagem. Se o contador abrir depois do login, mostra o último nome
 salvo até receber uma nova identificação do jogo.
 
-Botão ◆ no topo: aba **OD** — os números podem ser ajustados manualmente. A leitura de rede desta versão cobre almas de pets, ainda não OD.
+Botão ◆ no topo: aba **OD** — o contador lê pelo Npcap os ODs recebidos no inventário (normal, fino, puro e radiante); os números também podem ser ajustados manualmente.
 
 Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
 três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
