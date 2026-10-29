@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.66"
+VERSAO = "1.9.67"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2857,6 +2857,10 @@ def main():
                                    dica=lambda: "Voltar para as almas" if self.cfg.get("aba") == "od"
                                    else "Contador de OD (OD, Fino, Puro, Radiante)")
             self.b_od.pack(side="right")
+            self.b_materiais = self.botao(h, "Materiais",
+                                          lambda e: self.alternar_aba("materiais"),
+                                          fonte=self.f_peq, dica="Materiais coletados")
+            self.b_materiais.pack(side="right")
             self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
@@ -3003,7 +3007,7 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            if self.cfg.get("aba") in ("info", "od", "pets"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"),
@@ -3016,6 +3020,8 @@ def main():
                     self._atualizar_info()
                 elif self.cfg.get("aba") == "od":
                     self._atualizar_od()
+                elif self.cfg.get("aba") == "materiais":
+                    self._atualizar_materiais()
                 elif self.cfg.get("aba") == "pets":
                     self._atualizar_pets()
                 # so atualiza os numeros (sem apagar nada)
@@ -3049,13 +3055,15 @@ def main():
             self._rolagem = None
             self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
-            if self.cfg.get("aba") in ("info", "od", "pets"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
                 tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
                 if self.cfg.get("aba") == "od":
                     self._montar_od()
+                elif self.cfg.get("aba") == "materiais":
+                    self._montar_materiais()
                 elif self.cfg.get("aba") == "pets":
                     self._montar_pets()
                 else:
@@ -3190,7 +3198,7 @@ def main():
 
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
-            return {"info": "\u25f7 Info", "od": "\u25c6 OD",
+            return {"info": "\u25f7 Info", "od": "\u25c6 OD", "materiais": "Materiais",
                     "pets": "\u2661 Pets"}.get(self.cfg.get("aba"), "\u2726 Almas")
 
         def alternar_aba(self, destino="info"):
@@ -3788,7 +3796,6 @@ def main():
             self._b_crono.pack(side="left")
             self.botao(barra, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
                        dica="Zerar o cron\u00f4metro").pack(side="left")
-            self._montar_materiais()
             self._atualizar_od()
 
         def _montar_materiais(self):
@@ -3866,7 +3873,7 @@ def main():
         def _atualizar_materiais(self):
             from pet_protocol import GATHER_ITEM_TYPES
             ui = getattr(self, "_materiais_ui", None)
-            if not ui or self.cfg.get("aba") != "od":
+            if not ui or self.cfg.get("aba") != "materiais":
                 return
             resumo, area, widgets = ui
             grupos = ("Minérios", "Ervas", "Madeiras", "Culinária")
@@ -4148,6 +4155,8 @@ def main():
                     self._atualizar_info()
                 elif self.cfg.get("aba") == "od":
                     self._atualizar_od()
+                elif self.cfg.get("aba") == "materiais":
+                    self._atualizar_materiais()
             except Exception:
                 pass
             if agendar:
@@ -5447,9 +5456,11 @@ def main():
             if coleta_alterada:
                 self.prog.salvar()
                 if self.cfg.get("aba") == "od":
+                    self._atualizar_od()
+                elif self.cfg.get("aba") == "materiais":
                     if ultimo_grupo is not None:
                         self.material_selecionar(ultimo_grupo)
-                    self._atualizar_od()
+                    self._atualizar_materiais()
                     if ultimo_grupo is not None and getattr(self, "_materiais_ui", None):
                         self._materiais_ui[1].master.yview_moveto(0)
             self.root.after(10 if not self.leitor.fila.empty() else 50, self.consumir)
