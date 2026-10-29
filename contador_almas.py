@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.60"
+VERSAO = "1.9.61"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2487,6 +2487,22 @@ def main():
             self.corpo.pack(fill="both", expand=True)
             self.render()
 
+            canto = tk.Canvas(self.root, width=self.px(14), height=self.px(14),
+                              bg=COR["fundo"], highlightthickness=0, cursor="size_nw_se")
+            for inicio in (4, 8):
+                canto.create_line(self.px(inicio), self.px(12), self.px(12),
+                                  self.px(inicio), fill=COR["suave"])
+            canto.place(relx=1, rely=1, anchor="se")
+            canto.bind("<ButtonPress-1>", self._tamanho_ini)
+            canto.bind("<B1-Motion>", self._tamanho_arrastar)
+            canto.bind("<ButtonRelease-1>", self._tamanho_salvar)
+            self.dica(canto, "Arraste para ajustar o tamanho da janela")
+            tamanho = self.cfg.get("tamanho_janela")
+            if isinstance(tamanho, list) and len(tamanho) == 2:
+                largura = max(self.px(320), min(int(tamanho[0]), self.root.winfo_screenwidth()))
+                altura = max(self.px(180), min(int(tamanho[1]), self.root.winfo_screenheight()))
+                self.root.geometry(f"{largura}x{altura}")
+
             self.leitor = LeitorRede(self.cfg)
             self.leitor_ocr = None
             self.erro_od = None
@@ -2871,6 +2887,21 @@ def main():
         def _arrastar_ini(self, e):
             self._dx = e.x_root - self.root.winfo_x()
             self._dy = e.y_root - self.root.winfo_y()
+
+        def _tamanho_ini(self, e):
+            self._tamanho_origem = (e.x_root, e.y_root,
+                                    self.root.winfo_width(), self.root.winfo_height())
+
+        def _tamanho_arrastar(self, e):
+            x, y, largura, altura = self._tamanho_origem
+            largura = max(self.px(320), largura + e.x_root - x)
+            altura = max(self.px(180), altura + e.y_root - y)
+            self.root.geometry(f"{largura}x{altura}")
+
+        def _tamanho_salvar(self, e):
+            self.root.update_idletasks()
+            self.cfg["tamanho_janela"] = [self.root.winfo_width(), self.root.winfo_height()]
+            self.salvar_cfg()
 
         def _arrastar(self, e):
             self.root.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
