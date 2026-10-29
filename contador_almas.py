@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.56"
+VERSAO = "1.9.57"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3758,19 +3758,20 @@ def main():
                        fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
             resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
                               font=self.f_peq, wraplength=self.px(270), justify="left")
-            resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(2), self.px(4)))
+            resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(4), self.px(8)))
             seletores = tk.Frame(area, bg=COR["painel"])
-            seletores.pack(fill="x", padx=self.px(5), pady=(0, self.px(4)))
+            seletores.pack(fill="x", padx=self.px(5), pady=(0, self.px(8)))
             self._material_grupo = getattr(self, "_material_grupo", "Minérios")
             self._material_botoes = {}
             for grupo in ("Minérios", "Ervas", "Madeiras", "Culinária"):
                 botao = self.botao(seletores, grupo,
                                    lambda e, g=grupo: self.material_selecionar(g),
                                    fonte=self.f_peq)
+                botao.configure(pady=self.px(6), padx=self.px(7))
                 botao.bind("<Leave>", lambda e, g=grupo, b=botao:
                            b.configure(fg=COR["ouro"] if g == self._material_grupo
                                        else COR["suave"]))
-                botao.pack(side="left")
+                botao.pack(side="left", fill="x", expand=True, padx=self.px(2))
                 self._material_botoes[grupo] = botao
             caixa = tk.Frame(area, bg=COR["painel"])
             caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
@@ -3813,23 +3814,27 @@ def main():
                 totais[grupo] += quantidade
                 if grupo == self._material_grupo:
                     linhas.append((grupo, nome, str(item), quantidade))
-            texto = "  ·  ".join(f"{grupo}: {totais[grupo]}" for grupo in grupos)
+            texto = f"{self._material_grupo}  ·  {totais[self._material_grupo]:,} coletados".replace(",", ".")
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
             for grupo, botao in self._material_botoes.items():
                 cor = COR["ouro"] if grupo == self._material_grupo else COR["suave"]
                 if botao.cget("fg") != cor:
                     botao.configure(fg=cor)
+                fundo = COR["barra"] if grupo == self._material_grupo else COR["painel"]
+                if botao.cget("bg") != fundo:
+                    botao.configure(bg=fundo)
             if self._material_grupo == "Minérios":
                 linhas.sort(key=lambda l: int(l[2]))
             else:
                 linhas.sort(key=lambda l: l[1])
             for grupo, nome, item_id, quantidade in linhas:
                 if item_id not in widgets:
-                    linha = tk.Frame(area, bg=COR["painel"])
-                    linha.pack(fill="x", pady=(0, self.px(3)))
+                    linha = tk.Frame(area, bg=COR["painel"],
+                                     highlightthickness=1, highlightbackground=COR["barra"])
+                    linha.pack(fill="x", pady=(0, self.px(5)))
                     interno = tk.Frame(linha, bg=COR["painel"])
-                    interno.pack(fill="x", padx=self.px(5), pady=self.px(3))
+                    interno.pack(fill="x", padx=self.px(8), pady=self.px(7))
                     cor = (OD_CORES["OD Radiante"] if "Radiant" in nome else
                            OD_CORES["OD Puro"] if "Pure" in nome else
                            OD_CORES["OD Fino"] if "Fine" in nome or "Fresh" in nome
@@ -3847,7 +3852,7 @@ def main():
                     self.botao(interno, "\u2212", lambda e, i=item_id: self.material_ajustar(i, -1),
                                fonte=self.fontes["botao_b"]).pack(side="right")
                     numero = tk.Label(interno, text="", fg=COR["alma"], bg=COR["painel"],
-                                      font=self.f_nome, cursor="hand2", width=5, anchor="e")
+                                      font=self.fontes["titulo"], cursor="hand2", width=5, anchor="e")
                     numero.pack(side="right", padx=(0, self.px(2)))
                     numero.bind("<Button-1>", lambda e, i=item_id: self.material_definir(i))
                     self.dica(numero, f"{nome}: clique para digitar a quantidade")
