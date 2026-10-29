@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.45"
+VERSAO = "1.9.46"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3184,7 +3184,6 @@ def main():
             self.salvar_cfg()
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
-            self.b_aba.configure(text="\u2726" if aba == "info" else "\u25f7")
             self.b_od.configure(text="\u2726" if aba == "od" else "\u25c6")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
