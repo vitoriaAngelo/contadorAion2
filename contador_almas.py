@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.93"
+VERSAO = "1.9.94"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2497,6 +2497,7 @@ def main():
             self._fontes_base = {
                 "titulo": ("Segoe UI", 10, "bold"), "nome": ("Segoe UI", 9, "bold"),
                 "peq": ("Segoe UI", 8, "normal"), "estrela": ("Segoe UI", 10, "normal"),
+                "alma_nome": ("Segoe UI", 8, "bold"), "alma_peq": ("Segoe UI", 7, "normal"),
                 "botao": ("Segoe UI", 10, "normal"), "botao_b": ("Segoe UI", 10, "bold"),
                 "fechar": ("Segoe UI", 9, "bold"), "relogio": ("Consolas", 9, "bold"),
                 "evento": ("Segoe UI", 8, "bold"), "versao": ("Segoe UI", 7, "normal"),
@@ -2507,6 +2508,8 @@ def main():
             self.f_titulo = self.fontes["titulo"]
             self.f_nome = self.fontes["nome"]
             self.f_peq = self.fontes["peq"]
+            self.f_alma_nome = self.fontes["alma_nome"]
+            self.f_alma_peq = self.fontes["alma_peq"]
 
             self._montar_cabecalho()
             self.area_abas = tk.Frame(self.root, bg=COR["fundo"])
@@ -2550,6 +2553,9 @@ def main():
             self.root.after(20000, self.vigiar_arquivo)
 
         # ---------------- util ----------------
+        def tr(self, portugues, ingles):
+            return ingles if str(self.cfg.get("idioma", "pt-BR")).lower().startswith("en") else portugues
+
         def esconder_da_captura(self, janela):
             """Deixa a janela do programa invisivel para capturas de tela, para
             o OCR nunca ler o proprio overlay (Windows 10 2004+)."""
@@ -2875,7 +2881,7 @@ def main():
                        dica="Fechar o contador").pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar(),
                        dica="Minimizar (vai para a barra de tarefas)").pack(side="right")
-            self.b_od = self.botao(h, "Materiais",
+            self.b_od = self.botao(h, self.tr("Materiais", "Materials"),
                                    lambda e: self.alternar_aba(
                                        self.cfg.get("aba") if self.cfg.get("aba") in ("od", "materiais") else "od"),
                                    fonte=self.f_nome,
@@ -2889,7 +2895,7 @@ def main():
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
             self.b_pets.pack(side="right")
-            self.b_inicio = self.botao(h, "Início", lambda e: self.alternar_aba("almas"),
+            self.b_inicio = self.botao(h, self.tr("Início", "Home"), lambda e: self.alternar_aba("almas"),
                                        fonte=self.f_nome, dica="Almas recebidas")
             self.b_inicio.pack(side="right")
             self.b_config_top = self.botao(
@@ -2907,13 +2913,13 @@ def main():
             self._nav = nav
             for coluna in range(5):
                 nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
-            self.b_inicio = self.botao(nav, "Início", lambda e: self.alternar_aba("almas"),
+            self.b_inicio = self.botao(nav, self.tr("Início", "Home"), lambda e: self.alternar_aba("almas"),
                                        fonte=self.f_nome, dica="Almas recebidas")
             self.b_pets = self.botao(nav, "Pets", lambda e: self.alternar_aba("pets"),
                                      fonte=self.f_nome, dica="Lista de todos os pets")
             self.b_dps = self.botao(nav, "DPS", lambda e: self.alternar_aba("dps"),
                                     fonte=self.f_nome, dica="DPS dos membros da PT")
-            self.b_od = self.botao(nav, "Materiais", lambda e: self.alternar_aba(
+            self.b_od = self.botao(nav, self.tr("Materiais", "Materials"), lambda e: self.alternar_aba(
                 self.cfg.get("aba") if self.cfg.get("aba") in ("od", "materiais") else "od"),
                 fonte=self.f_nome, dica="ODs e materiais de coleta")
             b_config = self.botao(nav, "\u2699", self.menu_principal,
@@ -3047,12 +3053,14 @@ def main():
             mostra_rodape = True  # evento e versao sempre aparecem embaixo
             if mostra_rodape:
                 concl_visiveis = sum(m["qtd"] >= meta for m in lista)
-                rodape = f"{concl_visiveis}/{len(lista)} conclu\u00eddos"
+                rodape = self.tr(f"{concl_visiveis}/{len(lista)} concluídos",
+                                 f"{concl_visiveis}/{len(lista)} completed")
                 if ocultos:
                     rodape += f"  \u00b7  +{ocultos} ocultos"
             vazio = ""
             if not lista:
-                vazio = ("Aguardando as almas recebidas pelo AION 2 via Npcap\u2026"
+                vazio = (self.tr("Aguardando as almas recebidas pelo AION 2 via Npcap…",
+                                 "Waiting for souls received from AION 2 via Npcap…")
                          if self.cfg.get("fonte_leitura") == "npcap" else
                          "Procurando o chat do jogo\u2026 deixe o jogo aberto com o chat "
                          "vis\u00edvel (linhas \u201cVoc\u00ea obteve\u2026\u201d)."
@@ -3118,7 +3126,8 @@ def main():
                 if self.cfg.get("aba") in ("od", "materiais"):
                     abas_coleta = tk.Frame(self.corpo, bg=COR["fundo"])
                     abas_coleta.pack(fill="x", pady=(self.px(3), self.px(7)))
-                    for destino, rotulo in (("od", "ODs"), ("materiais", "Materiais")):
+                    for destino, rotulo in (("od", "ODs"),
+                                             ("materiais", self.tr("Materiais", "Materials"))):
                         ativo = self.cfg.get("aba") == destino
                         b = self.botao(abas_coleta, rotulo,
                                        lambda e, d=destino: self.selecionar_coleta(d),
@@ -3237,9 +3246,10 @@ def main():
 
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
-            return {"info": "\u25f7 Info", "od": "Materiais", "materiais": "Materiais",
+            return {"info": "\u25f7 Info", "od": self.tr("Materiais", "Materials"),
+                    "materiais": self.tr("Materiais", "Materials"),
                     "pets": "\u2661 Pets", "dps": "DPS"}.get(
-                        self.cfg.get("aba"), "\u2726 Almas")
+                        self.cfg.get("aba"), self.tr("\u2726 Almas", "\u2726 Souls"))
 
         def selecionar_coleta(self, destino):
             if self.cfg.get("aba") != destino:
@@ -3284,7 +3294,7 @@ def main():
             self.salvar_cfg()
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
-            self.b_od.configure(text="Materiais")
+            self.b_od.configure(text=self.tr("Materiais", "Materials"))
             self.b_dps.configure(text="\u2726 DPS" if aba == "dps" else "DPS")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self._pintar_nav()
@@ -3342,10 +3352,10 @@ def main():
             boss.pack(fill="x", pady=(self.px(1), self.px(3)))
             boss_linha = tk.Frame(boss, bg=COR["painel"])
             boss_linha.pack(fill="x", padx=self.px(6), pady=(self.px(2), self.px(1)))
-            boss_nome = tk.Label(boss_linha, text="Boss", fg=COR["ouro"], bg=COR["painel"],
+            boss_nome = tk.Label(boss_linha, text=self.tr("Chefe", "Boss"), fg=COR["ouro"], bg=COR["painel"],
                                  font=self.f_nome, anchor="w")
             boss_nome.pack(side="left")
-            boss_valor = tk.Label(boss_linha, text="Aguardando combate", fg=COR["suave"],
+            boss_valor = tk.Label(boss_linha, text=self.tr("Aguardando combate", "Waiting for combat"), fg=COR["suave"],
                                   bg=COR["painel"], font=self.f_peq, anchor="e")
             boss_valor.pack(side="right")
             boss_barra = tk.Canvas(boss, height=self.px(5), bg=COR["barra"],
@@ -3407,19 +3417,21 @@ def main():
             percentual = max(0.0, min(100.0, 100.0 * atual / maxima)) if maxima else 0.0
             boss_valor.configure(text=(f"{percentual:.1f}%  ·  {self._numero_dps(atual)} / "
                                         f"{self._numero_dps(maxima)}" if maxima else
-                                        "Aguardando boss"))
+                                        self.tr("Aguardando chefe", "Waiting for boss")))
             largura_boss = max(1, boss_barra.winfo_width())
             boss_barra.coords(boss_fill, 0, 0, int(largura_boss * percentual / 100), self.px(5))
             if not self.dps_party:
-                resumo.configure(text="PT atual")
-                status.configure(text="Aguardando a lista da PT enviada pelo jogo…")
+                resumo.configure(text=self.tr("PT atual", "Current party"))
+                status.configure(text=self.tr("Aguardando a lista da PT enviada pelo jogo…",
+                                              "Waiting for the party list from the game…"))
                 return
             now = time.monotonic()
             end = (now if self.dps_last_hit and now - self.dps_last_hit < 10
                    else self.dps_last_hit)
             seconds = max(1.0, (end - self.dps_started) if end and self.dps_started else 1.0)
             total = sum(self.dps_damage.get(name, 0) for name in self.dps_party)
-            grupo = "Solo" if len(self.dps_party) == 1 else f"{len(self.dps_party)} na PT"
+            grupo = "Solo" if len(self.dps_party) == 1 else self.tr(
+                f"{len(self.dps_party)} na PT", f"{len(self.dps_party)} in party")
             resumo.configure(text=(f"{grupo} · {int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
                                     f" · {self._numero_dps(total)}"))
             status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
@@ -3447,7 +3459,7 @@ def main():
             topo.pack(fill="x", pady=(0, self.px(5)))
             tk.Label(topo, text="Pets", fg=COR["ouro"], bg=COR["painel"],
                      font=self.f_nome).pack(side="left", padx=(0, self.px(8)))
-            tk.Label(topo, text="Buscar", fg=COR["suave"], bg=COR["painel"],
+            tk.Label(topo, text=self.tr("Buscar", "Search"), fg=COR["suave"], bg=COR["painel"],
                      font=self.f_peq).pack(side="left", padx=(0, self.px(5)))
             self._pets_busca = tk.StringVar()
             busca = tk.Entry(topo, textvariable=self._pets_busca, font=self.f_nome,
@@ -3456,7 +3468,7 @@ def main():
             busca.pack(side="left", fill="x", expand=True)
             busca.bind("<KeyRelease>", lambda e: self._atualizar_pets())
             self._pets_so_incompletos = tk.BooleanVar(value=False)
-            tk.Checkbutton(topo, text="Só incompletos", variable=self._pets_so_incompletos,
+            tk.Checkbutton(topo, text=self.tr("Só incompletos", "Incomplete only"), variable=self._pets_so_incompletos,
                            command=self._atualizar_pets, fg=COR["texto"], bg=COR["painel"],
                            activebackground=COR["painel"], activeforeground=COR["ouro"],
                            selectcolor=COR["painel"], font=self.f_peq).pack(side="right")
@@ -3485,12 +3497,12 @@ def main():
             tree = ttk.Treeview(caixa, columns=("pet", "almas", "faltam"),
                                 show="tree headings", height=11, style="Pets.Treeview",
                                 selectmode="browse")
-            tree.heading("#0", text="Estrelas")
+            tree.heading("#0", text=self.tr("Estrelas", "Stars"))
             tree.column("#0", width=self.px(76), minwidth=self.px(76),
                         stretch=False, anchor="center")
             for chave, titulo, largura in (("pet", "Pet", 170),
-                                            ("almas", "Almas", 78),
-                                            ("faltam", "Faltam", 51)):
+                                            ("almas", self.tr("Almas", "Souls"), 78),
+                                            ("faltam", self.tr("Faltam", "Missing"), 51)):
                 tree.heading(chave, text=titulo)
                 tree.column(chave, width=self.px(largura),
                             minwidth=self.px(42), stretch=chave == "pet",
@@ -3996,7 +4008,7 @@ def main():
             resumo = tk.Label(cabecalho, text="", fg=COR["ouro"], bg=COR["fundo"],
                               font=self.fontes["titulo"], justify="left")
             resumo.pack(side="left")
-            tk.Label(cabecalho, text="COLETA", fg=COR["suave"], bg=COR["fundo"],
+            tk.Label(cabecalho, text=self.tr("COLETA", "GATHERING"), fg=COR["suave"], bg=COR["fundo"],
                      font=self.f_peq).pack(side="right")
             seletores = tk.Frame(area, bg=COR["fundo"])
             seletores.pack(fill="x", pady=(0, self.px(6)))
@@ -4079,7 +4091,8 @@ def main():
                                fonte=self.f_peq, dica="Zerar todos os materiais coletados")
             zerar.pack(side="right")
             rodape.bind("<Configure>", lambda e: zerar.configure(
-                text="\u21ba Zerar" if e.width < self.px(350) else "\u21ba Zerar Materiais"))
+                text=("\u21ba " + self.tr("Zerar", "Reset")) if e.width < self.px(350)
+                else ("\u21ba " + self.tr("Zerar Materiais", "Reset Materials"))))
             self._atualizar_materiais()
 
         def _organizar_materiais(self):
@@ -4568,8 +4581,10 @@ def main():
             novo = {
                 "cont": (("\u2713 " if completo else "") +
                          f"{tamanho_t - faltam_t}/{tamanho_t}"),
-                "falta": (f"{m['qtd']} no total · faltam {max(0, meta - m['qtd'])}"
-                          if m["qtd"] < meta else f"{m['qtd']} no total · completo"),
+                "falta": (self.tr(f"{m['qtd']} no total · faltam {max(0, meta - m['qtd'])}",
+                                  f"{m['qtd']} total · {max(0, meta - m['qtd'])} missing")
+                          if m["qtd"] < meta else self.tr(
+                              f"{m['qtd']} no total · completo", f"{m['qtd']} total · complete")),
             }
             # estrelas: douradas = completas; contorno dourado = a que esta
             # fazendo agora; cinza = ainda nao chegou
@@ -4658,15 +4673,15 @@ def main():
         # ---------------- nome com largura fixa + letreiro ----------------
         def _largura_nome(self):
             # do tamanho de um nome comprido comum: o contador nao muda de largura
-            return self.fontes["nome"].measure("Esp\u00edrito do Vento Intermedi\u00e1rio") + self.px(2)
+            return self.fontes["alma_nome"].measure("Esp\u00edrito do Vento Intermedi\u00e1rio") + self.px(2)
 
         def _caixa_nome(self, topo, w, bg):
             larg = self._largura_nome()
             caixa = tk.Frame(topo, bg=bg, width=larg,
-                             height=self.fontes["nome"].metrics("linespace") + self.px(2))
+                             height=self.fontes["alma_nome"].metrics("linespace") + self.px(2))
             caixa.pack(side="left")
             caixa.pack_propagate(False)
-            w["nome"] = tk.Label(caixa, text="", fg=COR["texto"], bg=bg, font=self.f_nome,
+            w["nome"] = tk.Label(caixa, text="", fg=COR["texto"], bg=bg, font=self.f_alma_nome,
                                  anchor="w", padx=0)
             w["nome"].pack(side="left", fill="both", expand=True)
             w["nome_larg"] = larg
@@ -4674,7 +4689,7 @@ def main():
 
         def _cabe(self, texto, larg, reticencias=True):
             """Corta o texto para caber em larg pixels (com '...' no fim)."""
-            f = self.fontes["nome"]
+            f = self.fontes["alma_nome"]
             if f.measure(texto) <= larg:
                 return texto
             fim = "\u2026" if reticencias else ""
@@ -4704,7 +4719,7 @@ def main():
             """Desliza o nome ate aparecer o final, segura um pouco e volta."""
             self._parar_letreiro(w)
             txt = w.get("nome_txt", "")
-            f, larg = self.fontes["nome"], w["nome_larg"]
+            f, larg = self.fontes["alma_nome"], w["nome_larg"]
             ultimo = 0
             while ultimo < len(txt) - 1 and f.measure(txt[ultimo:]) > larg:
                 ultimo += 1
@@ -4741,7 +4756,7 @@ def main():
                        fonte=self.fontes["botao_b"], dica="+1 alma").pack(side="right")
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
                        fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
-            w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
+            w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_alma_nome,
                                  width=8, anchor="e", cursor="hand2")
             w["cont"].pack(side="right")
 
@@ -4751,12 +4766,12 @@ def main():
                     return "break"
                 tiers = self.cfg.get("tiers", [5, 25, 75])
                 est, faltam = tier_atual(m["qtd"], tiers)
-                cx = tk.Entry(topo, width=4, justify="center", font=self.f_nome,
+                cx = tk.Entry(topo, width=4, justify="center", font=self.f_alma_nome,
                               bg=COR["barra"], fg=COR["texto"], insertbackground=COR["texto"],
                               relief="flat", highlightthickness=1,
                               highlightbackground="#3a4050", highlightcolor=COR["alma"])
                 cx.insert(0, str(tiers[est - 1] - faltam))
-                tam = tk.Label(topo, text=f"/{tiers[est - 1]}", fg=COR["suave"], bg=bg, font=self.f_nome)
+                tam = tk.Label(topo, text=f"/{tiers[est - 1]}", fg=COR["suave"], bg=bg, font=self.f_alma_nome)
                 w["cont"].pack_forget()
                 tam.pack(side="right")
                 cx.pack(side="right")
@@ -4815,7 +4830,7 @@ def main():
                        fonte=self.fontes["botao_b"], dica="+1 alma").pack(side="right")
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
                        fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
-            w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
+            w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_alma_nome,
                                  width=8, anchor="e")
             w["cont"].pack(side="right", padx=(0, self.px(4)))
 
@@ -4826,17 +4841,17 @@ def main():
             w["cv"] = tk.Canvas(base, width=W, height=H, bg=COR["barra"], highlightthickness=0)
             w["cv"].pack(side="left")
             w["barra"] = w["cv"].create_rectangle(0, 0, 0, H, fill=COR["alma"], width=0)
-            w["falta"] = tk.Label(base, text="", fg=COR["suave"], bg=bg, font=self.f_peq)
+            w["falta"] = tk.Label(base, text="", fg=COR["suave"], bg=bg, font=self.f_alma_peq)
             w["falta"].pack(side="left", padx=(self.px(7), 0))
-            caixa = tk.Entry(base, width=4, justify="center", font=self.f_nome,
+            caixa = tk.Entry(base, width=4, justify="center", font=self.f_alma_nome,
                              bg=COR["barra"], fg=COR["texto"],
                              insertbackground=COR["texto"], relief="flat",
                              highlightthickness=1, highlightbackground="#3a4050",
                              highlightcolor=COR["alma"])
             caixa.pack(side="right")
             w["caixa"] = caixa
-            tk.Label(base, text="tenho", fg=COR["suave"], bg=bg,
-                     font=self.f_peq).pack(side="right", padx=(self.px(6), self.px(3)))
+            tk.Label(base, text=self.tr("tenho", "have"), fg=COR["suave"], bg=bg,
+                     font=self.f_alma_peq).pack(side="right", padx=(self.px(6), self.px(3)))
 
             def comecar(e, cx=caixa):
                 self.editando = cx
@@ -4922,7 +4937,7 @@ def main():
         def ajustar_tamanho_fonte(self):
             anterior = int(round(self._escala_letra() * 100))
             janela = tk.Toplevel(self.root)
-            janela.title("Tamanho da fonte")
+            janela.title(self.tr("Tamanho da fonte", "Font size"))
             janela.configure(bg=COR["fundo"])
             janela.transient(self.root)
             janela.resizable(False, False)
@@ -4931,7 +4946,7 @@ def main():
             titulo = tk.Label(janela, text=f"Fonte  ·  {anterior}%", fg=COR["ouro"],
                               bg=COR["fundo"], font=self.f_titulo)
             titulo.pack(fill="x", padx=self.px(18), pady=(self.px(14), self.px(4)))
-            tk.Label(janela, text="Arraste para ajustar", fg=COR["suave"],
+            tk.Label(janela, text=self.tr("Arraste para ajustar", "Drag to adjust"), fg=COR["suave"],
                      bg=COR["fundo"], font=self.f_peq).pack()
             pendente = [None]
 
@@ -4983,12 +4998,20 @@ def main():
                 self.salvar_cfg()
                 janela.destroy()
 
-            self.botao(botoes, "Cancelar", lambda e: cancelar(), fonte=self.f_peq).pack(side="left")
-            self.botao(botoes, "Salvar", lambda e: salvar(), cor=COR["alma"],
+            self.botao(botoes, self.tr("Cancelar", "Cancel"), lambda e: cancelar(), fonte=self.f_peq).pack(side="left")
+            self.botao(botoes, self.tr("Salvar", "Save"), lambda e: salvar(), cor=COR["alma"],
                        fonte=self.f_nome).pack(side="right")
             janela.protocol("WM_DELETE_WINDOW", cancelar)
             janela.update_idletasks()
             janela.geometry(f"+{self.root.winfo_x() + self.px(25)}+{self.root.winfo_y() + self.px(35)}")
+
+        def mudar_idioma(self, idioma):
+            if self.cfg.get("idioma", "pt-BR") == idioma:
+                return
+            self.cfg["idioma"] = idioma
+            self.salvar_cfg()
+            self.prog.salvar()
+            self.reiniciar_programa()
 
         def alternar_compacto(self):
             if getattr(self, "editando", None) is not None:
@@ -5058,7 +5081,8 @@ def main():
                 if self._lbl_rodape:
                     meta = int(self.cfg["meta"])
                     concluidos = sum(x["qtd"] >= meta for x in restantes)
-                    rodape = f"{concluidos}/{len(restantes)} concluídos"
+                    rodape = self.tr(f"{concluidos}/{len(restantes)} concluídos",
+                                     f"{concluidos}/{len(restantes)} completed")
                     self._lbl_rodape.configure(text=rodape)
 
         def ajustar(self, m, n):
@@ -5117,30 +5141,40 @@ def main():
         def menu_principal(self, e):
             menu = tk.Menu(self.root, tearoff=0)
             if self.cfg.get("fonte_leitura") == "npcap":
-                menu.add_command(label="Leitura do jogo: Npcap", state="disabled")
-                menu.add_command(label="Ler dados atuais (reentrar no personagem)",
+                menu.add_command(label=self.tr("Leitura do jogo: Npcap", "Game reading: Npcap"), state="disabled")
+                menu.add_command(label=self.tr("Ler dados atuais (reentrar no personagem)",
+                                               "Read current data (re-enter character)"),
                                  command=self.pedir_sincronizacao)
             else:
                 menu.add_command(label="Detectar o chat automaticamente", command=self.detectar_chat)
                 menu.add_command(label="Selecionar \u00e1rea do chat na m\u00e3o\u2026", command=self.selecionar_regiao)
                 menu.add_command(label="Ver leitura / ajustar padr\u00f5es\u2026", command=self.abrir_debug)
             menu.add_separator()
-            menu.add_command(label="Adicionar monstro\u2026", command=self.adicionar)
+            menu.add_command(label=self.tr("Adicionar monstro…", "Add monster…"), command=self.adicionar)
             sub = tk.Menu(menu, tearoff=0)
             for v in (1.0, 0.9, 0.8, 0.7, 0.6):
                 sub.add_command(label=f"{int(v*100)}%", command=lambda v=v: self.opacidade(v))
-            menu.add_cascade(label="Opacidade", menu=sub)
+            menu.add_cascade(label=self.tr("Opacidade", "Opacity"), menu=sub)
             sub_cor = tk.Menu(menu, tearoff=0)
             atual_cor = COR["alma"].lower()
             for nome, cor in CORES_DESTAQUE:
                 sub_cor.add_command(label=("\u2713 " if cor.lower() == atual_cor else "    ") + "\u25cf " + nome,
                                     foreground=cor, activeforeground=cor,
                                     command=lambda c=cor: self.mudar_cor(c))
-            menu.add_cascade(label="Cor de destaque", menu=sub_cor)
-            menu.add_command(label=f"Tamanho da fonte: {int(round(self._escala_letra() * 100))}%…",
+            menu.add_cascade(label=self.tr("Cor de destaque", "Accent color"), menu=sub_cor)
+            menu.add_command(label=self.tr("Tamanho da fonte", "Font size") +
+                             f": {int(round(self._escala_letra() * 100))}%…",
                              command=self.ajustar_tamanho_fonte)
+            sub_idioma = tk.Menu(menu, tearoff=0)
+            idioma = self.cfg.get("idioma", "pt-BR")
+            sub_idioma.add_command(label=("✓ " if idioma == "pt-BR" else "   ") + "Português",
+                                   command=lambda: self.mudar_idioma("pt-BR"))
+            sub_idioma.add_command(label=("✓ " if idioma == "en" else "   ") + "English",
+                                   command=lambda: self.mudar_idioma("en"))
+            menu.add_cascade(label=self.tr("Idioma", "Language"), menu=sub_idioma)
 
-            menu.add_checkbutton(label="Som 1 minuto antes dos eventos",
+            menu.add_checkbutton(label=self.tr("Som 1 minuto antes dos eventos",
+                                               "Sound 1 minute before events"),
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=self.cfg.get("aviso_som", True)),
                                  command=self.alternar_som)
@@ -5150,17 +5184,19 @@ def main():
                             ("M\u00e9dio", 0.5), ("Alto", 0.75), ("M\u00e1ximo", 1.0)):
                 sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + nome,
                                     command=lambda v=v: self.mudar_volume(v))
-            menu.add_cascade(label="Volume do aviso", menu=sub_vol)
-            menu.add_checkbutton(label="Aparecer na stream (OBS/Discord)",
+            menu.add_cascade(label=self.tr("Volume do aviso", "Alert volume"), menu=sub_vol)
+            menu.add_checkbutton(label=self.tr("Aparecer na stream (OBS/Discord)",
+                                               "Show on stream (OBS/Discord)"),
                                  onvalue=True, offvalue=False,
                                  variable=tk.BooleanVar(value=not self.cfg.get("esconder_da_captura", False)),
                                  command=self.alternar_stream)
             menu.add_separator()
-            menu.add_command(label="Zerar todos os contadores\u2026", command=self.zerar)
-            menu.add_command(label="Remover todos os monstros\u2026", command=self.remover_todos)
-            menu.add_command(label="Abrir pasta dos dados", command=self.abrir_pasta)
-            menu.add_command(label="Gerar relat\u00f3rio para suporte", command=self.gerar_relatorio)
-            menu.add_command(label=f"Procurar atualiza\u00e7\u00e3o (vers\u00e3o {VERSAO})\u2026",
+            menu.add_command(label=self.tr("Zerar todos os contadores…", "Reset all counters…"), command=self.zerar)
+            menu.add_command(label=self.tr("Remover todos os monstros…", "Remove all monsters…"), command=self.remover_todos)
+            menu.add_command(label=self.tr("Abrir pasta dos dados", "Open data folder"), command=self.abrir_pasta)
+            menu.add_command(label=self.tr("Gerar relatório para suporte", "Create support report"), command=self.gerar_relatorio)
+            menu.add_command(label=self.tr(f"Procurar atualização (versão {VERSAO})…",
+                                           f"Check for updates (version {VERSAO})…"),
                              command=self.procurar_atualizacao)
             menu.add_separator()
             if self.cfg.get("fonte_leitura") != "npcap":
@@ -5168,7 +5204,7 @@ def main():
                                      onvalue=True, offvalue=False,
                                      variable=tk.BooleanVar(value=self.cfg.get("captura") == "directx"),
                                      command=self.alternar_captura)
-            menu.add_command(label="Sair", command=self.sair)
+            menu.add_command(label=self.tr("Sair", "Exit"), command=self.sair)
             self.abrir_menu(menu, e)
 
         def alternar_concluidos(self):
