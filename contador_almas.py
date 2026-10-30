@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.72"
+VERSAO = "1.9.73"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3215,6 +3215,12 @@ def main():
             self._medir_largura_almas()
             atual = self.cfg.get("aba", "almas")
             proxima = "almas" if atual == destino else destino
+            altura_restaurar = None
+            if proxima == "materiais" and atual != "materiais":
+                self._altura_antes_materiais = self.root.winfo_height()
+                self._altura_materiais_chave = None
+            elif atual == "materiais" and proxima != "materiais":
+                altura_restaurar = getattr(self, "_altura_antes_materiais", None)
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
                       "_od_ui", "_materiais_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
                       "_b_crono_home", "_pets_tree",
@@ -3244,6 +3250,8 @@ def main():
             self.b_od.configure(text="Materiais")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
+            if altura_restaurar:
+                self.root.geometry(f"{self.root.winfo_width()}x{int(altura_restaurar)}")
 
         def _medir_largura_almas(self):
             try:
@@ -3980,6 +3988,27 @@ def main():
                     frame.grid(row=posicao[0], column=posicao[1], sticky="nsew",
                                padx=self.px(2), pady=self.px(2))
                     frame._posicao_grade = posicao
+            self._ajustar_altura_materiais(len(linhas), area.master)
+
+        def _ajustar_altura_materiais(self, quantidade, canvas):
+            """Encolhe quando vazio e acrescenta altura a cada linha de cartões."""
+            chave = (self._material_grupo, quantidade)
+            if getattr(self, "_altura_materiais_chave", None) == chave:
+                return
+            self._altura_materiais_chave = chave
+            linhas = (quantidade + 1) // 2
+            canvas.configure(height=self.px(max(1, linhas * 34)))
+
+            def aplicar():
+                if self.cfg.get("aba") != "materiais":
+                    return
+                self.root.update_idletasks()
+                desejada = max(self.px(185), self.root.winfo_reqheight())
+                limite = self.root.winfo_screenheight() - self.root.winfo_y() - self.px(20)
+                desejada = min(desejada, max(self.px(185), limite))
+                if abs(self.root.winfo_height() - desejada) > self.px(2):
+                    self.root.geometry(f"{self.root.winfo_width()}x{desejada}")
+            self.root.after_idle(aplicar)
 
         def material_selecionar(self, grupo):
             if grupo == self._material_grupo:
