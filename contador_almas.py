@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.74"
+VERSAO = "1.9.75"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2374,6 +2374,10 @@ COR = {
     "erro": "#e66a5a",
     "novo": "#ffe27a",  # monstro que acabou de ganhar alma
 }
+MATERIAL_CORES = {
+    "Ore": "#f0a45d", "Gem": "#b48cff", "Log": "#d6a56f",
+    "Herb": "#7ddc7a", "Ingredient": "#ff8f8f",
+}
 
 # cor de destaque escolhida no menu (titulo, numeros, barras, som)
 CORES_DESTAQUE = [
@@ -3838,7 +3842,7 @@ def main():
                 botao.configure(pady=self.px(4), padx=self.px(4),
                                 highlightthickness=1, highlightbackground=COR["barra"])
                 botao.bind("<Leave>", lambda e, g=grupo, b=botao:
-                           b.configure(fg=COR["ouro"] if g == self._material_grupo
+                           b.configure(fg=MATERIAL_CORES[g] if g == self._material_grupo
                                        else COR["suave"]))
                 self._material_botoes[grupo] = botao
             botoes = list(self._material_botoes.values())
@@ -3916,15 +3920,18 @@ def main():
             texto = self._material_grupo
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
+            cor_grupo = MATERIAL_CORES[self._material_grupo]
+            if resumo.cget("fg") != cor_grupo:
+                resumo.configure(fg=cor_grupo)
             self._atualizar_crono()
             for grupo, botao in self._material_botoes.items():
-                cor = COR["ouro"] if grupo == self._material_grupo else COR["suave"]
+                cor = MATERIAL_CORES[grupo] if grupo == self._material_grupo else COR["suave"]
                 if botao.cget("fg") != cor:
                     botao.configure(fg=cor)
                 fundo = COR["barra"] if grupo == self._material_grupo else COR["fundo"]
                 if botao.cget("bg") != fundo:
                     botao.configure(bg=fundo)
-                borda = COR["ouro"] if grupo == self._material_grupo else COR["barra"]
+                borda = MATERIAL_CORES[grupo] if grupo == self._material_grupo else COR["barra"]
                 if botao.cget("highlightbackground") != borda:
                     botao.configure(highlightbackground=borda)
             if self._material_grupo == "Ore":
@@ -4032,6 +4039,47 @@ def main():
                     titulo.master.master.destroy()
                 widgets.clear()
             self._atualizar_materiais()
+
+        def _trocar_coleta_suave(self, destino, grupo=None):
+            """Transição curta entre ODs e categorias de materiais durante a coleta."""
+            self._transicao_coleta_pendente = (destino, grupo)
+            if getattr(self, "_transicao_coleta_ativa", False):
+                return
+            self._transicao_coleta_ativa = True
+            base = float(self.cfg.get("opacidade", 1.0))
+
+            def alfa(valor):
+                try:
+                    self.root.attributes("-alpha", max(0.35, min(1.0, valor)))
+                except Exception:
+                    pass
+
+            def sair(passo=0):
+                if passo < 3:
+                    alfa(base * (1.0 - (passo + 1) * 0.045))
+                    self.root.after(22, lambda: sair(passo + 1))
+                    return
+                alvo, grupo_alvo = self._transicao_coleta_pendente
+                self._transicao_coleta_pendente = None
+                if self.cfg.get("aba") in ("od", "materiais"):
+                    if self.cfg.get("aba") != alvo:
+                        self.selecionar_coleta(alvo)
+                    if alvo == "materiais" and grupo_alvo:
+                        self.material_selecionar(grupo_alvo)
+                entrar(0)
+
+            def entrar(passo=0):
+                if passo < 3:
+                    alfa(base * (0.865 + (passo + 1) * 0.045))
+                    self.root.after(22, lambda: entrar(passo + 1))
+                    return
+                alfa(base)
+                self._transicao_coleta_ativa = False
+                pendente = self._transicao_coleta_pendente
+                if pendente:
+                    self._trocar_coleta_suave(*pendente)
+
+            sair()
 
         def material_ajustar(self, item_id, delta):
             atual = self.prog.materiais.get(item_id, 0)
@@ -5344,6 +5392,7 @@ def main():
         def consumir(self):
             coleta_alterada = False
             ultimo_grupo = None
+            destino_coleta = None
             if self.leitor_ocr:
                 while True:
                     try:
@@ -5406,6 +5455,7 @@ def main():
                         if od_tipo in OD_TIPOS and quantidade > 0:
                             self.prog.od[od_tipo] = self.prog.od.get(od_tipo, 0) + quantidade
                             coleta_alterada = True
+                            destino_coleta = "od"
                             self.destaque["\u00a7od:" + od_tipo] = time.time()
                             registrar(f"NPCAP: +{quantidade} {od_tipo}")
                     elif tipo == "gather_gain":
@@ -5416,6 +5466,7 @@ def main():
                             chave = str(item_id)
                             self.prog.materiais[chave] = self.prog.materiais.get(chave, 0) + quantidade
                             coleta_alterada = True
+                            destino_coleta = "materiais"
                             self.destaque["\u00a7material:" + chave] = time.time()
                             ultimo_grupo = GATHER_ITEM_TYPES[item_id][0]
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
@@ -5521,14 +5572,19 @@ def main():
                 pass
             if coleta_alterada:
                 self.prog.salvar()
-                if self.cfg.get("aba") == "od":
-                    self._atualizar_od()
-                elif self.cfg.get("aba") == "materiais":
-                    if ultimo_grupo is not None:
-                        self.material_selecionar(ultimo_grupo)
-                    self._atualizar_materiais()
-                    if ultimo_grupo is not None and getattr(self, "_materiais_ui", None):
-                        self._materiais_ui[1].master.yview_moveto(0)
+                aba = self.cfg.get("aba")
+                if aba in ("od", "materiais") and destino_coleta:
+                    trocar = (aba != destino_coleta or
+                              (destino_coleta == "materiais" and ultimo_grupo is not None and
+                               ultimo_grupo != self._material_grupo))
+                    if trocar:
+                        self._trocar_coleta_suave(destino_coleta, ultimo_grupo)
+                    elif aba == "od":
+                        self._atualizar_od()
+                    else:
+                        self._atualizar_materiais()
+                        if getattr(self, "_materiais_ui", None):
+                            self._materiais_ui[1].master.yview_moveto(0)
             self.root.after(10 if not self.leitor.fila.empty() else 50, self.consumir)
 
         def ao_alma_rede(self, pet_id, quantidade):
