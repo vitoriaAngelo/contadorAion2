@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.70"
+VERSAO = "1.9.71"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3808,18 +3808,16 @@ def main():
         def _montar_materiais(self):
             from tkinter import ttk
             area = tk.Frame(self.corpo, bg=COR["fundo"])
-            area.pack(fill="both", expand=True, pady=(self.px(8), 0))
-            topo = tk.Frame(area, bg=COR["fundo"])
-            topo.pack(fill="x", padx=self.px(10), pady=(self.px(10), self.px(2)))
-            tk.Label(topo, text="Materiais", fg=COR["ouro"],
-                     bg=COR["fundo"], font=self.fontes["titulo"]).pack(side="left")
-            self.botao(topo, "↺ Zerar Materiais", lambda e: self.material_zerar(),
-                       fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
-            resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["fundo"],
-                              font=self.f_peq, wraplength=self.px(270), justify="left")
-            resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(4), self.px(8)))
+            area.pack(fill="both", expand=True)
+            cabecalho = tk.Frame(area, bg=COR["fundo"])
+            cabecalho.pack(fill="x", pady=(self.px(3), self.px(7)))
+            resumo = tk.Label(cabecalho, text="", fg=COR["ouro"], bg=COR["fundo"],
+                              font=self.fontes["titulo"], justify="left")
+            resumo.pack(side="left")
+            tk.Label(cabecalho, text="COLETA", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="right")
             seletores = tk.Frame(area, bg=COR["fundo"])
-            seletores.pack(fill="x", padx=self.px(5), pady=(0, self.px(8)))
+            seletores.pack(fill="x", pady=(0, self.px(6)))
             grupos_materiais = ("Ore", "Gem", "Log", "Herb", "Ingredient")
             self._material_grupo = getattr(self, "_material_grupo", "Ore")
             if self._material_grupo not in grupos_materiais:
@@ -3829,7 +3827,7 @@ def main():
                 botao = self.botao(seletores, grupo,
                                    lambda e, g=grupo: self.material_selecionar(g),
                                    fonte=self.f_peq)
-                botao.configure(pady=self.px(7), padx=self.px(7),
+                botao.configure(pady=self.px(4), padx=self.px(4),
                                 highlightthickness=1, highlightbackground=COR["barra"])
                 botao.bind("<Leave>", lambda e, g=grupo, b=botao:
                            b.configure(fg=COR["ouro"] if g == self._material_grupo
@@ -3848,12 +3846,10 @@ def main():
                     botao.grid(row=i // colunas, column=i % colunas, sticky="ew",
                                padx=self.px(2), pady=self.px(2))
             seletores.bind("<Configure>", ajustar_categorias)
-            resumo.bind("<Configure>", lambda e: resumo.configure(wraplength=max(80, e.width)))
-            resumo.pack_configure(fill="x")
             caixa = tk.Frame(area, bg=COR["fundo"])
-            caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
+            caixa.pack(fill="both", expand=True)
             canvas = tk.Canvas(caixa, bg=COR["fundo"], highlightthickness=0,
-                               height=self.px(90))
+                               height=self.px(110))
             estilo = ttk.Style(self.root)
             if estilo.theme_use() != "clam":
                 estilo.theme_use("clam")
@@ -3877,6 +3873,22 @@ def main():
             canvas.bind("<Configure>", lambda e: canvas.itemconfigure(janela, width=e.width))
             canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-int(e.delta / 120), "units"))
             self._materiais_ui = (resumo, linhas, {})
+            rodape = tk.Frame(area, bg=COR["fundo"])
+            rodape.pack(fill="x", pady=(self.px(5), 0))
+            tk.Label(rodape, text="\u23f1", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="left")
+            self._lbl_crono = tk.Label(rodape, text="", fg=COR["texto"], bg=COR["fundo"],
+                                       font=self.fontes["relogio"])
+            self._lbl_crono.pack(side="left", padx=(self.px(3), self.px(2)))
+            self._b_crono = self.botao(rodape, "\u25b6", lambda e: self.crono_alternar(),
+                                       fonte=self.f_peq,
+                                       dica=lambda: "Pausar o cronômetro" if self._crono().get("inicio")
+                                       else "Começar o cronômetro")
+            self._b_crono.pack(side="left")
+            self.botao(rodape, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
+                       dica="Zerar o cronômetro").pack(side="left")
+            self.botao(rodape, "\u21ba Zerar Materiais", lambda e: self.material_zerar(),
+                       fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
             self._atualizar_materiais()
 
         def _atualizar_materiais(self):
@@ -3893,9 +3905,10 @@ def main():
                 totais[grupo] += quantidade
                 if grupo == self._material_grupo:
                     linhas.append((grupo, nome, str(item), quantidade))
-            texto = f"{self._material_grupo}  ·  {totais[self._material_grupo]:,} coletados".replace(",", ".")
+            texto = self._material_grupo
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
+            self._atualizar_crono()
             for grupo, botao in self._material_botoes.items():
                 cor = COR["ouro"] if grupo == self._material_grupo else COR["suave"]
                 if botao.cget("fg") != cor:
