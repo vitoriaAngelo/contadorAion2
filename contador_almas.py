@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.85"
+VERSAO = "1.9.86"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2992,7 +2992,7 @@ def main():
             elif self.cfg.get("fonte_leitura") == "npcap":
                 if not self.rede_conectada:
                     txt, cor = "\u25cf aguardando AION 2\u2026", COR["ouro"]
-                elif not self.rede_pronta:
+                elif not self.rede_pronta and not self.personagem and not self.rede_sincronizada:
                     txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
                 elif self.sincronizacao_pendente:
                     txt, cor = "● reentre no personagem para ler os dados atuais", COR["ouro"]
@@ -5705,6 +5705,10 @@ def main():
                     elif tipo == "dps_reset":
                         self.dps_zerar()
                     elif tipo == "estado_rede":
+                        # Um estado de conta decodificado é uma confirmação mais forte
+                        # que o sinal transitório de abertura da conexão TCP.
+                        self.rede_conectada = True
+                        self.rede_pronta = True
                         self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
                         self._assinatura_estado_atual = assinatura
@@ -5745,6 +5749,9 @@ def main():
                                   f"{len(dado[1])} contadores)")
                         self.atualizar_status()
                     elif tipo == "personagem_rede":
+                        # Se o nome veio do jogo, a captura e o decoder já estão prontos.
+                        self.rede_conectada = True
+                        self.rede_pronta = True
                         self.sincronizacao_pendente = False
                         self._personagem_candidato = ""
                         self._assinatura_personagem_candidato = None
@@ -5756,6 +5763,7 @@ def main():
                             self.salvar_cfg()
                             self._atualizar_personagem()
                             registrar("NPCAP: personagem identificado: " + dado)
+                        self.atualizar_status()
                     elif tipo == "conexao_rede":
                         self.rede_conectada = bool(dado)
                         if not dado:
