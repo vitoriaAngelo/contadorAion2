@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.91"
+VERSAO = "1.9.92"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2886,19 +2886,8 @@ def main():
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
             self.b_pets.pack(side="right")
-            self.b_inicio = tk.Canvas(h, width=self.px(24), height=self.px(22),
-                                      bg=COR["fundo"], highlightthickness=0, cursor="hand2")
-            q = self.px
-            self.b_inicio.create_polygon(q(4), q(10), q(12), q(3), q(20), q(10),
-                                         q(18), q(10), q(18), q(19), q(6), q(19),
-                                         q(6), q(10), fill=COR["suave"], outline="",
-                                         tags="casa")
-            self.b_inicio.create_rectangle(q(10), q(14), q(14), q(19),
-                                           fill=COR["fundo"], outline="", tags="casa_porta")
-            self.b_inicio.bind("<Enter>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["ouro"]))
-            self.b_inicio.bind("<Leave>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["suave"]))
-            self.b_inicio.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
-            self.dica(self.b_inicio, "Voltar ao início: almas recebidas")
+            self.b_inicio = self.botao(h, "Início", lambda e: self.alternar_aba("almas"),
+                                       fonte=self.f_nome, dica="Almas recebidas")
             self.b_inicio.pack(side="right")
             self.b_config_top = self.botao(
                 h, "\u2699", self.menu_principal,
@@ -2915,23 +2904,8 @@ def main():
             self._nav = nav
             for coluna in range(5):
                 nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
-            self._nav_inicio = tk.Frame(nav, bg=COR["fundo"], cursor="hand2")
-            self._nav_inicio.grid(row=0, column=0, sticky="nsew", padx=self.px(1))
-            self.b_inicio = tk.Canvas(self._nav_inicio, width=self.px(25), height=self.px(24),
-                                      bg=COR["fundo"], highlightthickness=0, cursor="hand2")
-            self.b_inicio.pack()
-            q = self.px
-            self.b_inicio.create_polygon(q(4), q(10), q(12), q(3), q(20), q(10),
-                                         q(18), q(10), q(18), q(19), q(6), q(19),
-                                         q(6), q(10), fill=COR["suave"], outline="",
-                                         tags="casa")
-            self.b_inicio.create_rectangle(q(10), q(14), q(14), q(19),
-                                           fill=COR["fundo"], outline="", tags="casa_porta")
-            for widget in (self._nav_inicio, self.b_inicio):
-                widget.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
-                widget.bind("<Enter>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["ouro"]))
-                widget.bind("<Leave>", lambda e: self._pintar_nav())
-            self.dica(self.b_inicio, "Voltar ao início: almas recebidas")
+            self.b_inicio = self.botao(nav, "Início", lambda e: self.alternar_aba("almas"),
+                                       fonte=self.f_nome, dica="Almas recebidas")
             self.b_pets = self.botao(nav, "Pets", lambda e: self.alternar_aba("pets"),
                                      fonte=self.f_nome, dica="Lista de todos os pets")
             self.b_dps = self.botao(nav, "DPS", lambda e: self.alternar_aba("dps"),
@@ -2941,9 +2915,10 @@ def main():
                 fonte=self.f_nome, dica="ODs e materiais de coleta")
             b_config = self.botao(nav, "\u2699", self.menu_principal,
                                   fonte=self.f_nome, dica="Opções")
-            for coluna, botao in enumerate((self.b_pets, self.b_dps, self.b_od, b_config), 1):
+            for coluna, botao in enumerate((self.b_inicio, self.b_pets, self.b_dps,
+                                             self.b_od, b_config)):
                 botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1), ipady=self.px(5))
-            for botao in (self.b_pets, self.b_dps, self.b_od):
+            for botao in (self.b_inicio, self.b_pets, self.b_dps, self.b_od):
                 botao.bind("<Leave>", lambda e: self._pintar_nav())
             self._pintar_nav()
             for w in (h, t, self.lbl_status):
@@ -2954,17 +2929,12 @@ def main():
 
         def _pintar_nav(self):
             aba = self.cfg.get("aba", "almas")
-            for botao, ativo in ((self.b_pets, aba == "pets"),
+            for botao, ativo in ((self.b_inicio, aba == "almas"),
+                                  (self.b_pets, aba == "pets"),
                                   (self.b_dps, aba == "dps"),
                                   (self.b_od, aba in ("od", "materiais"))):
                 botao.configure(bg=COR["painel"] if ativo else COR["fundo"],
                                 fg=COR["alma"] if ativo else COR["suave"])
-            inicio = aba == "almas"
-            fundo = COR["painel"] if inicio else COR["fundo"]
-            self._nav_inicio.configure(bg=fundo)
-            self.b_inicio.configure(bg=fundo)
-            self.b_inicio.itemconfigure("casa", fill=COR["alma"] if inicio else COR["suave"])
-            self.b_inicio.itemconfigure("casa_porta", fill=fundo)
 
         def _arrastar_ini(self, e):
             self._dx = e.x_root - self.root.winfo_x()
