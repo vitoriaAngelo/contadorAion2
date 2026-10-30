@@ -42,6 +42,7 @@ if sys.stderr is None:  # windowed exe / pythonw: libraries still print warnings
 STATE_FILE = os.path.join(APP_DIR, "pet_state.json")
 LEGACY_STATE_FILE = os.path.join(APP_DIR, "aion2_pet_tracker_state.json")
 LOG_FILE = os.path.join(APP_DIR, "pet_overlay.log")
+INVENTORY_STATE_FILE = os.path.join(APP_DIR, "inventory_state.json")
 
 REQ = [5, 25, 75]  # souls needed for levels 1, 2 and 3 (counter resets each level)
 MAX_LEVEL = len(REQ)
@@ -484,14 +485,37 @@ class Stream:
 class Decoder:
     """Raw TCP segments -> soul, collection and own-character events."""
 
-    def __init__(self, emit):
+    def __init__(self, emit, inventory_state_file=None):
         self.emit = emit
         self.streams = {}
         self.ready = False
         self.own_entity = None
         self.zone_id = None
         self.abyss_progress = None
+        self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
+        if inventory_state_file:
+            try:
+                with open(inventory_state_file, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                self.inventory_instances = {
+                    int(instance): (int(values[0]), int(values[1]))
+                    for instance, values in saved.items()
+                    if isinstance(values, list) and len(values) == 2
+                }
+            except (OSError, ValueError, TypeError):
+                pass
+
+    def _save_inventory(self):
+        if not self.inventory_state_file:
+            return
+        try:
+            temporary = self.inventory_state_file + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as f:
+                json.dump({str(k): list(v) for k, v in self.inventory_instances.items()}, f)
+            os.replace(temporary, self.inventory_state_file)
+        except OSError as e:
+            log("inventory state save:", type(e).__name__)
 
     def segment(self, conn, seq, data):
         stream = self.streams.setdefault(conn, Stream())
@@ -531,11 +555,14 @@ class Decoder:
                             previous = self.inventory_instances.get(instance)
                             if kind == 2 or quantity == 0:
                                 self.inventory_instances.pop(instance, None)
+                                self._save_inventory()
                             else:
                                 self.inventory_instances[instance] = (item, quantity)
+                                if item in OD_ITEM_TYPES or item in GATHER_ITEM_TYPES:
+                                    self._save_inventory()
                                 old_quantity = previous[1] if previous and previous[0] == item else None
                                 tracked_collection = item in OD_ITEM_TYPES or item in GATHER_ITEM_TYPES
-                                ganho = quantity if kind == 0 and old_quantity is None else (
+                                ganho = quantity if kind == 0 else (
                                     quantity - old_quantity if old_quantity is not None else (
                                         1 if kind == 1 and tracked_collection else 0))
                                 if item == KINAH_ITEM_ID and ganho > 0:
@@ -606,7 +633,7 @@ def run_sniffer(emit, stop_event=None):
             time.sleep(2)
 
     threading.Thread(target=watch_game, daemon=True).start()
-    decoder = Decoder(emit)
+    decoder = Decoder(emit, INVENTORY_STATE_FILE)
     lock = threading.Lock()
     recent_packets = {}
 

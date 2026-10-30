@@ -144,6 +144,26 @@ class LeituraNpcap(unittest.TestCase):
         self.assertEqual(eventos, [('ready',), ('gather_gain', 610660028, 1),
                                    ('gather_gain', 610660028, 1)])
 
+    def test_quantidade_persistida_mantem_coleta_dupla_apos_reabrir(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            estado = os.path.join(pasta, 'inventario.json')
+            eventos = []
+
+            def od_fino(quantidade):
+                payload = bytearray(23)
+                payload[0], payload[1] = 1, 1
+                struct.pack_into('<I', payload, 3, 401)
+                struct.pack_into('<I', payload, 11, 610610014)
+                struct.pack_into('<Q', payload, 15, quantidade)
+                return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+            primeiro = pp.Decoder(eventos.append, estado)
+            primeiro.segment('jogo', 1000, od_fino(38))
+            eventos.clear()
+            segundo = pp.Decoder(eventos.append, estado)
+            segundo.segment('jogo', 2000, od_fino(40))
+            self.assertEqual(eventos, [('ready',), ('od_gain', 'OD Fino', 2)])
+
     def test_todos_os_itens_coletaveis_contam_primeiro_evento_e_variacao(self):
         def alteracao(kind, instancia, item_id, quantidade):
             payload = bytearray(23)
