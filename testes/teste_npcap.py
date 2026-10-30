@@ -144,6 +144,32 @@ class LeituraNpcap(unittest.TestCase):
         self.assertEqual(eventos, [('ready',), ('gather_gain', 610660028, 1),
                                    ('gather_gain', 610660028, 1)])
 
+    def test_todos_os_itens_coletaveis_contam_primeiro_evento_e_variacao(self):
+        def alteracao(kind, instancia, item_id, quantidade):
+            payload = bytearray(23)
+            payload[0], payload[1] = 1, kind
+            struct.pack_into('<I', payload, 3, instancia)
+            struct.pack_into('<I', payload, 11, item_id)
+            struct.pack_into('<Q', payload, 15, quantidade)
+            return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+        itens = [(item_id, 'od_gain', tipo)
+                 for item_id, tipo in pp.OD_ITEM_TYPES.items()]
+        itens += [(item_id, 'gather_gain', item_id)
+                  for item_id in pp.GATHER_ITEM_TYPES]
+        for instancia, (item_id, evento, identificador) in enumerate(itens, 500):
+            with self.subTest(item_id=item_id):
+                eventos = []
+                dec = pp.Decoder(eventos.append)
+                primeiro = alteracao(1, instancia, item_id, 40)
+                aumento = alteracao(1, instancia, item_id, 43)
+                repetido = alteracao(1, instancia, item_id, 43)
+                dec.segment('jogo', 1000, primeiro)
+                dec.segment('jogo', 1000 + len(primeiro), aumento)
+                dec.segment('jogo', 1000 + len(primeiro) + len(aumento), repetido)
+                self.assertEqual(eventos, [('ready',), (evento, identificador, 1),
+                                           (evento, identificador, 3)])
+
     def test_assinatura_distingue_estado_de_outro_personagem(self):
         a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
         self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))
