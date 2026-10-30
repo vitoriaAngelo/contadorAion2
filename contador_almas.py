@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.71"
+VERSAO = "1.9.72"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3903,7 +3903,7 @@ def main():
             for item, (grupo, nome) in GATHER_ITEM_TYPES.items():
                 quantidade = self.prog.materiais.get(str(item), 0)
                 totais[grupo] += quantidade
-                if grupo == self._material_grupo:
+                if grupo == self._material_grupo and quantidade > 0:
                     linhas.append((grupo, nome, str(item), quantidade))
             texto = self._material_grupo
             if resumo.cget("text") != texto:
@@ -3924,6 +3924,10 @@ def main():
             else:
                 linhas.sort(key=lambda l: l[1])
             linhas.sort(key=lambda l: -self.destaque.get("\u00a7material:" + l[2], 0))
+            desejados = {item_id for _, _, item_id, _ in linhas}
+            for item_id in set(widgets) - desejados:
+                titulo, _ = widgets.pop(item_id)
+                titulo.master.master.destroy()
             for grupo, nome, item_id, quantidade in linhas:
                 if item_id not in widgets:
                     linha = tk.Frame(area, bg=COR["painel"],
