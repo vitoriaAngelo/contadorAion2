@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.79"
+VERSAO = "1.9.80"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2979,10 +2979,11 @@ def main():
             novo quando entra/sai monstro."""
             meta = int(self.cfg["meta"])
             todos = self.prog.monstros
-            concl = [m for m in todos if m["qtd"] >= meta]
             # ordem fixa (ordem em que os monstros apareceram): nao pula de lugar
-            pend = [m for m in todos if m["qtd"] < meta]
-            lista = pend + (concl if self.cfg.get("mostrar_concluidos") else [])
+            # Um pet concluído permanece visível até o usuário fechá-lo no X.
+            # Antes, a preferência antiga "mostrar_concluidos" fazia a linha
+            # desaparecer exatamente ao completar a terceira estrela.
+            lista = list(todos)
             if self.cfg.get("recolhido"):
                 # recolhido: so os 3 ultimos que ganharam alma, na ordem da
                 # lista (nao ficam trocando de lugar a cada alma)
@@ -4363,7 +4364,8 @@ def main():
             tamanho_t = _tiers[est_t - 1]
             cor_barra = COR["ouro"] if completo else COR["alma"]
             novo = {
-                "cont": f"{tamanho_t - faltam_t}/{tamanho_t}",
+                "cont": (("\u2713 " if completo else "") +
+                         f"{tamanho_t - faltam_t}/{tamanho_t}"),
                 "falta": (f"{m['qtd']} no total · faltam {max(0, meta - m['qtd'])}"
                           if m["qtd"] < meta else f"{m['qtd']} no total · completo"),
             }
@@ -4538,7 +4540,7 @@ def main():
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
                        fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
-                                 width=6, anchor="e", cursor="hand2")
+                                 width=8, anchor="e", cursor="hand2")
             w["cont"].pack(side="right")
 
             # clicar no numero: vira uma caixinha com o 'tenho' da estrela
@@ -4612,7 +4614,7 @@ def main():
             self.botao(topo, "\u2212", lambda e, m=m: self.ajustar(m, -1),
                        fonte=self.fontes["botao_b"], dica="\u22121 alma").pack(side="right")
             w["cont"] = tk.Label(topo, text="", fg=COR["alma"], bg=bg, font=self.f_nome,
-                                 width=7, anchor="e")
+                                 width=8, anchor="e")
             w["cont"].pack(side="right", padx=(0, self.px(4)))
 
             base = tk.Frame(f, bg=bg)
