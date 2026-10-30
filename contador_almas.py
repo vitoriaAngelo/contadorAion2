@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.69"
+VERSAO = "1.9.70"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3807,23 +3807,25 @@ def main():
 
         def _montar_materiais(self):
             from tkinter import ttk
-            area = tk.Frame(self.corpo, bg=COR["painel"], highlightthickness=1,
-                            highlightbackground=COR["barra"])
+            area = tk.Frame(self.corpo, bg=COR["fundo"])
             area.pack(fill="both", expand=True, pady=(self.px(8), 0))
-            topo = tk.Frame(area, bg=COR["painel"])
+            topo = tk.Frame(area, bg=COR["fundo"])
             topo.pack(fill="x", padx=self.px(10), pady=(self.px(10), self.px(2)))
             tk.Label(topo, text="Materiais", fg=COR["ouro"],
-                     bg=COR["painel"], font=self.fontes["titulo"]).pack(side="left")
+                     bg=COR["fundo"], font=self.fontes["titulo"]).pack(side="left")
             self.botao(topo, "↺ Zerar Materiais", lambda e: self.material_zerar(),
                        fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
-            resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["painel"],
+            resumo = tk.Label(area, text="", fg=COR["suave"], bg=COR["fundo"],
                               font=self.f_peq, wraplength=self.px(270), justify="left")
             resumo.pack(anchor="w", padx=self.px(8), pady=(self.px(4), self.px(8)))
-            seletores = tk.Frame(area, bg=COR["painel"])
+            seletores = tk.Frame(area, bg=COR["fundo"])
             seletores.pack(fill="x", padx=self.px(5), pady=(0, self.px(8)))
-            self._material_grupo = getattr(self, "_material_grupo", "Minérios")
+            grupos_materiais = ("Ore", "Gem", "Log", "Herb", "Ingredient")
+            self._material_grupo = getattr(self, "_material_grupo", "Ore")
+            if self._material_grupo not in grupos_materiais:
+                self._material_grupo = "Ore"
             self._material_botoes = {}
-            for grupo in ("Minérios", "Ervas", "Madeiras", "Culinária"):
+            for grupo in grupos_materiais:
                 botao = self.botao(seletores, grupo,
                                    lambda e, g=grupo: self.material_selecionar(g),
                                    fonte=self.f_peq)
@@ -3835,11 +3837,11 @@ def main():
                 self._material_botoes[grupo] = botao
             botoes = list(self._material_botoes.values())
             def ajustar_categorias(e):
-                colunas = 4 if e.width >= self.px(380) else 2
+                colunas = 5 if e.width >= self.px(440) else (3 if e.width >= self.px(300) else 2)
                 if getattr(seletores, "_colunas", None) == colunas:
                     return
                 seletores._colunas = colunas
-                for coluna in range(4):
+                for coluna in range(len(botoes)):
                     seletores.columnconfigure(coluna, weight=1 if coluna < colunas else 0,
                                                uniform="categorias")
                 for i, botao in enumerate(botoes):
@@ -3848,9 +3850,9 @@ def main():
             seletores.bind("<Configure>", ajustar_categorias)
             resumo.bind("<Configure>", lambda e: resumo.configure(wraplength=max(80, e.width)))
             resumo.pack_configure(fill="x")
-            caixa = tk.Frame(area, bg=COR["painel"])
+            caixa = tk.Frame(area, bg=COR["fundo"])
             caixa.pack(fill="both", expand=True, padx=self.px(5), pady=(0, self.px(5)))
-            canvas = tk.Canvas(caixa, bg=COR["painel"], highlightthickness=0,
+            canvas = tk.Canvas(caixa, bg=COR["fundo"], highlightthickness=0,
                                height=self.px(90))
             estilo = ttk.Style(self.root)
             if estilo.theme_use() != "clam":
@@ -3867,7 +3869,7 @@ def main():
             canvas.configure(yscrollcommand=barra.set)
             barra.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
-            linhas = tk.Frame(canvas, bg=COR["painel"])
+            linhas = tk.Frame(canvas, bg=COR["fundo"])
             linhas.columnconfigure(0, weight=1, uniform="material")
             linhas.columnconfigure(1, weight=1, uniform="material")
             janela = canvas.create_window((0, 0), window=linhas, anchor="nw")
@@ -3883,7 +3885,7 @@ def main():
             if not ui or self.cfg.get("aba") != "materiais":
                 return
             resumo, area, widgets = ui
-            grupos = ("Minérios", "Ervas", "Madeiras", "Culinária")
+            grupos = ("Ore", "Gem", "Log", "Herb", "Ingredient")
             totais = {grupo: 0 for grupo in grupos}
             linhas = []
             for item, (grupo, nome) in GATHER_ITEM_TYPES.items():
@@ -3898,13 +3900,13 @@ def main():
                 cor = COR["ouro"] if grupo == self._material_grupo else COR["suave"]
                 if botao.cget("fg") != cor:
                     botao.configure(fg=cor)
-                fundo = COR["barra"] if grupo == self._material_grupo else COR["painel"]
+                fundo = COR["barra"] if grupo == self._material_grupo else COR["fundo"]
                 if botao.cget("bg") != fundo:
                     botao.configure(bg=fundo)
                 borda = COR["ouro"] if grupo == self._material_grupo else COR["barra"]
                 if botao.cget("highlightbackground") != borda:
                     botao.configure(highlightbackground=borda)
-            if self._material_grupo == "Minérios":
+            if self._material_grupo == "Ore":
                 linhas.sort(key=lambda l: int(l[2]))
             else:
                 linhas.sort(key=lambda l: l[1])
@@ -3926,7 +3928,7 @@ def main():
                              font=self.fontes["botao"]).grid(row=0, column=0, padx=(0, self.px(4)))
                     rotulo = ({610620013: "Normal", 610620014: "Fine",
                                610620015: "Pure", 610620016: "Radiant"}.get(int(item_id), nome)
-                              if grupo == "Minérios" else nome)
+                              if grupo == "Ore" else nome)
                     titulo = tk.Label(interno, text=rotulo, fg=COR["texto"], bg=COR["painel"],
                                       font=self.f_nome, anchor="w", justify="left")
                     titulo.grid(row=0, column=1, sticky="ew")

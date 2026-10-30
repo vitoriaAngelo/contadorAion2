@@ -64,28 +64,35 @@ OD_ITEM_TYPES = {
 GATHER_ITEM_TYPES = {}
 for _item, _name in enumerate(("Orichalcum Ore", "Fine Orichalcum Ore",
                                "Pure Orichalcum Ore", "Radiant Orichalcum Ore"), 610620013):
-    GATHER_ITEM_TYPES[_item] = ("Minérios", _name)
+    GATHER_ITEM_TYPES[_item] = ("Ore", _name)
+for _item, _name in enumerate(("Sapphire Gemstone", "Diamond Gemstone", "Ruby Gemstone",
+                               "Fine Sapphire Gemstone", "Fine Diamond Gemstone",
+                               "Fine Ruby Gemstone", "Pure Sapphire Gemstone",
+                               "Pure Diamond Gemstone", "Pure Ruby Gemstone",
+                               "Radiant Sapphire Gemstone", "Radiant Diamond Gemstone",
+                               "Radiant Ruby Gemstone"), 610660025):
+    GATHER_ITEM_TYPES[_item] = ("Gem", _name)
 for _item, _name in zip((610650011, 610650012, 610650013, 610650014,
                          610650015, 610650016, 610650017, 610650018),
                         ("Yggdrasil Log", "Asvata Log", "Fine Yggdrasil Log",
                          "Fine Asvata Log", "Pure Yggdrasil Log", "Pure Asvata Log",
                          "Radiant Yggdrasil Log", "Radiant Asvata Log")):
-    GATHER_ITEM_TYPES[_item] = ("Madeiras", _name)
+    GATHER_ITEM_TYPES[_item] = ("Log", _name)
 for _item, _name in enumerate(("Aria", "Targena", "Azpha", "Calendula",
                                "Fresh Aria", "Fresh Targena", "Fresh Azpha",
                                "Fresh Calendula"), 610670041):
-    GATHER_ITEM_TYPES[_item] = ("Ervas", _name)
+    GATHER_ITEM_TYPES[_item] = ("Herb", _name)
 GATHER_ITEM_TYPES.update({
-    610680043: ("Culinária", "Coriolus"),
-    610680044: ("Culinária", "Kukuru"),
-    610680045: ("Culinária", "Mela"),
-    610680047: ("Culinária", "Inina"),
-    610680048: ("Culinária", "Cypri"),
-    610680049: ("Culinária", "Morfa"),
-    610680050: ("Culinária", "Ohkra"),
-    610680051: ("Culinária", "Raydam"),
-    610680053: ("Culinária", "Conide"),
-    610680054: ("Culinária", "Pujery"),
+    610680043: ("Ingredient", "Coriolus"),
+    610680044: ("Ingredient", "Kukuru"),
+    610680045: ("Ingredient", "Mela"),
+    610680047: ("Ingredient", "Inina"),
+    610680048: ("Ingredient", "Cypri"),
+    610680049: ("Ingredient", "Morfa"),
+    610680050: ("Ingredient", "Ohkra"),
+    610680051: ("Ingredient", "Raydam"),
+    610680053: ("Ingredient", "Conide"),
+    610680054: ("Ingredient", "Pujery"),
 })
 OP_NICKNAME = b"\x33\x36"
 OP_ZONE = b"\x21\x36"
