@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.87"
+VERSAO = "1.9.88"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3371,30 +3371,29 @@ def main():
         def _montar_dps(self):
             boss = tk.Frame(self.corpo, bg=COR["painel"], highlightthickness=1,
                             highlightbackground=COR["barra"])
-            boss.pack(fill="x", pady=(self.px(2), self.px(5)))
+            boss.pack(fill="x", pady=(self.px(1), self.px(3)))
             boss_linha = tk.Frame(boss, bg=COR["painel"])
-            boss_linha.pack(fill="x", padx=self.px(7), pady=(self.px(4), self.px(2)))
+            boss_linha.pack(fill="x", padx=self.px(6), pady=(self.px(2), self.px(1)))
             boss_nome = tk.Label(boss_linha, text="Boss", fg=COR["ouro"], bg=COR["painel"],
                                  font=self.f_nome, anchor="w")
             boss_nome.pack(side="left")
             boss_valor = tk.Label(boss_linha, text="Aguardando combate", fg=COR["suave"],
                                   bg=COR["painel"], font=self.f_peq, anchor="e")
             boss_valor.pack(side="right")
-            boss_barra = tk.Canvas(boss, height=self.px(7), bg=COR["barra"],
+            boss_barra = tk.Canvas(boss, height=self.px(5), bg=COR["barra"],
                                    highlightthickness=0, bd=0)
-            boss_barra.pack(fill="x", padx=self.px(7), pady=(0, self.px(5)))
-            boss_fill = boss_barra.create_rectangle(0, 0, 0, self.px(7),
+            boss_barra.pack(fill="x", padx=self.px(6), pady=(0, self.px(3)))
+            boss_fill = boss_barra.create_rectangle(0, 0, 0, self.px(5),
                                                      fill=COR["ouro"], width=0)
             topo = tk.Frame(self.corpo, bg=COR["fundo"])
             topo.pack(fill="x", pady=(0, self.px(4)))
             resumo = tk.Label(topo, text="", fg=COR["ouro"], bg=COR["fundo"],
                               font=self.f_nome, anchor="w")
             resumo.pack(side="left")
-            self.botao(topo, "\u21ba Zerar luta", lambda e: self.dps_zerar(), fonte=self.f_peq,
+            self.botao(topo, "\u21ba", lambda e: self.dps_zerar(), fonte=self.f_peq,
                        dica="Zerar dano e iniciar uma nova medição").pack(side="right")
             status = tk.Label(self.corpo, text="", fg=COR["suave"], bg=COR["fundo"],
                               font=self.f_peq, anchor="w", justify="left")
-            status.pack(fill="x", pady=(0, self.px(3)))
             area = tk.Frame(self.corpo, bg=COR["fundo"])
             area.pack(fill="x")
             rows = {}
@@ -3403,20 +3402,21 @@ def main():
                                 highlightbackground=COR["barra"])
                 card.pack(fill="x", pady=(0, self.px(2)))
                 line = tk.Frame(card, bg=COR["painel"])
-                line.pack(fill="x", padx=self.px(6), pady=(self.px(3), self.px(1)))
+                line.pack(fill="x", padx=self.px(5), pady=(self.px(2), self.px(1)))
+                line.columnconfigure(0, weight=1)
                 name_label = tk.Label(line, text=name, fg=COR["texto"], bg=COR["painel"],
                                       font=self.f_nome, anchor="w")
-                name_label.pack(side="left", fill="x", expand=True)
+                name_label.grid(row=0, column=0, sticky="ew")
+                sub = tk.Label(line, text="", fg=COR["suave"], bg=COR["painel"],
+                               font=self.f_peq, anchor="e")
+                sub.grid(row=0, column=1, padx=(self.px(4), self.px(6)))
                 value = tk.Label(line, text="", fg=COR["alma"], bg=COR["painel"],
                                  font=self.fontes["relogio"], anchor="e")
-                value.pack(side="right")
-                sub = tk.Label(card, text="", fg=COR["suave"], bg=COR["painel"],
-                               font=self.f_peq, anchor="w")
-                sub.pack(fill="x", padx=self.px(6))
-                bar = tk.Canvas(card, height=self.px(3), bg=COR["barra"],
+                value.grid(row=0, column=2, sticky="e")
+                bar = tk.Canvas(card, height=self.px(2), bg=COR["barra"],
                                 highlightthickness=0, bd=0)
-                bar.pack(fill="x", padx=self.px(6), pady=(self.px(2), self.px(3)))
-                fill = bar.create_rectangle(0, 0, 0, self.px(3), fill=COR["alma"], width=0)
+                bar.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
+                fill = bar.create_rectangle(0, 0, 0, self.px(2), fill=COR["alma"], width=0)
                 rows[name] = (value, sub, bar, fill)
             self._dps_ui = (resumo, status, rows, boss_valor, boss_barra, boss_fill)
             self._atualizar_dps()
@@ -3438,7 +3438,7 @@ def main():
                                         f"{self._numero_dps(maxima)}" if maxima else
                                         "Aguardando boss"))
             largura_boss = max(1, boss_barra.winfo_width())
-            boss_barra.coords(boss_fill, 0, 0, int(largura_boss * percentual / 100), self.px(7))
+            boss_barra.coords(boss_fill, 0, 0, int(largura_boss * percentual / 100), self.px(5))
             if not self.dps_party:
                 resumo.configure(text="PT atual")
                 status.configure(text="Aguardando a lista da PT enviada pelo jogo…")
@@ -3449,7 +3449,8 @@ def main():
             seconds = max(1.0, (end - self.dps_started) if end and self.dps_started else 1.0)
             total = sum(self.dps_damage.get(name, 0) for name in self.dps_party)
             grupo = "Solo" if len(self.dps_party) == 1 else f"{len(self.dps_party)} na PT"
-            resumo.configure(text=f"{grupo}  ·  {int(seconds) // 60:02d}:{int(seconds) % 60:02d}")
+            resumo.configure(text=(f"{grupo} · {int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
+                                    f" · {self._numero_dps(total)}"))
             status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
                                    "PT encontrada. Aguardando o primeiro dano…"))
             biggest = max((self.dps_damage.get(name, 0) for name in self.dps_party), default=1) or 1
@@ -3458,9 +3459,9 @@ def main():
                 dps = damage / seconds
                 share = 100 * damage / total if total else 0
                 value.configure(text=f"{self._numero_dps(dps)} DPS")
-                sub.configure(text=f"{self._numero_dps(damage)} dano  ·  {share:.1f}%")
+                sub.configure(text=f"{self._numero_dps(damage)} · {share:.0f}%")
                 width = max(1, bar.winfo_width())
-                bar.coords(fill, 0, 0, int(width * damage / biggest), self.px(4))
+                bar.coords(fill, 0, 0, int(width * damage / biggest), self.px(2))
 
         def dps_zerar(self):
             self.dps_damage = {name: 0 for name in self.dps_party}
