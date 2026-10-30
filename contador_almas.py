@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.92"
+VERSAO = "1.9.93"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -178,7 +178,7 @@ CONFIG_PADRAO = {
     "aviso_som": True,  # som 1 minuto antes dos eventos
     "volume_aviso": 0.5,  # 0.25 baixo / 0.5 medio / 0.75 alto / 1.0 maximo
     "compacto": False,  # uma linha por bicho
-    "tamanho_letra": "normal",  # pequena / normal / grande / muito grande
+    "escala_fonte": 100,  # porcentagem, ajustável livremente nas configurações
     "mostrar_concluidos": False,
     "recolhido": False,
 }
@@ -580,6 +580,9 @@ def abrir_mss(mss):
 def carregar_config():
     cfg = dict(CONFIG_PADRAO)
     salvo = carregar_json(ARQ_CONFIG, {})
+    if "escala_fonte" not in salvo and "tamanho_letra" in salvo:
+        salvo["escala_fonte"] = {"pequena": 85, "normal": 100, "grande": 120,
+                                  "muito grande": 145}.get(salvo["tamanho_letra"], 100)
     if salvo.get("versao_cfg", 0) < 3:
         # areas escolhidas em versoes antigas podiam estar erradas: detecta de novo
         salvo.pop("regiao", None)
@@ -3060,7 +3063,7 @@ def main():
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"),
-                         bool(self.cfg.get("compacto")), self.cfg.get("tamanho_letra"),
+                         bool(self.cfg.get("compacto")), self.cfg.get("escala_fonte", 100),
                          tuple(self.cfg.get("tiers", [5, 25, 75])), meta, self.cfg.get("max_linhas"))
             if estrutura == getattr(self, "_estrutura", None):
                 if self.cfg.get("aba", "almas") == "almas":
@@ -3109,7 +3112,7 @@ def main():
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
             if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
-                chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
+                chave = f"{self.cfg.get('compacto')}-{self.cfg.get('escala_fonte', 100)}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
                 tk.Frame(self.corpo, bg=COR["fundo"], height=0, width=larg).pack()
                 if self.cfg.get("aba") in ("od", "materiais"):
@@ -3294,7 +3297,7 @@ def main():
                 self.corpo.update_idletasks()
                 if self.cfg.get("aba") == "almas":
                     self._larg_almas = self.corpo.winfo_reqwidth()
-                    chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
+                    chave = f"{self.cfg.get('compacto')}-{self.cfg.get('escala_fonte', 100)}"
                     larguras = self.cfg.setdefault("larguras", {})
                     if larguras.get(chave) != self._larg_almas:
                         larguras[chave] = self._larg_almas
@@ -4892,6 +4895,11 @@ def main():
                 self.render()
 
         def _escala_letra(self):
+            if "escala_fonte" in self.cfg:
+                try:
+                    return max(0.7, min(1.8, float(self.cfg["escala_fonte"]) / 100))
+                except (TypeError, ValueError):
+                    pass
             return {"pequena": 0.85, "normal": 1.0, "grande": 1.2,
                     "muito grande": 1.45}.get(self.cfg.get("tamanho_letra", "normal"), 1.0)
 
@@ -4910,6 +4918,77 @@ def main():
             self._aplicar_tamanho_fontes()
             self._estrutura = None  # remonta as linhas (barra acompanha a letra)
             self.render()
+
+        def ajustar_tamanho_fonte(self):
+            anterior = int(round(self._escala_letra() * 100))
+            janela = tk.Toplevel(self.root)
+            janela.title("Tamanho da fonte")
+            janela.configure(bg=COR["fundo"])
+            janela.transient(self.root)
+            janela.resizable(False, False)
+            janela.attributes("-topmost", True)
+            valor = tk.IntVar(value=anterior)
+            titulo = tk.Label(janela, text=f"Fonte  ·  {anterior}%", fg=COR["ouro"],
+                              bg=COR["fundo"], font=self.f_titulo)
+            titulo.pack(fill="x", padx=self.px(18), pady=(self.px(14), self.px(4)))
+            tk.Label(janela, text="Arraste para ajustar", fg=COR["suave"],
+                     bg=COR["fundo"], font=self.f_peq).pack()
+            pendente = [None]
+
+            def aplicar(*_):
+                pendente[0] = None
+                tamanho = max(70, min(180, int(valor.get())))
+                self.cfg["escala_fonte"] = tamanho
+                titulo.configure(text=f"Fonte  ·  {tamanho}%")
+                self._aplicar_tamanho_fontes()
+                self._estrutura = None
+                self.render()
+
+            def mudou(_=None):
+                if pendente[0] is not None:
+                    self.root.after_cancel(pendente[0])
+                pendente[0] = self.root.after(35, aplicar)
+
+            escala = tk.Scale(janela, from_=70, to=180, resolution=5, orient="horizontal",
+                              variable=valor, command=mudou, showvalue=False, length=self.px(280),
+                              bg=COR["fundo"], fg=COR["texto"], troughcolor=COR["barra"],
+                              activebackground=COR["alma"], highlightthickness=0, bd=0)
+            escala.pack(padx=self.px(18), pady=self.px(8))
+            marcas = tk.Frame(janela, bg=COR["fundo"])
+            marcas.pack(fill="x", padx=self.px(24))
+            tk.Label(marcas, text="70%", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="left")
+            tk.Label(marcas, text="180%", fg=COR["suave"], bg=COR["fundo"],
+                     font=self.f_peq).pack(side="right")
+            botoes = tk.Frame(janela, bg=COR["fundo"])
+            botoes.pack(fill="x", padx=self.px(18), pady=(self.px(12), self.px(14)))
+
+            def cancelar_pendente():
+                if pendente[0] is not None:
+                    self.root.after_cancel(pendente[0])
+                    pendente[0] = None
+
+            def cancelar():
+                cancelar_pendente()
+                self.cfg["escala_fonte"] = anterior
+                self._aplicar_tamanho_fontes()
+                self._estrutura = None
+                self.render()
+                janela.destroy()
+
+            def salvar():
+                cancelar_pendente()
+                aplicar()
+                self.cfg.pop("tamanho_letra", None)
+                self.salvar_cfg()
+                janela.destroy()
+
+            self.botao(botoes, "Cancelar", lambda e: cancelar(), fonte=self.f_peq).pack(side="left")
+            self.botao(botoes, "Salvar", lambda e: salvar(), cor=COR["alma"],
+                       fonte=self.f_nome).pack(side="right")
+            janela.protocol("WM_DELETE_WINDOW", cancelar)
+            janela.update_idletasks()
+            janela.geometry(f"+{self.root.winfo_x() + self.px(25)}+{self.root.winfo_y() + self.px(35)}")
 
         def alternar_compacto(self):
             if getattr(self, "editando", None) is not None:
@@ -5058,12 +5137,8 @@ def main():
                                     foreground=cor, activeforeground=cor,
                                     command=lambda c=cor: self.mudar_cor(c))
             menu.add_cascade(label="Cor de destaque", menu=sub_cor)
-            sub_letra = tk.Menu(menu, tearoff=0)
-            atual = self.cfg.get("tamanho_letra", "normal")
-            for nome in ("pequena", "normal", "grande", "muito grande"):
-                sub_letra.add_command(label=("\u2713 " if nome == atual else "    ") + nome.capitalize(),
-                                      command=lambda n=nome: self.mudar_tamanho_letra(n))
-            menu.add_cascade(label="Tamanho da letra", menu=sub_letra)
+            menu.add_command(label=f"Tamanho da fonte: {int(round(self._escala_letra() * 100))}%…",
+                             command=self.ajustar_tamanho_fonte)
 
             menu.add_checkbutton(label="Som 1 minuto antes dos eventos",
                                  onvalue=True, offvalue=False,
