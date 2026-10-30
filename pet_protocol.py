@@ -534,8 +534,10 @@ class Decoder:
                             else:
                                 self.inventory_instances[instance] = (item, quantity)
                                 old_quantity = previous[1] if previous and previous[0] == item else None
+                                tracked_collection = item in OD_ITEM_TYPES or item in GATHER_ITEM_TYPES
                                 ganho = quantity if kind == 0 and old_quantity is None else (
-                                    quantity - old_quantity if old_quantity is not None else 0)
+                                    quantity - old_quantity if old_quantity is not None else (
+                                        1 if kind == 1 and tracked_collection else 0))
                                 if item == KINAH_ITEM_ID and ganho > 0:
                                     self.emit(("kinah_gain", ganho))
                                 elif item in OD_ITEM_TYPES and ganho > 0:

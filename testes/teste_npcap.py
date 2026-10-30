@@ -125,6 +125,25 @@ class LeituraNpcap(unittest.TestCase):
                                    ('gather_gain', 610650012, 3),
                                    ('gather_gain', 610680050, 4)])
 
+    def test_primeira_alteracao_de_pilha_existente_conta_safira_fina(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+
+        def safira_fina(quantidade):
+            payload = bytearray(23)
+            payload[0], payload[1] = 1, 1
+            struct.pack_into('<I', payload, 3, 301)
+            struct.pack_into('<I', payload, 11, 610660028)
+            struct.pack_into('<Q', payload, 15, quantidade)
+            return frame(pp.OP_INVENTORY_CHANGE, bytes(payload))
+
+        primeiro = safira_fina(18)
+        segundo = safira_fina(19)
+        dec.segment('jogo', 1000, primeiro)
+        dec.segment('jogo', 1000 + len(primeiro), segundo)
+        self.assertEqual(eventos, [('ready',), ('gather_gain', 610660028, 1),
+                                   ('gather_gain', 610660028, 1)])
+
     def test_assinatura_distingue_estado_de_outro_personagem(self):
         a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
         self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))
