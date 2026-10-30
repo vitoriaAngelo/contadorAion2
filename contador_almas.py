@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.84"
+VERSAO = "1.9.85"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -4054,7 +4054,13 @@ def main():
             linhas.columnconfigure(1, weight=1, uniform="material")
             janela = canvas.create_window((0, 0), window=linhas, anchor="nw")
             linhas.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(janela, width=e.width))
+            def ajustar_canvas(e):
+                canvas.itemconfigure(janela, width=e.width)
+                colunas = 1 if e.width < self.px(360) else 2
+                if getattr(canvas, "_colunas_materiais", None) != colunas:
+                    canvas._colunas_materiais = colunas
+                    self._organizar_materiais()
+            canvas.bind("<Configure>", ajustar_canvas)
             canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-int(e.delta / 120), "units"))
             self._materiais_ui = (resumo, linhas, {})
             rodape = tk.Frame(area, bg=COR["fundo"])
@@ -4071,9 +4077,41 @@ def main():
             self._b_crono.pack(side="left")
             self.botao(rodape, "\u21ba", lambda e: self.crono_zerar(), fonte=self.f_peq,
                        dica="Zerar o cronômetro").pack(side="left")
-            self.botao(rodape, "\u21ba Zerar Materiais", lambda e: self.material_zerar(),
-                       fonte=self.f_peq, dica="Zerar todos os materiais coletados").pack(side="right")
+            zerar = self.botao(rodape, "\u21ba Zerar Materiais", lambda e: self.material_zerar(),
+                               fonte=self.f_peq, dica="Zerar todos os materiais coletados")
+            zerar.pack(side="right")
+            rodape.bind("<Configure>", lambda e: zerar.configure(
+                text="\u21ba Zerar" if e.width < self.px(350) else "\u21ba Zerar Materiais"))
             self._atualizar_materiais()
+
+        def _organizar_materiais(self):
+            ui = getattr(self, "_materiais_ui", None)
+            if not ui or self.cfg.get("aba") != "materiais":
+                return
+            _, area, widgets = ui
+            canvas = area.master
+            colunas = getattr(canvas, "_colunas_materiais", 2)
+            existentes = []
+            from pet_protocol import GATHER_ITEM_TYPES
+            for item, (grupo, nome) in GATHER_ITEM_TYPES.items():
+                item_id = str(item)
+                quantidade = self.prog.materiais.get(item_id, 0)
+                if grupo == self._material_grupo and quantidade > 0 and item_id in widgets:
+                    existentes.append((grupo, nome, item_id, quantidade))
+            if self._material_grupo == "Ore":
+                existentes.sort(key=lambda l: int(l[2]))
+            else:
+                existentes.sort(key=lambda l: l[1])
+            existentes.sort(key=lambda l: -self.destaque.get("\u00a7material:" + l[2], 0))
+            for indice, (_, _, item_id, _) in enumerate(existentes):
+                frame = widgets[item_id][0].master.master
+                posicao = (indice // colunas, indice % colunas)
+                if getattr(frame, "_posicao_grade", None) != posicao:
+                    frame.grid(row=posicao[0], column=posicao[1], sticky="nsew",
+                               padx=self.px(2), pady=self.px(2))
+                    frame._posicao_grade = posicao
+            self._altura_materiais_chave = None
+            self._ajustar_altura_materiais(len(existentes), canvas)
 
         def _atualizar_materiais(self):
             from pet_protocol import GATHER_ITEM_TYPES
@@ -4159,15 +4197,15 @@ def main():
                 cor_nome = COR["novo"] if novo else COR["texto"]
                 if titulo.cget("fg") != cor_nome:
                     titulo.configure(fg=cor_nome)
-            # Duas colunas, preservando os cartões e o mais recente primeiro.
+            # Uma coluna na janela estreita; duas quando houver espaço.
+            colunas = getattr(canvas := area.master, "_colunas_materiais", 2)
             for indice, (_, _, item_id, _) in enumerate(linhas):
                 frame = widgets[item_id][0].master.master
-                posicao = (indice // 2, indice % 2)
+                posicao = (indice // colunas, indice % colunas)
                 if getattr(frame, "_posicao_grade", None) != posicao:
                     frame.grid(row=posicao[0], column=posicao[1], sticky="nsew",
                                padx=self.px(2), pady=self.px(2))
                     frame._posicao_grade = posicao
-            canvas = area.master
             barra = canvas._barra_materiais
             if len(linhas) > 4:
                 if not barra.winfo_manager():
@@ -4182,11 +4220,12 @@ def main():
 
         def _ajustar_altura_materiais(self, quantidade, canvas):
             """Encolhe quando vazio e acrescenta altura a cada linha de cartões."""
-            chave = (self._material_grupo, quantidade)
+            colunas = getattr(canvas, "_colunas_materiais", 2)
+            chave = (self._material_grupo, quantidade, colunas)
             if getattr(self, "_altura_materiais_chave", None) == chave:
                 return
             self._altura_materiais_chave = chave
-            linhas = (quantidade + 1) // 2
+            linhas = (quantidade + colunas - 1) // colunas
             canvas.configure(height=self.px(max(1, min(linhas, 2) * 34)))
 
             def aplicar():
