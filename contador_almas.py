@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.90"
+VERSAO = "1.9.91"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2889,13 +2889,12 @@ def main():
             self.b_inicio = tk.Canvas(h, width=self.px(24), height=self.px(22),
                                       bg=COR["fundo"], highlightthickness=0, cursor="hand2")
             q = self.px
-            # Casinha vazada, desenhada com o mesmo traço e cantos arredondados.
-            traco = {"fill": COR["suave"], "width": 1.6 * self.k,
-                     "capstyle": "round", "joinstyle": "round", "tags": "casa"}
-            self.b_inicio.create_line(q(4), q(10), q(12), q(3), q(20), q(10), **traco)
-            self.b_inicio.create_line(q(6), q(9), q(6), q(18), q(10), q(18),
-                                      q(10), q(13), q(14), q(13), q(14), q(18),
-                                      q(18), q(18), q(18), q(9), **traco)
+            self.b_inicio.create_polygon(q(4), q(10), q(12), q(3), q(20), q(10),
+                                         q(18), q(10), q(18), q(19), q(6), q(19),
+                                         q(6), q(10), fill=COR["suave"], outline="",
+                                         tags="casa")
+            self.b_inicio.create_rectangle(q(10), q(14), q(14), q(19),
+                                           fill=COR["fundo"], outline="", tags="casa_porta")
             self.b_inicio.bind("<Enter>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["ouro"]))
             self.b_inicio.bind("<Leave>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["suave"]))
             self.b_inicio.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
@@ -2922,12 +2921,12 @@ def main():
                                       bg=COR["fundo"], highlightthickness=0, cursor="hand2")
             self.b_inicio.pack()
             q = self.px
-            traco = {"fill": COR["suave"], "width": 1.6 * self.k,
-                     "capstyle": "round", "joinstyle": "round", "tags": "casa"}
-            self.b_inicio.create_line(q(4), q(10), q(12), q(3), q(20), q(10), **traco)
-            self.b_inicio.create_line(q(6), q(9), q(6), q(18), q(10), q(18),
-                                      q(10), q(13), q(14), q(13), q(14), q(18),
-                                      q(18), q(18), q(18), q(9), **traco)
+            self.b_inicio.create_polygon(q(4), q(10), q(12), q(3), q(20), q(10),
+                                         q(18), q(10), q(18), q(19), q(6), q(19),
+                                         q(6), q(10), fill=COR["suave"], outline="",
+                                         tags="casa")
+            self.b_inicio.create_rectangle(q(10), q(14), q(14), q(19),
+                                           fill=COR["fundo"], outline="", tags="casa_porta")
             for widget in (self._nav_inicio, self.b_inicio):
                 widget.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
                 widget.bind("<Enter>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["ouro"]))
@@ -2965,6 +2964,7 @@ def main():
             self._nav_inicio.configure(bg=fundo)
             self.b_inicio.configure(bg=fundo)
             self.b_inicio.itemconfigure("casa", fill=COR["alma"] if inicio else COR["suave"])
+            self.b_inicio.itemconfigure("casa_porta", fill=fundo)
 
         def _arrastar_ini(self, e):
             self._dx = e.x_root - self.root.winfo_x()
@@ -3174,22 +3174,6 @@ def main():
                     self._ui[id(m)] = self._linha(m, meta)
             self._lbl_evento = None
             if mostra_rodape:
-                if self.cfg.get("aba") == "almas":
-                    tempo = tk.Frame(self.corpo, bg=COR["fundo"])
-                    tempo.pack(fill="x", pady=(self.px(5), 0))
-                    tk.Label(tempo, text="Tempo de farm", fg=COR["suave"],
-                             bg=COR["fundo"], font=self.f_peq).pack(side="left")
-                    self._lbl_crono_home = tk.Label(
-                        tempo, text="", fg=COR["texto"], bg=COR["fundo"],
-                        font=self.fontes["relogio"])
-                    self._lbl_crono_home.pack(side="left", padx=(self.px(6), 0))
-                    self._b_crono_home = self.botao(
-                        tempo, "▶", lambda e: self.crono_alternar(), fonte=self.f_peq,
-                        dica=lambda: "Pausar o cronômetro" if self._crono().get("inicio")
-                        else "Começar o cronômetro")
-                    self._b_crono_home.pack(side="right")
-                    self.botao(tempo, "↺", lambda e: self.crono_zerar(),
-                               fonte=self.f_peq, dica="Zerar o cronômetro").pack(side="right")
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
                 rod.pack(fill="x", pady=(self.px(4), 0))
                 self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
