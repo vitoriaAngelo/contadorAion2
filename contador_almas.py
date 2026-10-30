@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.89"
+VERSAO = "1.9.90"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3175,26 +3175,12 @@ def main():
             self._lbl_evento = None
             if mostra_rodape:
                 if self.cfg.get("aba") == "almas":
-                    caixa_abismo = tk.Frame(self.corpo, bg=COR["painel"],
-                                            highlightthickness=1, highlightbackground=COR["barra"])
-                    caixa_abismo.pack(fill="x", pady=(self.px(7), 0))
-                    caixa_abismo.columnconfigure(1, weight=1)
-                    tk.Label(caixa_abismo, text="◈  Abismo", fg=COR["ouro"],
-                             bg=COR["painel"], font=self.f_nome).grid(
-                                 row=0, column=0, sticky="w", padx=self.px(8), pady=self.px(5))
-                    pontos_fmt = f"{self.pontos_abismo:,}".replace(",", ".")
-                    kinah_fmt = f"{self.kinah_abismo:,}".replace(",", ".")
-                    self._lbl_abismo = tk.Label(caixa_abismo,
-                                                text=f"Pontos: +{pontos_fmt}   ·   Kinah: +{kinah_fmt}",
-                                                fg=COR["texto"], bg=COR["painel"], font=self.f_peq)
-                    self._lbl_abismo.grid(row=0, column=1, sticky="e", padx=self.px(8))
-                    tempo = tk.Frame(caixa_abismo, bg=COR["painel"])
-                    tempo.grid(row=1, column=0, columnspan=2, sticky="ew",
-                               padx=self.px(8), pady=(0, self.px(5)))
+                    tempo = tk.Frame(self.corpo, bg=COR["fundo"])
+                    tempo.pack(fill="x", pady=(self.px(5), 0))
                     tk.Label(tempo, text="Tempo de farm", fg=COR["suave"],
-                             bg=COR["painel"], font=self.f_peq).pack(side="left")
+                             bg=COR["fundo"], font=self.f_peq).pack(side="left")
                     self._lbl_crono_home = tk.Label(
-                        tempo, text="", fg=COR["texto"], bg=COR["painel"],
+                        tempo, text="", fg=COR["texto"], bg=COR["fundo"],
                         font=self.fontes["relogio"])
                     self._lbl_crono_home.pack(side="left", padx=(self.px(6), 0))
                     self._b_crono_home = self.botao(
