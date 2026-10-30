@@ -68,6 +68,29 @@ class LeituraNpcap(unittest.TestCase):
         dec.segment('jogo', 1000, frame(pp.OP_DAMAGE, dano))
         self.assertIn(('dps_damage', 'Misttylol', 7777), eventos)
 
+    def test_dps_reseta_ao_comecar_outro_boss_mas_nao_em_add(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_entity = 3210
+        dec.own_name = 'Misttylol'
+        dec.entity_names[3210] = 'Misttylol'
+        dec.boss_entities.update((9000, 9001))
+
+        def dano(target, amount):
+            payload = (varint(target) + b'\x04\0' + varint(3210) +
+                       struct.pack('<I', 14050340) +
+                       b'\x01\x02\0\0\0\x01\0\0\0\x81\x01' +
+                       varint(amount) + b'\0\0')
+            return frame(pp.OP_DAMAGE, payload)
+
+        seq = 1000
+        for pacote in (dano(9000, 100), dano(8000, 50), dano(9001, 200)):
+            dec.segment('jogo', seq, pacote)
+            seq += len(pacote)
+        self.assertEqual(eventos.count(('dps_reset',)), 1)
+        self.assertEqual(eventos[-2:], [('dps_reset',),
+                                        ('dps_damage', 'Misttylol', 200)])
+
     def test_snapshot_define_base_de_pontos_antes_dos_ganhos(self):
         eventos = []
         dec = pp.Decoder(eventos.append)

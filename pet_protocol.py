@@ -485,6 +485,34 @@ def parse_npc_spawn(payload):
         return None
 
 
+def parse_spawn_max_hp(payload):
+    """HP máximo anunciado no spawn; bosses de DG usam este valor."""
+    trailer = b"\x64\0\0\0\x64\0\0\0"
+    try:
+        _, p = read_varint(payload, 0)
+        if len(payload) < p + 7:
+            return None
+        if payload[p + 2] == 1:
+            size = payload[p + 3]
+            if not 1 <= size <= 100 or p + 4 + size + 7 > len(payload):
+                return None
+            p += 1 + size
+        p += 3
+        after_code = p + 4
+        for skip in (21, 33):
+            q = after_code + skip
+            if q >= len(payload):
+                continue
+            current, q = read_varint(payload, q)
+            maximum, q = read_varint(payload, q)
+            if (0 <= current <= maximum and maximum > 0 and
+                    q + 8 <= len(payload) and payload[q:q + 8] == trailer):
+                return maximum
+    except (IndexError, ValueError):
+        pass
+    return None
+
+
 def parse_npc_remove(payload):
     try:
         entity, p = read_varint(payload, 0)
@@ -626,6 +654,8 @@ class Decoder:
         self.party_names = set()
         self.summon_owners = {}
         self.own_name = None
+        self.boss_entities = set()
+        self.current_boss = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
         if inventory_state_file:
@@ -741,6 +771,10 @@ class Decoder:
                             is_self = source_id == self.own_entity
                             if source_name and (source_name in self.party_names or
                                                 not self.party_names and is_self):
+                                if target in self.boss_entities and target != self.current_boss:
+                                    if self.current_boss is not None:
+                                        self.emit(("dps_reset",))
+                                    self.current_boss = target
                                 self.emit(("dps_damage", source_name, amount))
                     elif op == OP_ZONE:
                         zone = parse_zone(payload)
@@ -748,6 +782,8 @@ class Decoder:
                             if zone[0] != self.zone_id:
                                 if self.zone_id is not None:
                                     self.emit(("dps_reset",))
+                                self.boss_entities.clear()
+                                self.current_boss = None
                                 self.own_entity = None
                             self.zone_id = zone[0]
                             self.emit(("zone",) + zone)
@@ -766,11 +802,15 @@ class Decoder:
                             self.summon_owners[owner[0]] = (owner[1], owner[2])
                         mob = parse_npc_spawn(payload)
                         if mob:
+                            maximum = parse_spawn_max_hp(payload)
+                            if maximum is not None and maximum >= 500_000:
+                                self.boss_entities.add(mob[0])
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
                         if entity is not None:
                             self.summon_owners.pop(entity, None)
+                            self.boss_entities.discard(entity)
                             self.emit(("mob_remove", entity))
             except Exception as e:
                 log("frame:", type(e).__name__)
