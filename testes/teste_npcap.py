@@ -24,6 +24,39 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_dps_da_pt_liga_nome_e_conta_dano_direto(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        nome = b'Misttylol'
+        roster = b'\x18\x05' + bytes([len(nome)]) + nome + struct.pack('<II', 24, 45)
+        nickname = varint(3210) + b'\0\0' + bytes([len(nome)]) + nome + b'\0\0\0\0'
+        dano = (varint(9000) + b'\x04\0' + varint(3210) + struct.pack('<I', 14050340) +
+                b'\x01\x02\0\0\0\x01\0\0\0\x81\x01' + varint(12345) + b'\0\0')
+        pacotes = [frame(pp.OP_PARTY_ROSTER, roster),
+                   frame(pp.OP_PLAYER_NICKNAME, nickname),
+                   frame(pp.OP_DAMAGE, dano)]
+        seq = 1000
+        for pacote in pacotes:
+            dec.segment('jogo', seq, pacote)
+            seq += len(pacote)
+        self.assertIn(('dps_party', ['Misttylol']), eventos)
+        self.assertIn(('dps_damage', 'Misttylol', 12345), eventos)
+
+    def test_tick_de_cura_nao_entra_no_dps(self):
+        base = varint(9000) + b'\x0b' + varint(3210) + b'\x01' + struct.pack('<I', 1405000022)
+        cura = base + varint(100) + varint(80) + struct.pack('<I', 14050340)
+        self.assertIsNone(pp.parse_dot_damage(cura))
+
+    def test_cura_direta_da_pt_nao_entra_no_dps(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.party_names = {'Healer'}
+        dec.entity_names[3210] = 'Healer'
+        cura = (varint(9000) + b'\x04\0' + varint(3210) + struct.pack('<I', 11110020) +
+                b'\x01\x02\0\0\0\x01\0\0\0\x81\x01' + varint(5000) + b'\0\0')
+        dec.segment('jogo', 1000, frame(pp.OP_DAMAGE, cura))
+        self.assertNotIn(('dps_damage', 'Healer', 5000), eventos)
+
     def test_snapshot_define_base_de_pontos_antes_dos_ganhos(self):
         eventos = []
         dec = pp.Decoder(eventos.append)

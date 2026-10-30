@@ -95,6 +95,16 @@ GATHER_ITEM_TYPES.update({
     610680053: ("Ingredient", "Conide"),
     610680054: ("Ingredient", "Pujery"),
 })
+HEAL_SKILL_BASES = {
+    10000000, 11110000, 11120000, 11260000, 11270000, 11380000, 11720000,
+    11730000, 12110000, 12230000, 12250000, 12260000, 12320000, 12720000,
+    13080000, 13260000, 13710000, 13790000, 14260000, 14710000, 14790000,
+    15240000, 15410000, 15790000, 16190000, 16200000, 16270000, 16750000,
+    16770000, 16790000, 16990000, 17090000, 17100000, 17120000, 17160000,
+    17240000, 17270000, 17290000, 17320000, 17390000, 17720000, 17800000,
+    18120000, 18140000, 18160000, 18170000, 18200000, 18240000, 18420000,
+    18440000, 18720000, 19350000, 19360000, 19450000, 19710000, 19790000,
+}
 OP_NICKNAME = b"\x33\x36"
 OP_ZONE = b"\x21\x36"
 OP_NPC_SPAWN = b"\x41\x36"
@@ -102,6 +112,10 @@ OP_NPC_REMOVE = b"\x42\x36"
 OP_LOCAL_POSITION = b"\x3c\x37"
 OP_EFFECT = b"\x2a\x38"
 OP_EFFECT_RENEWED = b"\x2b\x38"
+OP_DAMAGE = b"\x04\x38"
+OP_DOT = b"\x05\x38"
+OP_PLAYER_NICKNAME = b"\x45\x36"
+OP_PARTY_ROSTER = b"\x02\x97"
 OP_LZ4 = b"\xff\xff"
 
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
@@ -110,6 +124,7 @@ KNOWN_OPS = {bytes.fromhex(h) for h in (
     "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8356 8456 "
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
+KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER))
 
 
 def log(*parts):
@@ -295,6 +310,121 @@ def parse_inventory_change(payload):
     instance = struct.unpack_from("<I", payload, 3)[0]
     quantity = struct.unpack_from("<Q", payload, 15)[0]
     return payload[1], instance, item, quantity
+
+
+def parse_damage(payload):
+    """Dano direto: alvo, flags, atacante, skill e quantidade variável."""
+    try:
+        target, p = read_varint(payload, 0)
+        if p + 2 > len(payload):
+            return None
+        flags = payload[p]
+        p += 2
+        if not flags & 0x04:
+            return None
+        actor, p = read_varint(payload, p)
+        if p + 6 > len(payload):
+            return None
+        skill = struct.unpack_from("<I", payload, p)[0]
+        p += 4
+        marker = next((i for i in range(p + 2, len(payload) - 3)
+                       if 1 <= payload[i] <= 9 and payload[i + 1:i + 4] == b"\0\0\0"), -1)
+        if marker < 0:
+            return None
+        q = marker + 4
+        _, q = read_varint(payload, q)
+        amount, q = read_varint(payload, q)
+        if not (0 < actor < 10_000_000 and 0 < target < 10_000_000 and
+                0 < skill < 300_000_000 and 0 < amount <= 10_000_000_000):
+            return None
+        return actor, target, amount, skill
+    except (IndexError, struct.error, ValueError):
+        return None
+
+
+def parse_dot_damage(payload):
+    """Tick de dano contínuo. Ticks com flag de cura não entram no DPS."""
+    try:
+        target, p = read_varint(payload, 0)
+        flags = payload[p]
+        p += 1
+        if flags & 0x01 or flags & 0x0a != 0x0a:
+            return None
+        actor, p = read_varint(payload, p)
+        _, p = read_varint(payload, p)
+        if p + 4 > len(payload):
+            return None
+        p += 4
+        amount, p = read_varint(payload, p)
+        if len(payload) != p + 4 or not (0 < actor < 10_000_000 and
+                                         0 < target < 10_000_000 and
+                                         0 < amount <= 10_000_000_000):
+            return None
+        skill = struct.unpack_from("<I", payload, p)[0]
+        return actor, target, amount, skill
+    except (IndexError, struct.error, ValueError):
+        return None
+
+
+def _network_name(payload, start, minimum=2):
+    if not 0 <= start < len(payload):
+        return None
+    size = payload[start]
+    if not minimum <= size <= 24 or start + 1 + size > len(payload):
+        return None
+    try:
+        name = payload[start + 1:start + 1 + size].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return name if all(c.isalnum() for c in name) else None
+
+
+def parse_player_nickname(payload):
+    try:
+        entity, p = read_varint(payload, 0)
+        for at in range(p, min(len(payload) - 3, p + 24)):
+            name = _network_name(payload, at, 3)
+            if name:
+                return entity, name
+    except IndexError:
+        pass
+    return None
+
+
+def parse_party_roster(payload):
+    members = []
+    i = 0
+    while i + 1 < len(payload):
+        name = _network_name(payload, i, 2)
+        if not name:
+            i += 1
+            continue
+        after = i + 1 + payload[i]
+        if (after + 8 <= len(payload) and payload[after] != 0 and
+                payload[after + 1:after + 4] == b"\0\0\0" and
+                1 <= payload[after + 4] <= 60 and
+                payload[after + 5:after + 8] == b"\0\0\0"):
+            members.append(name)
+            i = after + 8
+        else:
+            i += 1
+    return list(dict.fromkeys(members))
+
+
+def parse_summon_owner(payload):
+    try:
+        entity, p = read_varint(payload, 0)
+        owner_name = _network_name(payload, p + 3, 2) if p + 2 < len(payload) and payload[p + 2] == 1 else None
+        marker = payload.find(b"\xff" * 8, p + 4)
+        owner_id = None
+        if marker >= 0:
+            q = marker + 16
+            owner, _ = read_varint(payload, q)
+            if owner > 0 and owner != entity:
+                owner_id = owner
+        return entity, owner_id, owner_name
+    except (IndexError, ValueError):
+        return None
 
 
 def parse_nickname(payload):
@@ -492,6 +622,9 @@ class Decoder:
         self.own_entity = None
         self.zone_id = None
         self.abyss_progress = None
+        self.entity_names = {}
+        self.party_names = set()
+        self.summon_owners = {}
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
         if inventory_state_file:
@@ -575,15 +708,39 @@ class Decoder:
                         nome = parse_nickname(payload)
                         if nome:
                             self.own_entity, _ = read_varint(payload, 0)
+                            self.entity_names[self.own_entity] = nome
                             log("nickname decoded", nome)
                             self.emit(("nickname", nome))
                         else:
                             log("nickname ignored", "payload_len", len(payload),
                                 "prefix", payload[:8].hex())
+                    elif op == OP_PLAYER_NICKNAME:
+                        player = parse_player_nickname(payload)
+                        if player:
+                            self.entity_names[player[0]] = player[1]
+                    elif op == OP_PARTY_ROSTER:
+                        members = parse_party_roster(payload)
+                        if members:
+                            self.party_names = set(members)
+                            self.emit(("dps_party", members))
+                    elif op in (OP_DAMAGE, OP_DOT):
+                        hit = parse_damage(payload) if op == OP_DAMAGE else parse_dot_damage(payload)
+                        if hit:
+                            actor, target, amount, skill = hit
+                            if skill // 10000 * 10000 in HEAL_SKILL_BASES or 2_000_000 <= skill < 3_000_000:
+                                continue
+                            owner = self.summon_owners.get(actor)
+                            source_id = owner[0] if owner and owner[0] else actor
+                            source_name = (owner[1] if owner and owner[1] else
+                                           self.entity_names.get(source_id))
+                            if source_name in self.party_names:
+                                self.emit(("dps_damage", source_name, amount))
                     elif op == OP_ZONE:
                         zone = parse_zone(payload)
                         if zone:
                             if zone[0] != self.zone_id:
+                                if self.zone_id is not None:
+                                    self.emit(("dps_reset",))
                                 self.own_entity = None
                             self.zone_id = zone[0]
                             self.emit(("zone",) + zone)
@@ -597,12 +754,16 @@ class Decoder:
                         if position:
                             self.emit(("position",) + position)
                     elif op == OP_NPC_SPAWN:
+                        owner = parse_summon_owner(payload)
+                        if owner and owner[1]:
+                            self.summon_owners[owner[0]] = (owner[1], owner[2])
                         mob = parse_npc_spawn(payload)
                         if mob:
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
                         if entity is not None:
+                            self.summon_owners.pop(entity, None)
                             self.emit(("mob_remove", entity))
             except Exception as e:
                 log("frame:", type(e).__name__)

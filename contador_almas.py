@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.80"
+VERSAO = "1.9.81"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2352,6 +2352,12 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("estado_rede", evento[1:]))
                 elif evento[0] == "nickname":
                     self.fila.put(("personagem_rede", evento[1]))
+                elif evento[0] == "dps_party":
+                    self.fila.put(("dps_party", evento[1]))
+                elif evento[0] == "dps_damage" and self.ativo.is_set():
+                    self.fila.put(("dps_damage", (evento[1], evento[2])))
+                elif evento[0] == "dps_reset":
+                    self.fila.put(("dps_reset", None))
 
             pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
@@ -2440,6 +2446,10 @@ def main():
             self.destaque = {}
             self.pontos_abismo = 0  # ganho desde que o contador foi aberto
             self.kinah_abismo = 0
+            self.dps_party = []
+            self.dps_damage = {}
+            self.dps_started = None
+            self.dps_last_hit = None
             self.motor_nome = "iniciando Npcap..."
             self.rede_conectada = False
             self.rede_pronta = False
@@ -2862,6 +2872,10 @@ def main():
                                    fonte=self.f_nome,
                                    dica="ODs e materiais de coleta")
             self.b_od.pack(side="right")
+            self.b_dps = self.botao(h, "DPS", lambda e: self.alternar_aba("dps"),
+                                    fonte=self.f_nome,
+                                    dica="DPS e dano total dos membros da PT")
+            self.b_dps.pack(side="right")
             self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
                                      lambda e: self.alternar_aba("pets"),
                                      dica="Lista de todos os pets e progresso de almas")
@@ -3009,7 +3023,7 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            if self.cfg.get("aba") in ("info", "od", "pets", "materiais"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"),
@@ -3026,6 +3040,8 @@ def main():
                     self._atualizar_materiais()
                 elif self.cfg.get("aba") == "pets":
                     self._atualizar_pets()
+                elif self.cfg.get("aba") == "dps":
+                    self._atualizar_dps()
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
@@ -3046,6 +3062,7 @@ def main():
             # qualquer atualizador tentar acessá-los novamente.
             self._materiais_ui = None
             self._od_ui = None
+            self._dps_ui = None
             for w in self.corpo.winfo_children():
                 w.destroy()
             self._ui = {}
@@ -3057,7 +3074,7 @@ def main():
             self._rolagem = None
             self._info = None
             limite = max(1, int(self.cfg.get("max_linhas", 6)))
-            if self.cfg.get("aba") in ("info", "od", "pets", "materiais"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('tamanho_letra')}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
@@ -3080,6 +3097,8 @@ def main():
                     self._montar_materiais()
                 elif self.cfg.get("aba") == "pets":
                     self._montar_pets()
+                elif self.cfg.get("aba") == "dps":
+                    self._montar_dps()
                 else:
                     self._montar_info()
             elif len(visiveis) > limite:
@@ -3213,7 +3232,8 @@ def main():
         # ---------------- aba Info ----------------
         def _titulo_aba(self):
             return {"info": "\u25f7 Info", "od": "Materiais", "materiais": "Materiais",
-                    "pets": "\u2661 Pets"}.get(self.cfg.get("aba"), "\u2726 Almas")
+                    "pets": "\u2661 Pets", "dps": "DPS"}.get(
+                        self.cfg.get("aba"), "\u2726 Almas")
 
         def selecionar_coleta(self, destino):
             if self.cfg.get("aba") != destino:
@@ -3234,7 +3254,7 @@ def main():
                 altura_restaurar = getattr(self, "_altura_antes_materiais", None)
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
                       "_od_ui", "_materiais_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
-                      "_b_crono_home", "_pets_tree",
+                      "_b_crono_home", "_pets_tree", "_dps_ui",
                       "_pets_resumo", "_pets_busca", "_lbl_evento",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
             self._abas_visuais[atual] = {
@@ -3259,6 +3279,7 @@ def main():
             aba = self.cfg["aba"]
             self.lbl_titulo.configure(text=self._titulo_aba())
             self.b_od.configure(text="Materiais")
+            self.b_dps.configure(text="\u2726 DPS" if aba == "dps" else "DPS")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self.render()
             if altura_restaurar:
@@ -3276,6 +3297,91 @@ def main():
                         self.salvar_cfg()
             except Exception:
                 pass
+
+        # ---------------- DPS da PT ----------------
+        @staticmethod
+        def _numero_dps(valor):
+            valor = float(valor)
+            for divisor, sufixo in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+                if valor >= divisor:
+                    return f"{valor / divisor:.1f}{sufixo}"
+            return f"{valor:.0f}"
+
+        def _montar_dps(self):
+            topo = tk.Frame(self.corpo, bg=COR["fundo"])
+            topo.pack(fill="x", pady=(self.px(3), self.px(7)))
+            resumo = tk.Label(topo, text="", fg=COR["ouro"], bg=COR["fundo"],
+                              font=self.f_nome, anchor="w")
+            resumo.pack(side="left")
+            self.botao(topo, "\u21ba Zerar luta", lambda e: self.dps_zerar(), fonte=self.f_peq,
+                       dica="Zerar dano e iniciar uma nova medição").pack(side="right")
+            status = tk.Label(self.corpo, text="", fg=COR["suave"], bg=COR["fundo"],
+                              font=self.f_peq, anchor="w", justify="left")
+            status.pack(fill="x", pady=(0, self.px(5)))
+            area = tk.Frame(self.corpo, bg=COR["fundo"])
+            area.pack(fill="x")
+            rows = {}
+            for name in self.dps_party:
+                card = tk.Frame(area, bg=COR["painel"], highlightthickness=1,
+                                highlightbackground=COR["barra"])
+                card.pack(fill="x", pady=(0, self.px(4)))
+                line = tk.Frame(card, bg=COR["painel"])
+                line.pack(fill="x", padx=self.px(8), pady=(self.px(5), self.px(3)))
+                name_label = tk.Label(line, text=name, fg=COR["texto"], bg=COR["painel"],
+                                      font=self.f_nome, anchor="w")
+                name_label.pack(side="left", fill="x", expand=True)
+                value = tk.Label(line, text="", fg=COR["alma"], bg=COR["painel"],
+                                 font=self.fontes["relogio"], anchor="e")
+                value.pack(side="right")
+                sub = tk.Label(card, text="", fg=COR["suave"], bg=COR["painel"],
+                               font=self.f_peq, anchor="w")
+                sub.pack(fill="x", padx=self.px(8))
+                bar = tk.Canvas(card, height=self.px(4), bg=COR["barra"],
+                                highlightthickness=0, bd=0)
+                bar.pack(fill="x", padx=self.px(8), pady=(self.px(3), self.px(6)))
+                fill = bar.create_rectangle(0, 0, 0, self.px(4), fill=COR["alma"], width=0)
+                rows[name] = (value, sub, bar, fill)
+            self._dps_ui = (resumo, status, rows)
+            self._atualizar_dps()
+
+            def pulse():
+                if self.cfg.get("aba") == "dps" and getattr(self, "_dps_ui", None):
+                    self._atualizar_dps()
+                    self.root.after(500, pulse)
+            self.root.after(500, pulse)
+
+        def _atualizar_dps(self):
+            ui = getattr(self, "_dps_ui", None)
+            if not ui or self.cfg.get("aba") != "dps":
+                return
+            resumo, status, rows = ui
+            if not self.dps_party:
+                resumo.configure(text="PT atual")
+                status.configure(text="Aguardando a lista da PT enviada pelo jogo…")
+                return
+            now = time.monotonic()
+            end = (now if self.dps_last_hit and now - self.dps_last_hit < 10
+                   else self.dps_last_hit)
+            seconds = max(1.0, (end - self.dps_started) if end and self.dps_started else 1.0)
+            total = sum(self.dps_damage.get(name, 0) for name in self.dps_party)
+            resumo.configure(text=f"{len(self.dps_party)} na PT  ·  {int(seconds) // 60:02d}:{int(seconds) % 60:02d}")
+            status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
+                                   "PT encontrada. Aguardando o primeiro dano…"))
+            biggest = max((self.dps_damage.get(name, 0) for name in self.dps_party), default=1) or 1
+            for name, (value, sub, bar, fill) in rows.items():
+                damage = self.dps_damage.get(name, 0)
+                dps = damage / seconds
+                share = 100 * damage / total if total else 0
+                value.configure(text=f"{self._numero_dps(dps)} DPS")
+                sub.configure(text=f"{self._numero_dps(damage)} dano  ·  {share:.1f}%")
+                width = max(1, bar.winfo_width())
+                bar.coords(fill, 0, 0, int(width * damage / biggest), self.px(4))
+
+        def dps_zerar(self):
+            self.dps_damage = {name: 0 for name in self.dps_party}
+            self.dps_started = None
+            self.dps_last_hit = None
+            self._atualizar_dps()
 
         # ---------------- catálogo completo de pets ----------------
         def _montar_pets(self):
@@ -5478,6 +5584,28 @@ def main():
                             self.destaque["\u00a7material:" + chave] = time.time()
                             ultimo_grupo = GATHER_ITEM_TYPES[item_id][0]
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
+                    elif tipo == "dps_party":
+                        names = list(dict.fromkeys(str(n) for n in dado if n))
+                        if names != self.dps_party:
+                            self.dps_party = names
+                            self.dps_damage = {n: self.dps_damage.get(n, 0) for n in names}
+                            if self.cfg.get("aba") == "dps":
+                                self._estrutura = None
+                                self.render_em_breve()
+                    elif tipo == "dps_damage":
+                        name, amount = dado
+                        amount = int(amount)
+                        now = time.monotonic()
+                        if self.dps_last_hit is not None and now - self.dps_last_hit >= 10:
+                            self.dps_damage = {n: 0 for n in self.dps_party}
+                            self.dps_started = now
+                        if self.dps_started is None:
+                            self.dps_started = now
+                        self.dps_last_hit = now
+                        self.dps_damage[name] = self.dps_damage.get(name, 0) + max(0, amount)
+                        self._atualizar_dps()
+                    elif tipo == "dps_reset":
+                        self.dps_zerar()
                     elif tipo == "estado_rede":
                         self.sincronizacao_pendente = False
                         assinatura = assinatura_estado_pets(dado[0], dado[1])
