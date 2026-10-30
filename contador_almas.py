@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.76"
+VERSAO = "1.9.77"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2375,8 +2375,11 @@ COR = {
     "novo": "#ffe27a",  # monstro que acabou de ganhar alma
 }
 MATERIAL_CORES = {
-    "Ore": "#f0a45d", "Gem": "#b48cff", "Log": "#d6a56f",
-    "Herb": "#7ddc7a", "Ingredient": "#ff8f8f",
+    "Ore": "#e89a62",        # cobre suave
+    "Gem": "#ad8cf7",        # ametista
+    "Log": "#c98a65",        # madeira quente
+    "Herb": "#72c99a",       # verde sálvia
+    "Ingredient": "#e77f9f", # rosa framboesa
 }
 
 # cor de destaque escolhida no menu (titulo, numeros, barras, som)
