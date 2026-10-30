@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.81"
+VERSAO = "1.9.82"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2895,13 +2895,70 @@ def main():
             self.b_inicio.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
             self.dica(self.b_inicio, "Voltar ao início: almas recebidas")
             self.b_inicio.pack(side="right")
-            self.botao(h, "\u2699", self.menu_principal,
-                       dica="Op\u00e7\u00f5es (cor, letra, volume, chat...)").pack(side="right")
+            self.b_config_top = self.botao(
+                h, "\u2699", self.menu_principal,
+                dica="Op\u00e7\u00f5es (cor, letra, volume, chat...)")
+            self.b_config_top.pack(side="right")
+
+            # A navegação não disputa mais espaço com título, personagem e status.
+            # Na largura mínima, todos os destinos continuam clicáveis.
+            for antigo in (self.b_od, self.b_dps, self.b_pets, self.b_inicio):
+                antigo.destroy()
+            self.b_config_top.destroy()
+            nav = tk.Frame(self.root, bg=COR["fundo"])
+            nav.pack(fill="x", padx=self.px(8), pady=(0, self.px(5)))
+            self._nav = nav
+            for coluna in range(5):
+                nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
+            self._nav_inicio = tk.Frame(nav, bg=COR["fundo"], cursor="hand2")
+            self._nav_inicio.grid(row=0, column=0, sticky="nsew", padx=self.px(1))
+            self.b_inicio = tk.Canvas(self._nav_inicio, width=self.px(25), height=self.px(24),
+                                      bg=COR["fundo"], highlightthickness=0, cursor="hand2")
+            self.b_inicio.pack()
+            q = self.px
+            traco = {"fill": COR["suave"], "width": 1.6 * self.k,
+                     "capstyle": "round", "joinstyle": "round", "tags": "casa"}
+            self.b_inicio.create_line(q(4), q(10), q(12), q(3), q(20), q(10), **traco)
+            self.b_inicio.create_line(q(6), q(9), q(6), q(18), q(10), q(18),
+                                      q(10), q(13), q(14), q(13), q(14), q(18),
+                                      q(18), q(18), q(18), q(9), **traco)
+            for widget in (self._nav_inicio, self.b_inicio):
+                widget.bind("<Button-1>", lambda e: self.alternar_aba("almas"))
+                widget.bind("<Enter>", lambda e: self.b_inicio.itemconfigure("casa", fill=COR["ouro"]))
+                widget.bind("<Leave>", lambda e: self._pintar_nav())
+            self.dica(self.b_inicio, "Voltar ao início: almas recebidas")
+            self.b_pets = self.botao(nav, "Pets", lambda e: self.alternar_aba("pets"),
+                                     fonte=self.f_nome, dica="Lista de todos os pets")
+            self.b_dps = self.botao(nav, "DPS", lambda e: self.alternar_aba("dps"),
+                                    fonte=self.f_nome, dica="DPS dos membros da PT")
+            self.b_od = self.botao(nav, "Materiais", lambda e: self.alternar_aba(
+                self.cfg.get("aba") if self.cfg.get("aba") in ("od", "materiais") else "od"),
+                fonte=self.f_nome, dica="ODs e materiais de coleta")
+            b_config = self.botao(nav, "\u2699", self.menu_principal,
+                                  fonte=self.f_nome, dica="Opções")
+            for coluna, botao in enumerate((self.b_pets, self.b_dps, self.b_od, b_config), 1):
+                botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1), ipady=self.px(5))
+            for botao in (self.b_pets, self.b_dps, self.b_od):
+                botao.bind("<Leave>", lambda e: self._pintar_nav())
+            self._pintar_nav()
             for w in (h, t, self.lbl_status):
                 w.bind("<ButtonPress-1>", self._arrastar_ini)
                 w.bind("<B1-Motion>", self._arrastar)
                 w.bind("<ButtonRelease-1>", self._arrastar_fim)
             self.atualizar_status()
+
+        def _pintar_nav(self):
+            aba = self.cfg.get("aba", "almas")
+            for botao, ativo in ((self.b_pets, aba == "pets"),
+                                  (self.b_dps, aba == "dps"),
+                                  (self.b_od, aba in ("od", "materiais"))):
+                botao.configure(bg=COR["painel"] if ativo else COR["fundo"],
+                                fg=COR["alma"] if ativo else COR["suave"])
+            inicio = aba == "almas"
+            fundo = COR["painel"] if inicio else COR["fundo"]
+            self._nav_inicio.configure(bg=fundo)
+            self.b_inicio.configure(bg=fundo)
+            self.b_inicio.itemconfigure("casa", fill=COR["alma"] if inicio else COR["suave"])
 
         def _arrastar_ini(self, e):
             self._dx = e.x_root - self.root.winfo_x()
@@ -3281,6 +3338,7 @@ def main():
             self.b_od.configure(text="Materiais")
             self.b_dps.configure(text="\u2726 DPS" if aba == "dps" else "DPS")
             self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
+            self._pintar_nav()
             self.render()
             if altura_restaurar:
                 self.root.geometry(f"{self.root.winfo_width()}x{int(altura_restaurar)}")
