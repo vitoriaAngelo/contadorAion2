@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.73"
+VERSAO = "1.9.74"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3871,8 +3871,8 @@ def main():
             barra = ttk.Scrollbar(caixa, orient="vertical", command=canvas.yview,
                                   style="Materiais.Vertical.TScrollbar")
             canvas.configure(yscrollcommand=barra.set)
-            barra.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
+            canvas._barra_materiais = barra
             linhas = tk.Frame(canvas, bg=COR["fundo"])
             linhas.columnconfigure(0, weight=1, uniform="material")
             linhas.columnconfigure(1, weight=1, uniform="material")
@@ -3988,7 +3988,18 @@ def main():
                     frame.grid(row=posicao[0], column=posicao[1], sticky="nsew",
                                padx=self.px(2), pady=self.px(2))
                     frame._posicao_grade = posicao
-            self._ajustar_altura_materiais(len(linhas), area.master)
+            canvas = area.master
+            barra = canvas._barra_materiais
+            if len(linhas) > 4:
+                if not barra.winfo_manager():
+                    barra.pack(side="right", fill="y", before=canvas)
+                canvas.configure(yscrollcommand=barra.set)
+            else:
+                if barra.winfo_manager():
+                    barra.pack_forget()
+                canvas.configure(yscrollcommand="")
+                canvas.yview_moveto(0)
+            self._ajustar_altura_materiais(len(linhas), canvas)
 
         def _ajustar_altura_materiais(self, quantidade, canvas):
             """Encolhe quando vazio e acrescenta altura a cada linha de cartões."""
@@ -3997,7 +4008,7 @@ def main():
                 return
             self._altura_materiais_chave = chave
             linhas = (quantidade + 1) // 2
-            canvas.configure(height=self.px(max(1, linhas * 34)))
+            canvas.configure(height=self.px(max(1, min(linhas, 2) * 34)))
 
             def aplicar():
                 if self.cfg.get("aba") != "materiais":
