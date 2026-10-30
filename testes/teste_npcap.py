@@ -91,6 +91,18 @@ class LeituraNpcap(unittest.TestCase):
         self.assertEqual(eventos[-2:], [('dps_reset',),
                                         ('dps_damage', 'Misttylol', 200)])
 
+    def test_vida_do_boss_cai_com_dano_de_qualquer_jogador(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.boss_entities.add(9000)
+        dec.boss_health[9000] = (1_000_000, 1_000_000)
+        dano = (varint(9000) + b'\x04\0' + varint(7777) +
+                struct.pack('<I', 14050340) +
+                b'\x01\x02\0\0\0\x01\0\0\0\x81\x01' + varint(125_000) + b'\0\0')
+        dec.segment('jogo', 1000, frame(pp.OP_DAMAGE, dano))
+        self.assertIn(('boss_health', 875_000, 1_000_000), eventos)
+        self.assertNotIn(('dps_damage', 'Misttylol', 125_000), eventos)
+
     def test_snapshot_define_base_de_pontos_antes_dos_ganhos(self):
         eventos = []
         dec = pp.Decoder(eventos.append)

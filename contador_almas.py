@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.86"
+VERSAO = "1.9.87"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2358,6 +2358,8 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("dps_damage", (evento[1], evento[2])))
                 elif evento[0] == "dps_reset":
                     self.fila.put(("dps_reset", None))
+                elif evento[0] == "boss_health":
+                    self.fila.put(("boss_health", (evento[1], evento[2])))
 
             pet_protocol.run_sniffer(receber, self.parar)
         except Exception as e:
@@ -2450,6 +2452,7 @@ def main():
             self.dps_damage = {}
             self.dps_started = None
             self.dps_last_hit = None
+            self.boss_health = (0, 0)
             self.motor_nome = "iniciando Npcap..."
             self.rede_conectada = False
             self.rede_pronta = False
@@ -3366,8 +3369,24 @@ def main():
             return f"{valor:.0f}"
 
         def _montar_dps(self):
+            boss = tk.Frame(self.corpo, bg=COR["painel"], highlightthickness=1,
+                            highlightbackground=COR["barra"])
+            boss.pack(fill="x", pady=(self.px(2), self.px(5)))
+            boss_linha = tk.Frame(boss, bg=COR["painel"])
+            boss_linha.pack(fill="x", padx=self.px(7), pady=(self.px(4), self.px(2)))
+            boss_nome = tk.Label(boss_linha, text="Boss", fg=COR["ouro"], bg=COR["painel"],
+                                 font=self.f_nome, anchor="w")
+            boss_nome.pack(side="left")
+            boss_valor = tk.Label(boss_linha, text="Aguardando combate", fg=COR["suave"],
+                                  bg=COR["painel"], font=self.f_peq, anchor="e")
+            boss_valor.pack(side="right")
+            boss_barra = tk.Canvas(boss, height=self.px(7), bg=COR["barra"],
+                                   highlightthickness=0, bd=0)
+            boss_barra.pack(fill="x", padx=self.px(7), pady=(0, self.px(5)))
+            boss_fill = boss_barra.create_rectangle(0, 0, 0, self.px(7),
+                                                     fill=COR["ouro"], width=0)
             topo = tk.Frame(self.corpo, bg=COR["fundo"])
-            topo.pack(fill="x", pady=(self.px(3), self.px(7)))
+            topo.pack(fill="x", pady=(0, self.px(4)))
             resumo = tk.Label(topo, text="", fg=COR["ouro"], bg=COR["fundo"],
                               font=self.f_nome, anchor="w")
             resumo.pack(side="left")
@@ -3375,16 +3394,16 @@ def main():
                        dica="Zerar dano e iniciar uma nova medição").pack(side="right")
             status = tk.Label(self.corpo, text="", fg=COR["suave"], bg=COR["fundo"],
                               font=self.f_peq, anchor="w", justify="left")
-            status.pack(fill="x", pady=(0, self.px(5)))
+            status.pack(fill="x", pady=(0, self.px(3)))
             area = tk.Frame(self.corpo, bg=COR["fundo"])
             area.pack(fill="x")
             rows = {}
             for name in self.dps_party:
                 card = tk.Frame(area, bg=COR["painel"], highlightthickness=1,
                                 highlightbackground=COR["barra"])
-                card.pack(fill="x", pady=(0, self.px(4)))
+                card.pack(fill="x", pady=(0, self.px(2)))
                 line = tk.Frame(card, bg=COR["painel"])
-                line.pack(fill="x", padx=self.px(8), pady=(self.px(5), self.px(3)))
+                line.pack(fill="x", padx=self.px(6), pady=(self.px(3), self.px(1)))
                 name_label = tk.Label(line, text=name, fg=COR["texto"], bg=COR["painel"],
                                       font=self.f_nome, anchor="w")
                 name_label.pack(side="left", fill="x", expand=True)
@@ -3393,13 +3412,13 @@ def main():
                 value.pack(side="right")
                 sub = tk.Label(card, text="", fg=COR["suave"], bg=COR["painel"],
                                font=self.f_peq, anchor="w")
-                sub.pack(fill="x", padx=self.px(8))
-                bar = tk.Canvas(card, height=self.px(4), bg=COR["barra"],
+                sub.pack(fill="x", padx=self.px(6))
+                bar = tk.Canvas(card, height=self.px(3), bg=COR["barra"],
                                 highlightthickness=0, bd=0)
-                bar.pack(fill="x", padx=self.px(8), pady=(self.px(3), self.px(6)))
-                fill = bar.create_rectangle(0, 0, 0, self.px(4), fill=COR["alma"], width=0)
+                bar.pack(fill="x", padx=self.px(6), pady=(self.px(2), self.px(3)))
+                fill = bar.create_rectangle(0, 0, 0, self.px(3), fill=COR["alma"], width=0)
                 rows[name] = (value, sub, bar, fill)
-            self._dps_ui = (resumo, status, rows)
+            self._dps_ui = (resumo, status, rows, boss_valor, boss_barra, boss_fill)
             self._atualizar_dps()
 
             def pulse():
@@ -3412,7 +3431,14 @@ def main():
             ui = getattr(self, "_dps_ui", None)
             if not ui or self.cfg.get("aba") != "dps":
                 return
-            resumo, status, rows = ui
+            resumo, status, rows, boss_valor, boss_barra, boss_fill = ui
+            atual, maxima = self.boss_health
+            percentual = max(0.0, min(100.0, 100.0 * atual / maxima)) if maxima else 0.0
+            boss_valor.configure(text=(f"{percentual:.1f}%  ·  {self._numero_dps(atual)} / "
+                                        f"{self._numero_dps(maxima)}" if maxima else
+                                        "Aguardando boss"))
+            largura_boss = max(1, boss_barra.winfo_width())
+            boss_barra.coords(boss_fill, 0, 0, int(largura_boss * percentual / 100), self.px(7))
             if not self.dps_party:
                 resumo.configure(text="PT atual")
                 status.configure(text="Aguardando a lista da PT enviada pelo jogo…")
@@ -5704,6 +5730,9 @@ def main():
                         self._atualizar_dps()
                     elif tipo == "dps_reset":
                         self.dps_zerar()
+                    elif tipo == "boss_health":
+                        self.boss_health = (max(0, int(dado[0])), max(0, int(dado[1])))
+                        self._atualizar_dps()
                     elif tipo == "estado_rede":
                         # Um estado de conta decodificado é uma confirmação mais forte
                         # que o sinal transitório de abertura da conexão TCP.

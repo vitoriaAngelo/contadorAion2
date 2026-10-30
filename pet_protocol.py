@@ -485,8 +485,8 @@ def parse_npc_spawn(payload):
         return None
 
 
-def parse_spawn_max_hp(payload):
-    """HP máximo anunciado no spawn; bosses de DG usam este valor."""
+def parse_spawn_health(payload):
+    """Vida atual e máxima anunciadas no spawn do monstro."""
     trailer = b"\x64\0\0\0\x64\0\0\0"
     try:
         _, p = read_varint(payload, 0)
@@ -507,10 +507,15 @@ def parse_spawn_max_hp(payload):
             maximum, q = read_varint(payload, q)
             if (0 <= current <= maximum and maximum > 0 and
                     q + 8 <= len(payload) and payload[q:q + 8] == trailer):
-                return maximum
+                return current, maximum
     except (IndexError, ValueError):
         pass
     return None
+
+
+def parse_spawn_max_hp(payload):
+    health = parse_spawn_health(payload)
+    return health[1] if health else None
 
 
 def parse_npc_remove(payload):
@@ -655,6 +660,7 @@ class Decoder:
         self.summon_owners = {}
         self.own_name = None
         self.boss_entities = set()
+        self.boss_health = {}
         self.current_boss = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
@@ -764,6 +770,16 @@ class Decoder:
                             actor, target, amount, skill = hit
                             if skill // 10000 * 10000 in HEAL_SKILL_BASES or 2_000_000 <= skill < 3_000_000:
                                 continue
+                            if target in self.boss_entities:
+                                if target != self.current_boss:
+                                    if self.current_boss is not None:
+                                        self.emit(("dps_reset",))
+                                    self.current_boss = target
+                                current, maximum = self.boss_health.get(target, (0, 0))
+                                if maximum > 0:
+                                    current = max(0, current - amount)
+                                    self.boss_health[target] = (current, maximum)
+                                    self.emit(("boss_health", current, maximum))
                             owner = self.summon_owners.get(actor)
                             source_id = owner[0] if owner and owner[0] else actor
                             source_name = (owner[1] if owner and owner[1] else
@@ -771,10 +787,6 @@ class Decoder:
                             is_self = source_id == self.own_entity
                             if source_name and (source_name in self.party_names or
                                                 not self.party_names and is_self):
-                                if target in self.boss_entities and target != self.current_boss:
-                                    if self.current_boss is not None:
-                                        self.emit(("dps_reset",))
-                                    self.current_boss = target
                                 self.emit(("dps_damage", source_name, amount))
                     elif op == OP_ZONE:
                         zone = parse_zone(payload)
@@ -783,7 +795,9 @@ class Decoder:
                                 if self.zone_id is not None:
                                     self.emit(("dps_reset",))
                                 self.boss_entities.clear()
+                                self.boss_health.clear()
                                 self.current_boss = None
+                                self.emit(("boss_health", 0, 0))
                                 self.own_entity = None
                             self.zone_id = zone[0]
                             self.emit(("zone",) + zone)
@@ -802,15 +816,20 @@ class Decoder:
                             self.summon_owners[owner[0]] = (owner[1], owner[2])
                         mob = parse_npc_spawn(payload)
                         if mob:
-                            maximum = parse_spawn_max_hp(payload)
+                            health = parse_spawn_health(payload)
+                            maximum = health[1] if health else None
                             if maximum is not None and maximum >= 500_000:
                                 self.boss_entities.add(mob[0])
+                                self.boss_health[mob[0]] = health
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
                         if entity is not None:
                             self.summon_owners.pop(entity, None)
                             self.boss_entities.discard(entity)
+                            self.boss_health.pop(entity, None)
+                            if entity == self.current_boss:
+                                self.emit(("boss_health", 0, 0))
                             self.emit(("mob_remove", entity))
             except Exception as e:
                 log("frame:", type(e).__name__)
