@@ -625,6 +625,7 @@ class Decoder:
         self.entity_names = {}
         self.party_names = set()
         self.summon_owners = {}
+        self.own_name = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
         if inventory_state_file:
@@ -708,9 +709,12 @@ class Decoder:
                         nome = parse_nickname(payload)
                         if nome:
                             self.own_entity, _ = read_varint(payload, 0)
+                            self.own_name = nome
                             self.entity_names[self.own_entity] = nome
                             log("nickname decoded", nome)
                             self.emit(("nickname", nome))
+                            if not self.party_names:
+                                self.emit(("dps_party", [nome]))
                         else:
                             log("nickname ignored", "payload_len", len(payload),
                                 "prefix", payload[:8].hex())
@@ -720,9 +724,10 @@ class Decoder:
                             self.entity_names[player[0]] = player[1]
                     elif op == OP_PARTY_ROSTER:
                         members = parse_party_roster(payload)
-                        if members:
-                            self.party_names = set(members)
-                            self.emit(("dps_party", members))
+                        self.party_names = set(members)
+                        shown = members or ([self.own_name] if self.own_name else [])
+                        if shown:
+                            self.emit(("dps_party", shown))
                     elif op in (OP_DAMAGE, OP_DOT):
                         hit = parse_damage(payload) if op == OP_DAMAGE else parse_dot_damage(payload)
                         if hit:
@@ -733,7 +738,9 @@ class Decoder:
                             source_id = owner[0] if owner and owner[0] else actor
                             source_name = (owner[1] if owner and owner[1] else
                                            self.entity_names.get(source_id))
-                            if source_name in self.party_names:
+                            is_self = source_id == self.own_entity
+                            if source_name and (source_name in self.party_names or
+                                                not self.party_names and is_self):
                                 self.emit(("dps_damage", source_name, amount))
                     elif op == OP_ZONE:
                         zone = parse_zone(payload)

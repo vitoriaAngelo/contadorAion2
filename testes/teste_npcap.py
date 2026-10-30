@@ -57,6 +57,17 @@ class LeituraNpcap(unittest.TestCase):
         dec.segment('jogo', 1000, frame(pp.OP_DAMAGE, cura))
         self.assertNotIn(('dps_damage', 'Healer', 5000), eventos)
 
+    def test_dps_solo_usa_o_proprio_personagem_sem_pt(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_entity = 3210
+        dec.own_name = 'Misttylol'
+        dec.entity_names[3210] = 'Misttylol'
+        dano = (varint(9000) + b'\x04\0' + varint(3210) + struct.pack('<I', 14050340) +
+                b'\x01\x02\0\0\0\x01\0\0\0\x81\x01' + varint(7777) + b'\0\0')
+        dec.segment('jogo', 1000, frame(pp.OP_DAMAGE, dano))
+        self.assertIn(('dps_damage', 'Misttylol', 7777), eventos)
+
     def test_snapshot_define_base_de_pontos_antes_dos_ganhos(self):
         eventos = []
         dec = pp.Decoder(eventos.append)
@@ -235,11 +246,13 @@ class LeituraNpcap(unittest.TestCase):
         eventos = []
         pp.Decoder(eventos.append).segment('jogo', 1000,
                                             frame(pp.OP_NICKNAME, payload))
-        self.assertEqual(eventos, [('ready',), ('nickname', 'Vitória')])
+        self.assertEqual(eventos, [('ready',), ('nickname', 'Vitória'),
+                                   ('dps_party', ['Vitória'])])
         com_flag = varint(len(payload) + 7) + b'\xf0' + pp.OP_NICKNAME + payload
         outros = []
         pp.Decoder(outros.append).segment('jogo', 2000, com_flag)
-        self.assertEqual(outros, [('ready',), ('nickname', 'Vitória')])
+        self.assertEqual(outros, [('ready',), ('nickname', 'Vitória'),
+                                  ('dps_party', ['Vitória'])])
         self.assertIsNone(pp.parse_nickname(payload[:-2]))
         self.assertIsNone(pp.parse_nickname(varint(2445) + b'\x00' * 5 +
                                              b'\x05A B C' + struct.pack('<HB', 11002, 14)))

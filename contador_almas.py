@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.82"
+VERSAO = "1.9.83"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3422,7 +3422,8 @@ def main():
                    else self.dps_last_hit)
             seconds = max(1.0, (end - self.dps_started) if end and self.dps_started else 1.0)
             total = sum(self.dps_damage.get(name, 0) for name in self.dps_party)
-            resumo.configure(text=f"{len(self.dps_party)} na PT  ·  {int(seconds) // 60:02d}:{int(seconds) % 60:02d}")
+            grupo = "Solo" if len(self.dps_party) == 1 else f"{len(self.dps_party)} na PT"
+            resumo.configure(text=f"{grupo}  ·  {int(seconds) // 60:02d}:{int(seconds) % 60:02d}")
             status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
                                    "PT encontrada. Aguardando o primeiro dano…"))
             biggest = max((self.dps_damage.get(name, 0) for name in self.dps_party), default=1) or 1
