@@ -282,15 +282,27 @@ class LeituraNpcap(unittest.TestCase):
         pp.Decoder(eventos.append).segment('jogo', 1000,
                                             frame(pp.OP_NICKNAME, payload))
         self.assertEqual(eventos, [('ready',), ('nickname', 'Vitória'),
+                                   ('dps_classes', {'Vitória': 'Ranger'}),
                                    ('dps_party', ['Vitória'])])
         com_flag = varint(len(payload) + 7) + b'\xf0' + pp.OP_NICKNAME + payload
         outros = []
         pp.Decoder(outros.append).segment('jogo', 2000, com_flag)
         self.assertEqual(outros, [('ready',), ('nickname', 'Vitória'),
+                                  ('dps_classes', {'Vitória': 'Ranger'}),
                                   ('dps_party', ['Vitória'])])
         self.assertIsNone(pp.parse_nickname(payload[:-2]))
         self.assertIsNone(pp.parse_nickname(varint(2445) + b'\x00' * 5 +
                                              b'\x05A B C' + struct.pack('<HB', 11002, 14)))
+
+    def test_roster_da_pt_traz_classe_de_cada_jogador(self):
+        nome = b'Misttylol'
+        cabecalho = (struct.pack('<I', 1) + b'\x02PT' + b'\x06' +
+                     struct.pack('<I', 600091) + b'\0\0' +
+                     struct.pack('<Q', (2305 << 48) | 1) + b'\0\0\0' + b'\x01')
+        membro = (b'\x2c\x01' + struct.pack('<Q', (2305 << 48) | 1000) +
+                  bytes([len(nome)]) + nome + struct.pack('<III', 24, 45, 2800))
+        detalhes = pp.parse_party_roster_details(cabecalho + membro)
+        self.assertEqual(detalhes, [('Misttylol', 'Elementalist')])
 
     def test_varias_almas_no_mesmo_evento_e_retransmissao(self):
         ganhos = []

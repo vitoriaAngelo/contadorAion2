@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.88"
+VERSAO = "1.9.89"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2354,6 +2354,8 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("personagem_rede", evento[1]))
                 elif evento[0] == "dps_party":
                     self.fila.put(("dps_party", evento[1]))
+                elif evento[0] == "dps_classes":
+                    self.fila.put(("dps_classes", evento[1]))
                 elif evento[0] == "dps_damage" and self.ativo.is_set():
                     self.fila.put(("dps_damage", (evento[1], evento[2])))
                 elif evento[0] == "dps_reset":
@@ -2450,6 +2452,7 @@ def main():
             self.kinah_abismo = 0
             self.dps_party = []
             self.dps_damage = {}
+            self.dps_classes = {}
             self.dps_started = None
             self.dps_last_hit = None
             self.boss_health = (0, 0)
@@ -3360,6 +3363,28 @@ def main():
                 pass
 
         # ---------------- DPS da PT ----------------
+        def _icone_classe(self, parent, classe):
+            cores = {
+                "Gladiator": "#5fc0d6", "Templar": "#6e91ee",
+                "Ranger": "#4dbe90", "Assassin": "#6fc85f",
+                "Elementalist": "#cf55d0", "Sorcerer": "#9b66ec",
+                "Cleric": "#e8be52", "Chanter": "#e59b4a", "Brawler": "#de3a41",
+            }
+            siglas = {"Gladiator": "G", "Templar": "T", "Ranger": "R",
+                      "Assassin": "A", "Elementalist": "E", "Sorcerer": "S",
+                      "Cleric": "+", "Chanter": "C", "Brawler": "B"}
+            tamanho = self.px(17)
+            cor = cores.get(classe, COR["suave"])
+            icone = tk.Canvas(parent, width=tamanho, height=tamanho, bg=COR["painel"],
+                              highlightthickness=0, bd=0)
+            margem = self.px(1)
+            icone.create_oval(margem, margem, tamanho - margem, tamanho - margem,
+                              fill=COR["fundo"], outline=cor, width=max(1, self.px(1)))
+            icone.create_text(tamanho // 2, tamanho // 2, text=siglas.get(classe, "?"),
+                              fill=cor, font=("Segoe UI", max(6, self.px(7)), "bold"))
+            self.dica(icone, classe or "Classe ainda não identificada")
+            return icone
+
         @staticmethod
         def _numero_dps(valor):
             valor = float(valor)
@@ -3403,16 +3428,19 @@ def main():
                 card.pack(fill="x", pady=(0, self.px(2)))
                 line = tk.Frame(card, bg=COR["painel"])
                 line.pack(fill="x", padx=self.px(5), pady=(self.px(2), self.px(1)))
-                line.columnconfigure(0, weight=1)
+                line.columnconfigure(1, weight=1)
+                classe = self.dps_classes.get(name, "")
+                icone = self._icone_classe(line, classe)
+                icone.grid(row=0, column=0, padx=(0, self.px(4)))
                 name_label = tk.Label(line, text=name, fg=COR["texto"], bg=COR["painel"],
                                       font=self.f_nome, anchor="w")
-                name_label.grid(row=0, column=0, sticky="ew")
+                name_label.grid(row=0, column=1, sticky="ew")
                 sub = tk.Label(line, text="", fg=COR["suave"], bg=COR["painel"],
                                font=self.f_peq, anchor="e")
-                sub.grid(row=0, column=1, padx=(self.px(4), self.px(6)))
+                sub.grid(row=0, column=2, padx=(self.px(4), self.px(6)))
                 value = tk.Label(line, text="", fg=COR["alma"], bg=COR["painel"],
                                  font=self.fontes["relogio"], anchor="e")
-                value.grid(row=0, column=2, sticky="e")
+                value.grid(row=0, column=3, sticky="e")
                 bar = tk.Canvas(card, height=self.px(2), bg=COR["barra"],
                                 highlightthickness=0, bd=0)
                 bar.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
@@ -5714,6 +5742,13 @@ def main():
                         if names != self.dps_party:
                             self.dps_party = names
                             self.dps_damage = {n: self.dps_damage.get(n, 0) for n in names}
+                            if self.cfg.get("aba") == "dps":
+                                self._estrutura = None
+                                self.render_em_breve()
+                    elif tipo == "dps_classes":
+                        novas = {str(nome): str(classe) for nome, classe in dado.items() if nome and classe}
+                        if any(self.dps_classes.get(nome) != classe for nome, classe in novas.items()):
+                            self.dps_classes.update(novas)
                             if self.cfg.get("aba") == "dps":
                                 self._estrutura = None
                                 self.render_em_breve()

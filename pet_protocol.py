@@ -391,7 +391,74 @@ def parse_player_nickname(payload):
     return None
 
 
-def parse_party_roster(payload):
+CLASS_NAMES = {
+    1: "Gladiator", 2: "Templar", 3: "Ranger", 4: "Assassin",
+    5: "Elementalist", 6: "Sorcerer", 7: "Cleric", 8: "Chanter", 9: "Brawler",
+}
+
+
+def class_from_wire(value):
+    ranges = ((5, 8), (9, 12), (13, 16), (17, 20), (21, 24),
+              (25, 28), (29, 32), (33, 36), (45, 48))
+    for number, (low, high) in enumerate(ranges, 1):
+        if low <= value <= high:
+            return CLASS_NAMES[number]
+    return ""
+
+
+def parse_party_roster_details(payload):
+    """Retorna (nome, classe) do roster; classe vazia se desconhecida."""
+    try:
+        p = 4
+        party_name = payload[p]
+        p += 1 + party_name
+        if not 1 <= payload[p] <= 12:
+            raise ValueError
+        p += 18
+        count, p = read_varint(payload, p)
+        if not 1 <= count <= 12:
+            raise ValueError
+        members = []
+        for index in range(count):
+            if p + 11 > len(payload):
+                break
+            slot = payload[p + 1]
+            server = struct.unpack_from("<H", payload, p + 8)[0]
+            size = payload[p + 10]
+            if not size:
+                break
+            if not server or server > 9999 or size > 40 or p + 11 + size + 12 > len(payload):
+                break
+            name = payload[p + 11:p + 11 + size].decode("utf-8")
+            p += 11 + size
+            cls = class_from_wire(struct.unpack_from("<I", payload, p)[0])
+            level = struct.unpack_from("<I", payload, p + 4)[0]
+            if not 1 <= level <= 200:
+                break
+            p += 12
+            members.append((name, cls))
+            if index + 1 == count:
+                break
+            found = -1
+            for at in range(p, min(p + 33, len(payload) - 11)):
+                next_server = struct.unpack_from("<H", payload, at + 8)[0]
+                next_size = payload[at + 10]
+                if (payload[at + 1] == slot + 1 and 0 < next_server <= 9999 and
+                        0 < next_size <= 40 and at + 11 + next_size <= len(payload)):
+                    try:
+                        payload[at + 11:at + 11 + next_size].decode("utf-8")
+                        found = at
+                        break
+                    except UnicodeDecodeError:
+                        pass
+            if found < 0:
+                break
+            p = found
+        if members:
+            return members
+    except (IndexError, UnicodeDecodeError, ValueError, struct.error):
+        pass
+    # Compatibilidade com a forma curta observada em builds anteriores.
     members = []
     i = 0
     while i + 1 < len(payload):
@@ -404,11 +471,15 @@ def parse_party_roster(payload):
                 payload[after + 1:after + 4] == b"\0\0\0" and
                 1 <= payload[after + 4] <= 60 and
                 payload[after + 5:after + 8] == b"\0\0\0"):
-            members.append(name)
+            members.append((name, ""))
             i = after + 8
         else:
             i += 1
     return list(dict.fromkeys(members))
+
+
+def parse_party_roster(payload):
+    return [name for name, _ in parse_party_roster_details(payload)]
 
 
 def parse_summon_owner(payload):
@@ -749,6 +820,15 @@ class Decoder:
                             self.entity_names[self.own_entity] = nome
                             log("nickname decoded", nome)
                             self.emit(("nickname", nome))
+                            try:
+                                _, at = read_varint(payload, 0)
+                                at += 5
+                                size, at = read_varint(payload, at)
+                                classe = class_from_wire(payload[at + size + 2])
+                                if classe:
+                                    self.emit(("dps_classes", {nome: classe}))
+                            except (IndexError, ValueError):
+                                pass
                             if not self.party_names:
                                 self.emit(("dps_party", [nome]))
                         else:
@@ -759,8 +839,12 @@ class Decoder:
                         if player:
                             self.entity_names[player[0]] = player[1]
                     elif op == OP_PARTY_ROSTER:
-                        members = parse_party_roster(payload)
+                        details = parse_party_roster_details(payload)
+                        members = [name for name, _ in details]
                         self.party_names = set(members)
+                        classes = {name: classe for name, classe in details if classe}
+                        if classes:
+                            self.emit(("dps_classes", classes))
                         shown = members or ([self.own_name] if self.own_name else [])
                         if shown:
                             self.emit(("dps_party", shown))
