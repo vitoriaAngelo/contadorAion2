@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.105"
+VERSAO = "1.9.106"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -4061,27 +4061,16 @@ def main():
 
         # ---------------- aba OD ----------------
         def _icone_od(self, pai, tipo):
-            """Cristal facetado na cor da qualidade, desenhado na escala da tela."""
-            tamanho = self.px(24)
+            """Gota de energia minimalista na cor da qualidade."""
+            tamanho = self.px(18)
             icone = tk.Canvas(pai, width=tamanho, height=tamanho,
                               bg=pai["bg"], highlightthickness=0, bd=0)
             cor = OD_CORES[tipo]
-            rgb = tuple(int(cor[i:i + 2], 16) for i in (1, 3, 5))
-            sombra = "#" + "".join(f"{int(c * .48):02x}" for c in rgb)
-            luz = "#" + "".join(f"{int(c + (255 - c) * .65):02x}" for c in rgb)
             def pontos(*valores):
-                return [v * tamanho / 24 for v in valores]
-            icone.create_polygon(*pontos(12, 2, 19, 8, 17, 17, 12, 22, 5, 16, 5, 8),
-                                 fill=cor, outline=luz, width=1)
-            icone.create_polygon(*pontos(12, 2, 12, 11, 5, 8),
-                                 fill=luz, outline="")
-            icone.create_polygon(*pontos(12, 11, 19, 8, 17, 17, 12, 22),
-                                 fill=sombra, outline="")
-            icone.create_line(*pontos(5, 8, 12, 11, 12, 22), fill=luz)
-            icone.create_line(*pontos(12, 2, 12, 11, 19, 8), fill=luz)
-            if tipo == "OD Radiante":
-                icone.create_line(*pontos(20, 1, 20, 7), fill=luz)
-                icone.create_line(*pontos(17, 4, 23, 4), fill=luz)
+                return [v * tamanho / 18 for v in valores]
+            icone.create_polygon(*pontos(9, 2, 9, 2, 14, 9, 14, 13,
+                                         9, 16, 4, 13, 4, 9),
+                                 fill=cor, outline="", smooth=True, splinesteps=24)
             self.dica(icone, tipo)
             return icone
 
