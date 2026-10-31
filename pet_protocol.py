@@ -840,7 +840,13 @@ class Decoder:
                             self.entity_names[player[0]] = player[1]
                     elif op == OP_PARTY_ROSTER:
                         details = parse_party_roster_details(payload)
-                        members = [name for name, _ in details]
+                        def nome_jogador(nome):
+                            texto = str(nome or "").strip()
+                            if not texto or texto.upper() in {"ALL", "UNKNOWN", "NONE"}:
+                                return False
+                            alnum = sum(ch.isalnum() for ch in texto)
+                            return alnum >= 2 and texto.count("|") < max(2, len(texto) // 2)
+                        members = [name for name, _ in details if nome_jogador(name)]
                         # Durante um teleport interno o jogo pode enviar um roster vazio ou parcial.
                         if members and (not self.party_names or len(members) >= len(self.party_names)):
                             self.party_names = set(members)
