@@ -863,11 +863,15 @@ class Decoder:
                             if skill // 10000 * 10000 in HEAL_SKILL_BASES or 2_000_000 <= skill < 3_000_000:
                                 continue
                             if target in self.boss_entities:
-                                if target != self.current_boss:
-                                    if self.current_boss is not None:
+                                # Adds resistentes também podem ultrapassar o
+                                # limite de vida de boss. Não troque de encontro
+                                # a cada alvo: isso reiniciava o timer em 00:01.
+                                if self.current_boss in (None, -1):
+                                    if self.current_boss == -1:
                                         self.emit(("dps_reset",))
                                     self.current_boss = target
-                                current, maximum = self.boss_health.get(target, (0, 0))
+                                current, maximum = (self.boss_health.get(self.current_boss, (0, 0))
+                                                    if target == self.current_boss else (0, 0))
                                 # Sempre avisa a interface quando o alvo muda.
                                 # Alguns chefes aparecem primeiro sem o pacote de
                                 # vida; sem este evento o painel ficava preso no
@@ -876,7 +880,7 @@ class Decoder:
                                     self.emit(("boss_health", 0, 0))
                                 if maximum > 0:
                                     current = max(0, current - amount)
-                                    self.boss_health[target] = (current, maximum)
+                                    self.boss_health[self.current_boss] = (current, maximum)
                                     self.emit(("boss_health", current, maximum))
                             owner = self.summon_owners.get(actor)
                             source_id = owner[0] if owner and owner[0] else actor
