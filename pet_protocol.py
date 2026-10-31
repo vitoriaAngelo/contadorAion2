@@ -860,6 +860,12 @@ class Decoder:
                                         self.emit(("dps_reset",))
                                     self.current_boss = target
                                 current, maximum = self.boss_health.get(target, (0, 0))
+                                # Sempre avisa a interface quando o alvo muda.
+                                # Alguns chefes aparecem primeiro sem o pacote de
+                                # vida; sem este evento o painel ficava preso no
+                                # chefe anterior.
+                                if maximum <= 0:
+                                    self.emit(("boss_health", 0, 0))
                                 if maximum > 0:
                                     current = max(0, current - amount)
                                     self.boss_health[target] = (current, maximum)
@@ -905,6 +911,9 @@ class Decoder:
                             if maximum is not None and maximum >= 500_000:
                                 self.boss_entities.add(mob[0])
                                 self.boss_health[mob[0]] = health
+                                if self.current_boss is None:
+                                    self.current_boss = mob[0]
+                                    self.emit(("boss_health", health[0], health[1]))
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
@@ -913,6 +922,7 @@ class Decoder:
                             self.boss_entities.discard(entity)
                             self.boss_health.pop(entity, None)
                             if entity == self.current_boss:
+                                self.current_boss = None
                                 self.emit(("boss_health", 0, 0))
                             self.emit(("mob_remove", entity))
             except Exception as e:
