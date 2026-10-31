@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.99"
+VERSAO = "1.9.100"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2528,9 +2528,9 @@ def main():
             tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
                      font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
             self._lbl_hora_local = tk.Label(
-                rod, text="", fg="#5a6070", bg=COR["fundo"],
+                rod, text="", fg=COR["alma"], bg=COR["fundo"],
                 font=self.fontes["relogio"], width=6, anchor="center")
-            self._lbl_hora_local.pack(side="right")
+            self._lbl_hora_local.place(relx=0.5, rely=0.5, anchor="center")
             self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
                                          font=self.fontes["relogio"], width=7, anchor="e")
             self._lbl_relogio.pack(side="right")
