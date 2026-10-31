@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.103"
+VERSAO = "1.9.104"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2586,13 +2586,21 @@ def main():
 
             # fontes com nome: mudar o tamanho no menu atualiza tudo na hora
             import tkinter.font as tkfont
+            disponiveis = {nome.lower(): nome for nome in tkfont.families(self.root)}
+            def escolher_fonte(*opcoes):
+                return next((disponiveis[nome.lower()] for nome in opcoes
+                             if nome.lower() in disponiveis), opcoes[-1])
+            fonte_texto = escolher_fonte("Segoe UI Variable Text", "Segoe UI", "Tahoma")
+            fonte_destaque = escolher_fonte("Bahnschrift SemiBold", "Segoe UI Semibold",
+                                             "Segoe UI", "Tahoma")
+            fonte_numeros = escolher_fonte("Cascadia Mono", "Consolas", "Courier New")
             self._fontes_base = {
-                "titulo": ("Segoe UI", 10, "bold"), "nome": ("Segoe UI", 9, "bold"),
-                "peq": ("Segoe UI", 8, "normal"), "estrela": ("Segoe UI", 10, "normal"),
-                "alma_nome": ("Segoe UI", 8, "bold"), "alma_peq": ("Segoe UI", 7, "normal"),
-                "botao": ("Segoe UI", 10, "normal"), "botao_b": ("Segoe UI", 10, "bold"),
-                "fechar": ("Segoe UI", 9, "bold"), "relogio": ("Consolas", 9, "bold"),
-                "evento": ("Segoe UI", 8, "bold"), "versao": ("Segoe UI", 7, "normal"),
+                "titulo": (fonte_destaque, 11, "bold"), "nome": (fonte_destaque, 10, "bold"),
+                "peq": (fonte_texto, 9, "normal"), "estrela": (fonte_texto, 11, "normal"),
+                "alma_nome": (fonte_destaque, 9, "bold"), "alma_peq": (fonte_texto, 8, "normal"),
+                "botao": (fonte_texto, 10, "normal"), "botao_b": (fonte_destaque, 10, "bold"),
+                "fechar": (fonte_destaque, 10, "bold"), "relogio": (fonte_numeros, 10, "bold"),
+                "evento": (fonte_destaque, 9, "bold"), "versao": (fonte_texto, 8, "normal"),
             }
             self.fontes = {k: tkfont.Font(root=self.root, family=f, size=t, weight=p)
                            for k, (f, t, p) in self._fontes_base.items()}
