@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.97"
+VERSAO = "1.9.98"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -3153,6 +3153,7 @@ def main():
                 for m in visiveis:
                     self._ui[id(m)] = self._linha(m, meta)
             self._lbl_evento = None
+            self._lbl_hora_local = None
             if mostra_rodape:
                 rod = tk.Frame(self.corpo, bg=COR["fundo"])
                 rod.pack(fill="x", pady=(self.px(4), 0))
@@ -3161,6 +3162,10 @@ def main():
                 self._lbl_rodape.pack(side="left")
                 tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
                          font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
+                self._lbl_hora_local = tk.Label(
+                    rod, text="", fg="#5a6070", bg=COR["fundo"],
+                    font=self.fontes["versao"])
+                self._lbl_hora_local.pack(side="left", padx=(self.px(4), 0))
                 self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
                                              font=self.fontes["relogio"], width=7, anchor="e")
                 self._lbl_relogio.pack(side="right")
@@ -3269,7 +3274,7 @@ def main():
             campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
                       "_od_ui", "_materiais_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
                       "_b_crono_home", "_pets_tree", "_dps_ui",
-                      "_pets_resumo", "_pets_busca", "_lbl_evento",
+                      "_pets_resumo", "_pets_busca", "_lbl_evento", "_lbl_hora_local",
                       "_lbl_relogio", "_ev_cache", "_ev_quando")
             self._abas_visuais[atual] = {
                 "corpo": self.corpo,
@@ -4456,6 +4461,14 @@ def main():
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
             minuto fica vermelho e piscando. So mexe nesses dois textos."""
             import datetime as dt
+            hora_local = getattr(self, "_lbl_hora_local", None)
+            if hora_local is not None:
+                try:
+                    texto_hora = "· " + dt.datetime.now().strftime("%H:%M")
+                    if hora_local.cget("text") != texto_hora:
+                        hora_local.configure(text=texto_hora)
+                except Exception:
+                    pass
             lbl, rel = getattr(self, "_lbl_evento", None), getattr(self, "_lbl_relogio", None)
             if lbl is not None and rel is not None:
                 try:
