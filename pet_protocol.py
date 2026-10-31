@@ -841,7 +841,9 @@ class Decoder:
                     elif op == OP_PARTY_ROSTER:
                         details = parse_party_roster_details(payload)
                         members = [name for name, _ in details]
-                        self.party_names = set(members)
+                        # Durante um teleport interno o jogo pode enviar um roster vazio ou parcial.
+                        if members and (not self.party_names or len(members) >= len(self.party_names)):
+                            self.party_names = set(members)
                         classes = {name: classe for name, classe in details if classe}
                         if classes:
                             self.emit(("dps_classes", classes))
