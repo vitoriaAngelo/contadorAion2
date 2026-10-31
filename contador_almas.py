@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.101"
+VERSAO = "1.9.102"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -131,6 +131,37 @@ def pasta_base():
 BASE = pasta_base()
 ARQ_CONFIG = os.path.join(BASE, "config.json")
 ARQ_DADOS = os.path.join(BASE, "progresso.json")
+CLASS_ICON_FILES = {
+    "Gladiator": "gladiator.png", "Templar": "templar.png",
+    "Ranger": "ranger.png", "Assassin": "assassin.png",
+    "Elementalist": "spiritmaster.png", "Sorcerer": "sorcerer.png",
+    "Cleric": "cleric.png", "Chanter": "chanter.png", "Brawler": "fighter.png",
+}
+
+
+def garantir_icones_classes():
+    """Baixa o pacote visual uma unica vez; falhas mantem o icone reserva."""
+    pasta = os.path.join(BASE, "class_icons")
+    faltando = [nome for nome in CLASS_ICON_FILES.values()
+                if not os.path.isfile(os.path.join(pasta, nome))]
+    if not faltando:
+        return
+    try:
+        import io
+        import zipfile
+        dados = baixar_texto(REPO_RAW + "class_icons.zip", timeout=8)
+        os.makedirs(pasta, exist_ok=True)
+        with zipfile.ZipFile(io.BytesIO(dados)) as pacote:
+            for nome in set(CLASS_ICON_FILES.values()):
+                conteudo = pacote.read(nome)
+                if not conteudo.startswith(b"\x89PNG\r\n\x1a\n"):
+                    raise ValueError("icone de classe invalido")
+                temporario = os.path.join(pasta, nome + ".novo")
+                with open(temporario, "wb") as arquivo:
+                    arquivo.write(conteudo)
+                os.replace(temporario, os.path.join(pasta, nome))
+    except Exception as erro:
+        registrar("ICONES DE CLASSE: " + str(erro))
 
 # Padroes (expressoes regulares) que reconhecem a mensagem de alma.
 # O grupo (?P<nome>...) e o nome do monstro. Edite pelo menu "Ver leitura".
@@ -2366,7 +2397,7 @@ class LeitorRede(threading.Thread):
                 elif evento[0] == "dps_classes":
                     self.fila.put(("dps_classes", evento[1]))
                 elif evento[0] == "dps_damage" and self.ativo.is_set():
-                    self.fila.put(("dps_damage", (evento[1], evento[2])))
+                    self.fila.put(("dps_damage", (evento[1], evento[2], time.monotonic())))
                 elif evento[0] == "dps_reset":
                     self.fila.put(("dps_reset", None))
                 elif evento[0] == "boss_health":
@@ -2432,6 +2463,8 @@ def main():
                 ctypes.windll.user32.SetProcessDPIAware()
             except Exception:
                 pass
+
+    garantir_icones_classes()
 
     import tkinter as tk
     from tkinter import simpledialog, messagebox
@@ -3328,6 +3361,25 @@ def main():
                       "Cleric": "+", "Chanter": "C", "Brawler": "B"}
             tamanho = self.px(17)
             cor = cores.get(classe, COR["suave"])
+            arquivo = CLASS_ICON_FILES.get(classe)
+            caminho = os.path.join(BASE, "class_icons", arquivo) if arquivo else ""
+            if caminho and os.path.isfile(caminho):
+                try:
+                    cache = getattr(self, "_imagens_classes", {})
+                    self._imagens_classes = cache
+                    chave = (classe, tamanho)
+                    imagem = cache.get(chave)
+                    if imagem is None:
+                        original = tk.PhotoImage(file=caminho)
+                        divisor = max(1, round(original.width() / tamanho))
+                        imagem = original.subsample(divisor, divisor)
+                        cache[chave] = imagem
+                    icone = tk.Label(parent, image=imagem, bg=COR["painel"],
+                                     bd=0, highlightthickness=0, padx=0, pady=0)
+                    self.dica(icone, classe)
+                    return icone
+                except tk.TclError:
+                    pass
             icone = tk.Canvas(parent, width=tamanho, height=tamanho, bg=COR["painel"],
                               highlightthickness=0, bd=0)
             margem = self.px(1)
@@ -3401,12 +3453,6 @@ def main():
                 rows[name] = (card, value, sub, bar, fill)
             self._dps_ui = (resumo, status, rows, boss_valor, boss_barra, boss_fill)
             self._atualizar_dps()
-
-            def pulse():
-                if self.cfg.get("aba") == "dps" and getattr(self, "_dps_ui", None):
-                    self._atualizar_dps()
-                    self.root.after(500, pulse)
-            self.root.after(500, pulse)
 
         def _atualizar_dps(self):
             ui = getattr(self, "_dps_ui", None)
@@ -4530,6 +4576,8 @@ def main():
                     self._atualizar_od()
                 elif self.cfg.get("aba") == "materiais":
                     self._atualizar_materiais()
+                elif self.cfg.get("aba") == "dps":
+                    self._atualizar_dps()
             except Exception:
                 pass
             if agendar:
@@ -5829,7 +5877,8 @@ def main():
                         names = list(dict.fromkeys(str(n) for n in dado if n))
                         if names != self.dps_party:
                             self.dps_party = names
-                            self.dps_damage = {n: self.dps_damage.get(n, 0) for n in names}
+                            for nome in names:
+                                self.dps_damage.setdefault(nome, 0)
                             if self.cfg.get("aba") == "dps":
                                 self._estrutura = None
                                 self.render_em_breve()
@@ -5841,9 +5890,15 @@ def main():
                                 self._estrutura = None
                                 self.render_em_breve()
                     elif tipo == "dps_damage":
-                        name, amount = dado
+                        name, amount, instante = dado
                         amount = int(amount)
-                        now = time.monotonic()
+                        if name not in self.dps_party:
+                            self.dps_party.append(name)
+                            self.dps_damage.setdefault(name, 0)
+                            if self.cfg.get("aba") == "dps":
+                                self._estrutura = None
+                                self.render_em_breve()
+                        now = float(instante)
                         if self.dps_last_hit is not None and now - self.dps_last_hit >= 10:
                             self.dps_damage = {n: 0 for n in self.dps_party}
                             self.dps_started = now
@@ -5851,7 +5906,6 @@ def main():
                             self.dps_started = now
                         self.dps_last_hit = now
                         self.dps_damage[name] = self.dps_damage.get(name, 0) + max(0, amount)
-                        self._atualizar_dps()
                     elif tipo == "dps_reset":
                         self.dps_zerar()
                     elif tipo == "boss_health":
