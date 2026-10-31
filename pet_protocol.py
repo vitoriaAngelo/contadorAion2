@@ -848,7 +848,13 @@ class Decoder:
                             return alnum >= 2 and texto.count("|") < max(2, len(texto) // 2)
                         members = [name for name, _ in details if nome_jogador(name)]
                         # Durante um teleport interno o jogo pode enviar um roster vazio ou parcial.
-                        if members and (not self.party_names or len(members) >= len(self.party_names)):
+                        if not members:
+                            # Roster vazio confirmado pelo jogo: fica solo para
+                            # não continuar aceitando dano da PT anterior.
+                            self.party_names = set()
+                        elif len(members) == 1 and members[0] == self.own_name:
+                            self.party_names = set(members)
+                        elif not self.party_names or len(members) >= len(self.party_names):
                             self.party_names = set(members)
                         classes = {name: classe for name, classe in details if classe}
                         if classes:
