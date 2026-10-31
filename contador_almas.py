@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.96"
+VERSAO = "1.9.97"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -4017,6 +4017,7 @@ def main():
             seletores = tk.Frame(area, bg=COR["fundo"])
             seletores.pack(fill="x", pady=(0, self.px(6)))
             grupos_materiais = ("Ore", "Gem", "Log", "Herb", "Ingredient")
+            self._material_grupos_visiveis = ()
             self._material_grupo = getattr(self, "_material_grupo", "Ore")
             if self._material_grupo not in grupos_materiais:
                 self._material_grupo = "Ore"
@@ -4031,19 +4032,21 @@ def main():
                            b.configure(fg=MATERIAL_CORES[g] if g == self._material_grupo
                                        else COR["suave"]))
                 self._material_botoes[grupo] = botao
-            botoes = list(self._material_botoes.values())
-            def ajustar_categorias(e):
-                colunas = 5 if e.width >= self.px(440) else (3 if e.width >= self.px(300) else 2)
-                if getattr(seletores, "_colunas", None) == colunas:
-                    return
-                seletores._colunas = colunas
-                for coluna in range(len(botoes)):
+            def ajustar_categorias(e=None):
+                largura = e.width if e is not None else seletores.winfo_width()
+                colunas = 5 if largura >= self.px(440) else (3 if largura >= self.px(300) else 2)
+                visiveis = getattr(self, "_material_grupos_visiveis", ())
+                for botao in self._material_botoes.values():
+                    botao.grid_forget()
+                for coluna in range(5):
                     seletores.columnconfigure(coluna, weight=1 if coluna < colunas else 0,
                                                uniform="categorias")
-                for i, botao in enumerate(botoes):
+                for i, grupo in enumerate(visiveis):
+                    botao = self._material_botoes[grupo]
                     botao.grid(row=i // colunas, column=i % colunas, sticky="ew",
                                padx=self.px(2), pady=self.px(2))
             seletores.bind("<Configure>", ajustar_categorias)
+            self._ajustar_categorias_materiais = ajustar_categorias
             caixa = tk.Frame(area, bg=COR["fundo"])
             caixa.pack(fill="both", expand=True)
             canvas = tk.Canvas(caixa, bg=COR["fundo"], highlightthickness=0,
@@ -4140,9 +4143,17 @@ def main():
             for item, (grupo, nome) in GATHER_ITEM_TYPES.items():
                 quantidade = self.prog.materiais.get(str(item), 0)
                 totais[grupo] += quantidade
+            grupos_visiveis = tuple(grupo for grupo in grupos if totais[grupo] > 0)
+            if self._material_grupo not in grupos_visiveis and grupos_visiveis:
+                self._material_grupo = grupos_visiveis[0]
+            if grupos_visiveis != getattr(self, "_material_grupos_visiveis", ()):
+                self._material_grupos_visiveis = grupos_visiveis
+                self._ajustar_categorias_materiais()
+            for item, (grupo, nome) in GATHER_ITEM_TYPES.items():
+                quantidade = self.prog.materiais.get(str(item), 0)
                 if grupo == self._material_grupo and quantidade > 0:
                     linhas.append((grupo, nome, str(item), quantidade))
-            texto = self._material_grupo
+            texto = self._material_grupo if grupos_visiveis else "Nenhum material coletado"
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
             cor_grupo = MATERIAL_CORES[self._material_grupo]
