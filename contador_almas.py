@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.98"
+VERSAO = "1.9.99"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2520,10 +2520,30 @@ def main():
             self._montar_cabecalho()
             self.area_abas = tk.Frame(self.root, bg=COR["fundo"])
             self.area_abas.pack(fill="both", expand=True, padx=self.px(8), pady=(0, self.px(8)))
+            rod = tk.Frame(self.area_abas, bg=COR["fundo"])
+            rod.pack(side="bottom", fill="x", pady=(self.px(4), 0))
+            self._lbl_rodape = tk.Label(rod, text="", fg=COR["suave"],
+                                        bg=COR["fundo"], font=self.f_peq)
+            self._lbl_rodape.pack(side="left")
+            tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
+                     font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
+            self._lbl_hora_local = tk.Label(
+                rod, text="", fg="#5a6070", bg=COR["fundo"],
+                font=self.fontes["relogio"], width=6, anchor="center")
+            self._lbl_hora_local.pack(side="right")
+            self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
+                                         font=self.fontes["relogio"], width=7, anchor="e")
+            self._lbl_relogio.pack(side="right")
+            self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
+                                        bg=COR["fundo"], font=self.fontes["evento"])
+            self._lbl_evento.pack(side="right")
+            self._ev_cache = None
+            self._ev_quando = None
             self._abas_visuais = {}
             self.corpo = tk.Frame(self.area_abas, bg=COR["fundo"])
-            self.corpo.pack(fill="both", expand=True)
+            self.corpo.pack(side="top", fill="both", expand=True)
             self.render()
+            self.atualizar_evento(agendar=False)
 
             canto = tk.Canvas(self.root, width=self.px(14), height=self.px(14),
                               bg=COR["fundo"], highlightthickness=0, cursor="size_nw_se")
@@ -3108,7 +3128,6 @@ def main():
             for w in self.corpo.winfo_children():
                 w.destroy()
             self._ui = {}
-            self._lbl_rodape = None
             if vazio:
                 tk.Label(self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
                          font=self.f_peq, wraplength=self.px(240),
@@ -3152,28 +3171,8 @@ def main():
             else:
                 for m in visiveis:
                     self._ui[id(m)] = self._linha(m, meta)
-            self._lbl_evento = None
-            self._lbl_hora_local = None
-            if mostra_rodape:
-                rod = tk.Frame(self.corpo, bg=COR["fundo"])
-                rod.pack(fill="x", pady=(self.px(4), 0))
-                self._lbl_rodape = tk.Label(rod, text=rodape, fg=COR["suave"],
-                                            bg=COR["fundo"], font=self.f_peq)
-                self._lbl_rodape.pack(side="left")
-                tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
-                         font=self.fontes["versao"]).pack(side="left", padx=(self.px(6), 0))
-                self._lbl_hora_local = tk.Label(
-                    rod, text="", fg="#5a6070", bg=COR["fundo"],
-                    font=self.fontes["versao"])
-                self._lbl_hora_local.pack(side="left", padx=(self.px(4), 0))
-                self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
-                                             font=self.fontes["relogio"], width=7, anchor="e")
-                self._lbl_relogio.pack(side="right")
-                self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
-                                            bg=COR["fundo"], font=self.fontes["evento"])
-                self._lbl_evento.pack(side="right")
-                self._ev_cache = None
-                self.atualizar_evento(agendar=False)
+            if self._lbl_rodape.cget("text") != rodape:
+                self._lbl_rodape.configure(text=rodape)
 
         # ---------------- rolagem da lista ----------------
         def _montar_rolagem(self):
@@ -3271,11 +3270,10 @@ def main():
                 self._altura_materiais_chave = None
             elif atual == "materiais" and proxima != "materiais":
                 altura_restaurar = getattr(self, "_altura_antes_materiais", None)
-            campos = ("_estrutura", "_ui", "_lbl_rodape", "_rolagem", "_info",
+            campos = ("_estrutura", "_ui", "_rolagem", "_info",
                       "_od_ui", "_materiais_ui", "_lbl_abismo", "_lbl_crono", "_b_crono", "_lbl_crono_home",
                       "_b_crono_home", "_pets_tree", "_dps_ui",
-                      "_pets_resumo", "_pets_busca", "_lbl_evento", "_lbl_hora_local",
-                      "_lbl_relogio", "_ev_cache", "_ev_quando")
+                      "_pets_resumo", "_pets_busca")
             self._abas_visuais[atual] = {
                 "corpo": self.corpo,
                 **{campo: getattr(self, campo, None) for campo in campos},
@@ -4464,7 +4462,7 @@ def main():
             hora_local = getattr(self, "_lbl_hora_local", None)
             if hora_local is not None:
                 try:
-                    texto_hora = "· " + dt.datetime.now().strftime("%H:%M")
+                    texto_hora = dt.datetime.now().strftime("%H:%M")
                     if hora_local.cget("text") != texto_hora:
                         hora_local.configure(text=texto_hora)
                 except Exception:
