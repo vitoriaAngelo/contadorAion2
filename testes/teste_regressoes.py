@@ -8,6 +8,14 @@ import contador_almas as ca
 
 
 class Regressoes(unittest.TestCase):
+    def test_dps_fica_em_ordem_do_maior_dano(self):
+        nomes = ['Cleric', 'Gladiator', 'Ranger', 'Templar']
+        danos = {'Cleric': 800, 'Gladiator': 2500, 'Ranger': 1200, 'Templar': 1200}
+        self.assertEqual(
+            ca.ordenar_dps(nomes, danos),
+            ['Gladiator', 'Ranger', 'Templar', 'Cleric'],
+        )
+
     def test_tempo_de_farm_mostra_horas_acima_de_99(self):
         self.assertEqual(ca.formatar_tempo_farm(3661), '01:01:01')
         self.assertEqual(ca.formatar_tempo_farm(360000), '100:00:00')

@@ -526,6 +526,12 @@ def formatar_tempo_farm(segundos):
     return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
 
+def ordenar_dps(nomes, danos):
+    """Ordena a PT por dano decrescente, preservando a ordem nos empates."""
+    posicao = {nome: indice for indice, nome in enumerate(nomes)}
+    return sorted(nomes, key=lambda nome: (-danos.get(nome, 0), posicao[nome]))
+
+
 def proximo_evento(eventos, agora=None):
     """Texto curto do proximo evento (usado nos testes)."""
     import datetime as dt
@@ -3375,7 +3381,7 @@ def main():
             area = tk.Frame(self.corpo, bg=COR["fundo"])
             area.pack(fill="x")
             rows = {}
-            for name in self.dps_party:
+            for name in ordenar_dps(self.dps_party, self.dps_damage):
                 card = tk.Frame(area, bg=COR["painel"], highlightthickness=1,
                                 highlightbackground=COR["barra"])
                 card.pack(fill="x", pady=(0, self.px(2)))
@@ -3398,7 +3404,7 @@ def main():
                                 highlightthickness=0, bd=0)
                 bar.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
                 fill = bar.create_rectangle(0, 0, 0, self.px(2), fill=COR["alma"], width=0)
-                rows[name] = (value, sub, bar, fill)
+                rows[name] = (card, value, sub, bar, fill)
             self._dps_ui = (resumo, status, rows, boss_valor, boss_barra, boss_fill)
             self._atualizar_dps()
 
@@ -3437,7 +3443,14 @@ def main():
             status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
                                    "PT encontrada. Aguardando o primeiro dano…"))
             biggest = max((self.dps_damage.get(name, 0) for name in self.dps_party), default=1) or 1
-            for name, (value, sub, bar, fill) in rows.items():
+            # O maior dano fica sempre no topo. Reempacotar os mesmos cartoes
+            # evita recriar a interface a cada pacote recebido.
+            for name in ordenar_dps(self.dps_party, self.dps_damage):
+                row = rows.get(name)
+                if row:
+                    row[0].pack_forget()
+                    row[0].pack(fill="x", pady=(0, self.px(2)))
+            for name, (_card, value, sub, bar, fill) in rows.items():
                 damage = self.dps_damage.get(name, 0)
                 dps = damage / seconds
                 share = 100 * damage / total if total else 0
