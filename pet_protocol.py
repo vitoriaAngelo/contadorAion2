@@ -976,6 +976,16 @@ def run_sniffer(emit, stop_event=None):
             time.sleep(2)
 
     threading.Thread(target=watch_game, daemon=True).start()
+    # Aguarda a conexão do jogo antes de abrir o Npcap. Capturar todo o TCP de
+    # todas as interfaces causava um pico grande ao iniciar o contador.
+    limite_portas = time.monotonic() + 8.0
+    while not game_ports and time.monotonic() < limite_portas:
+        if stop_event is not None and stop_event.wait(0.2):
+            return
+        time.sleep(0.2) if stop_event is None else None
+    filtro_portas = " or ".join(f"dst port {porta}" for porta in sorted(game_ports))
+    filtro_captura = f"tcp and ({filtro_portas})" if filtro_portas else \
+        "tcp and not port 443 and not port 80"
     decoder = Decoder(emit, INVENTORY_STATE_FILE)
     lock = threading.Lock()
     recent_packets = {}
@@ -1010,7 +1020,7 @@ def run_sniffer(emit, stop_event=None):
         if not iface.ip:
             continue
         try:
-            s = AsyncSniffer(iface=iface.network_name, filter="tcp and not port 443 and not port 80",
+            s = AsyncSniffer(iface=iface.network_name, filter=filtro_captura,
                              prn=on_packet, store=False)
             s.start()
             sniffers.append(s)
