@@ -908,6 +908,13 @@ class Decoder:
                                 self.emit(("boss_health", 0, 0))
                                 self.own_entity = None
                             self.zone_id = zone[0]
+                            # Teleport pode manter, trocar ou desfazer a PT.
+                            # Limpa a referência de rede e deixa a interface
+                            # aguardar brevemente um roster novo; sem roster,
+                            # ela mantém apenas o próprio personagem.
+                            self.party_names.clear()
+                            if self.own_name:
+                                self.emit(("dps_party", [self.own_name]))
                             self.emit(("zone",) + zone)
                     elif op == OP_LOCAL_POSITION:
                         position = parse_local_position(payload, self.own_entity)
