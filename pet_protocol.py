@@ -920,17 +920,21 @@ class Decoder:
                                 self.boss_entities.add(mob[0])
                                 self.boss_health[mob[0]] = health
                                 if self.current_boss is None:
-                                    self.current_boss = mob[0]
                                     self.emit(("boss_health", health[0], health[1]))
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
                         if entity is not None:
+                            vida_removida = self.boss_health.get(entity)
                             self.summon_owners.pop(entity, None)
                             self.boss_entities.discard(entity)
                             self.boss_health.pop(entity, None)
                             if entity == self.current_boss:
-                                self.current_boss = None
+                                # Só marca fim real quando a vida chegou a zero.
+                                # Ao morrer/teleportar, o boss pode apenas sair
+                                # do alcance do cliente e o DPS deve continuar.
+                                if vida_removida and vida_removida[0] <= 0:
+                                    self.current_boss = -1
                                 self.emit(("boss_health", 0, 0))
                             self.emit(("mob_remove", entity))
             except Exception as e:
