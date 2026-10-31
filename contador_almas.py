@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.95"
+VERSAO = "1.9.96"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -2897,10 +2897,6 @@ def main():
                                     fonte=self.f_nome,
                                     dica="DPS e dano total dos membros da PT")
             self.b_dps.pack(side="right")
-            self.b_pets = self.botao(h, "\u2726 Pets" if self.cfg.get("aba") == "pets" else "Pets",
-                                     lambda e: self.alternar_aba("pets"),
-                                     dica="Lista de todos os pets e progresso de almas")
-            self.b_pets.pack(side="right")
             self.b_inicio = self.botao(h, self.tr("Início", "Home"), lambda e: self.alternar_aba("almas"),
                                        fonte=self.f_nome, dica="Almas recebidas")
             self.b_inicio.pack(side="right")
@@ -2911,18 +2907,16 @@ def main():
 
             # A navegação não disputa mais espaço com título, personagem e status.
             # Na largura mínima, todos os destinos continuam clicáveis.
-            for antigo in (self.b_od, self.b_dps, self.b_pets, self.b_inicio):
+            for antigo in (self.b_od, self.b_dps, self.b_inicio):
                 antigo.destroy()
             self.b_config_top.destroy()
             nav = tk.Frame(self.root, bg=COR["fundo"])
             nav.pack(fill="x", padx=self.px(8), pady=(0, self.px(5)))
             self._nav = nav
-            for coluna in range(5):
+            for coluna in range(4):
                 nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
             self.b_inicio = self.botao(nav, self.tr("Início", "Home"), lambda e: self.alternar_aba("almas"),
                                        fonte=self.f_nome, dica="Almas recebidas")
-            self.b_pets = self.botao(nav, "Pets", lambda e: self.alternar_aba("pets"),
-                                     fonte=self.f_nome, dica="Lista de todos os pets")
             self.b_dps = self.botao(nav, "DPS", lambda e: self.alternar_aba("dps"),
                                     fonte=self.f_nome, dica="DPS dos membros da PT")
             self.b_od = self.botao(nav, self.tr("Materiais", "Materials"), lambda e: self.alternar_aba(
@@ -2930,10 +2924,9 @@ def main():
                 fonte=self.f_nome, dica="ODs e materiais de coleta")
             b_config = self.botao(nav, "\u2699", self.menu_principal,
                                   fonte=self.f_nome, dica="Opções")
-            for coluna, botao in enumerate((self.b_inicio, self.b_pets, self.b_dps,
-                                             self.b_od, b_config)):
+            for coluna, botao in enumerate((self.b_inicio, self.b_dps, self.b_od, b_config)):
                 botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1), ipady=self.px(5))
-            for botao in (self.b_inicio, self.b_pets, self.b_dps, self.b_od):
+            for botao in (self.b_inicio, self.b_dps, self.b_od):
                 botao.bind("<Leave>", lambda e: self._pintar_nav())
             self._pintar_nav()
             for w in (h, t, self.lbl_status):
@@ -2945,7 +2938,6 @@ def main():
         def _pintar_nav(self):
             aba = self.cfg.get("aba", "almas")
             for botao, ativo in ((self.b_inicio, aba == "almas"),
-                                  (self.b_pets, aba == "pets"),
                                   (self.b_dps, aba == "dps"),
                                   (self.b_od, aba in ("od", "materiais"))):
                 botao.configure(bg=COR["painel"] if ativo else COR["fundo"],
@@ -3302,7 +3294,6 @@ def main():
             self.lbl_titulo.configure(text=self._titulo_aba())
             self.b_od.configure(text=self.tr("Materiais", "Materials"))
             self.b_dps.configure(text="\u2726 DPS" if aba == "dps" else "DPS")
-            self.b_pets.configure(text="\u2726 Pets" if aba == "pets" else "Pets")
             self._pintar_nav()
             self.render()
             if altura_restaurar:
