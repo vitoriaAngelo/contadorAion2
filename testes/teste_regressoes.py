@@ -8,6 +8,10 @@ import contador_almas as ca
 
 
 class Regressoes(unittest.TestCase):
+    def test_nomes_das_almas_respeitam_o_idioma(self):
+        self.assertEqual(ca.carregar_nomes_pets('en')['1001'], 'Black Dragon')
+        self.assertEqual(ca.carregar_nomes_pets('pt-BR')['1001'], 'Dragão Negro')
+
     def test_dps_fica_em_ordem_do_maior_dano(self):
         nomes = ['Cleric', 'Gladiator', 'Ranger', 'Templar']
         danos = {'Cleric': 800, 'Gladiator': 2500, 'Ranger': 1200, 'Templar': 1200}

@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.102"
+VERSAO = "1.9.103"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -136,6 +136,37 @@ CLASS_ICON_FILES = {
     "Ranger": "ranger.png", "Assassin": "assassin.png",
     "Elementalist": "spiritmaster.png", "Sorcerer": "sorcerer.png",
     "Cleric": "cleric.png", "Chanter": "chanter.png", "Brawler": "fighter.png",
+}
+
+UI_EN = {
+    "Início": "Home", "Materiais": "Materials", "Almas": "Souls",
+    "Adicionar monstro…": "Add monster…", "Cor de destaque": "Accent color",
+    "Tamanho da fonte": "Font size", "Zerar ODs": "Reset Odyles",
+    "Zerar Materiais": "Reset Materials", "Zerar": "Reset",
+    "Nenhum material coletado": "No materials gathered",
+    "PT atual": "Current party", "Aguardando combate": "Waiting for combat",
+    "Aguardando chefe": "Waiting for boss",
+    "Aguardando a lista da PT enviada pelo jogo…": "Waiting for the party list from the game…",
+    "PT encontrada. Aguardando o primeiro dano…": "Party found. Waiting for the first hit…",
+    "Zerar dano e iniciar uma nova medição": "Reset damage and start a new measurement",
+    "Reset diário (04:00)": "Daily reset (04:00)",
+    "Reset semanal (qua 04:00)": "Weekly reset (Wed 04:00)",
+    "Som 1 minuto antes dos eventos": "Sound 1 minute before events",
+    "Volume do aviso": "Alert volume", "Sair": "Exit",
+    "Fechar o contador": "Close counter", "Minimizar (vai para a barra de tarefas)": "Minimize to taskbar",
+    "Almas recebidas": "Received souls", "DPS dos membros da PT": "Party member DPS",
+    "ODs e materiais de coleta": "Odyles and gathered materials",
+    "Opções": "Options", "Buscar": "Search", "Só incompletos": "Incomplete only",
+    "Estrelas": "Stars", "Faltam": "Missing", "COLETA": "GATHERING",
+    "Pausar o cronômetro": "Pause timer", "Começar o cronômetro": "Start timer",
+    "Zerar o cronômetro": "Reset timer", "agora": "now",
+    "Loja": "Shop", "Loja nova": "New shop", "Invasão": "Invasion", "Fenda": "Rift",
+    "Mínimo": "Minimum", "Muito baixo": "Very low", "Baixo": "Low",
+    "Médio": "Medium", "Alto": "High", "Máximo": "Maximum",
+    "Verde-água": "Aqua", "Rosa": "Pink", "Roxo": "Purple", "Azul": "Blue",
+    "Dourado": "Gold", "Laranja": "Orange", "Vermelho": "Red", "Verde": "Green",
+    "Lavanda": "Lavender", "Lilás": "Lilac", "Coral": "Coral", "Salmão": "Salmon",
+    "Ciano": "Cyan", "Menta": "Mint", "Pêssego": "Peach", "Pérola": "Pearl",
 }
 
 
@@ -607,6 +638,18 @@ def salvar_json(caminho, dados):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=2)
     os.replace(tmp, caminho)
+
+
+def carregar_nomes_pets(idioma):
+    dados = carregar_json(os.path.join(BASE, "pet_nomes_npcap.json"), {})
+    lingua = "en" if str(idioma).lower().startswith("en") else "pt"
+    nomes = {}
+    for pet_id, valor in dados.items():
+        if isinstance(valor, dict):
+            nomes[str(pet_id)] = valor.get(lingua) or valor.get("pt") or valor.get("en")
+        elif valor:
+            nomes[str(pet_id)] = str(valor)
+    return {pet_id: nome for pet_id, nome in nomes.items() if nome}
 
 
 
@@ -2361,8 +2404,7 @@ class LeitorRede(threading.Thread):
         self.areas_proprias = []
         self.ultima = None
         try:
-            with open(os.path.join(BASE, "pet_nomes_npcap.json"), encoding="utf-8") as f:
-                self.nomes = json.load(f)
+            self.nomes = carregar_nomes_pets(cfg.get("idioma", "pt-BR"))
         except (OSError, ValueError):
             self.nomes = {}
 
@@ -2486,7 +2528,18 @@ def main():
             aplicar_cor_destaque(self.cfg.get("cor_destaque", "#5fd4c4"))
             self.cfg["aba"] = "almas"  # sempre abre nas almas (mede a largura certa)
             self.prog = Progresso(ARQ_DADOS)
-            self.nomes_pets = carregar_json(os.path.join(BASE, "pet_nomes_npcap.json"), {})
+            self.nomes_pets = carregar_nomes_pets(self.cfg.get("idioma", "pt-BR"))
+            nomes_migrados = False
+            for monstro in self.prog.monstros:
+                nome_novo = self.nomes_pets.get(str(monstro.get("pet_id", "")))
+                if nome_novo and monstro.get("nome") != nome_novo:
+                    antigo = normalizar(monstro.get("nome", ""))
+                    if antigo and antigo not in monstro["apelidos"]:
+                        monstro["apelidos"].append(antigo)
+                    monstro["nome"] = nome_novo
+                    nomes_migrados = True
+            if nomes_migrados:
+                self.prog.salvar()
             self.rastreador = Rastreador(self.cfg["padroes"], self.prog.canonico, self.prog.completar,
                                          self.prog.comeco_de_outro)
             self.destaque = {}
@@ -2515,7 +2568,7 @@ def main():
                 except Exception:
                     pass
             self.root = tk.Tk()
-            self.root.title(APP_NOME)
+            self.root.title(self.tr("Contador de Almas", "Soul Counter"))
             try:
                 ico = os.path.join(BASE, "icone.ico")
                 if os.path.exists(ico):
@@ -2612,8 +2665,10 @@ def main():
             self.root.after(20000, self.vigiar_arquivo)
 
         # ---------------- util ----------------
-        def tr(self, portugues, ingles):
-            return ingles if str(self.cfg.get("idioma", "pt-BR")).lower().startswith("en") else portugues
+        def tr(self, portugues, ingles=None):
+            if str(self.cfg.get("idioma", "pt-BR")).lower().startswith("en"):
+                return ingles if ingles is not None else UI_EN.get(portugues, portugues)
+            return portugues
 
         def esconder_da_captura(self, janela):
             """Deixa a janela do programa invisivel para capturas de tela, para
@@ -2843,6 +2898,7 @@ def main():
                 estado["id"] = None
                 try:
                     msg = texto() if callable(texto) else texto
+                    msg = self.tr(msg) if isinstance(msg, str) else msg
                     if not msg or not w.winfo_exists():
                         return
                     jan = tk.Toplevel(self.root)
@@ -2897,6 +2953,7 @@ def main():
             return w
 
         def botao(self, pai, texto, cmd, cor=None, fonte=None, dica=None):
+            texto = self.tr(texto)
             b = tk.Label(pai, text=texto, bg=pai["bg"], fg=cor or COR["suave"],
                          font=fonte or self.fontes["botao"], cursor="hand2",
                          padx=self.px(4))
@@ -3024,16 +3081,17 @@ def main():
 
         def atualizar_status(self):
             if self.erro:
-                txt, cor = "\u25cf erro na leitura", COR["erro"]
+                txt, cor = self.tr("\u25cf erro na leitura", "\u25cf reading error"), COR["erro"]
             elif self.cfg.get("fonte_leitura") == "npcap":
                 if not self.rede_conectada:
-                    txt, cor = "\u25cf aguardando AION 2\u2026", COR["ouro"]
+                    txt, cor = self.tr("\u25cf aguardando AION 2\u2026", "\u25cf waiting for AION 2…"), COR["ouro"]
                 elif not self.rede_pronta and not self.personagem and not self.rede_sincronizada:
-                    txt, cor = "\u25cf conectando Npcap\u2026", COR["ouro"]
+                    txt, cor = self.tr("\u25cf conectando Npcap\u2026", "\u25cf connecting Npcap…"), COR["ouro"]
                 elif self.sincronizacao_pendente:
-                    txt, cor = "● reentre no personagem para ler os dados atuais", COR["ouro"]
+                    txt, cor = self.tr("● reentre no personagem para ler os dados atuais",
+                                       "● re-enter the character to read current data"), COR["ouro"]
                 elif not self.rede_sincronizada:
-                    txt, cor = "\u25cf aguardando dados da conta", COR["ouro"]
+                    txt, cor = self.tr("\u25cf aguardando dados da conta", "\u25cf waiting for account data"), COR["ouro"]
                 else:
                     txt, cor = "", COR["suave"]
             elif getattr(self, "status_extra", None):
@@ -3480,8 +3538,9 @@ def main():
                 f"{len(self.dps_party)} na PT", f"{len(self.dps_party)} in party")
             resumo.configure(text=(f"{grupo} · {int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
                                     f" · {self._numero_dps(total)}"))
-            status.configure(text=(f"Dano total da PT: {self._numero_dps(total)}" if total else
-                                   "PT encontrada. Aguardando o primeiro dano…"))
+            status.configure(text=(self.tr(f"Dano total da PT: {self._numero_dps(total)}",
+                                           f"Total party damage: {self._numero_dps(total)}") if total else
+                                   self.tr("PT encontrada. Aguardando o primeiro dano…")))
             biggest = max((self.dps_damage.get(name, 0) for name in self.dps_party), default=1) or 1
             # O maior dano fica sempre no topo. Reempacotar os mesmos cartoes
             # evita recriar a interface a cada pacote recebido.
@@ -3579,7 +3638,7 @@ def main():
             radar.pack(fill="x", pady=(self.px(7), 0))
             topo = tk.Frame(radar, bg=COR["painel"])
             topo.pack(fill="x", padx=self.px(7), pady=(self.px(5), 0))
-            tk.Label(topo, text="◉ Radar de mascotes", fg=COR["ouro"],
+            tk.Label(topo, text=self.tr("◉ Radar de mascotes", "◉ Soul pet radar"), fg=COR["ouro"],
                      bg=COR["painel"], font=self.f_nome).pack(side="left")
             mapas = {}
             for chave in ("verteron", "altgard", "abyss"):
@@ -3614,7 +3673,9 @@ def main():
                                    wraplength=self.px(175))
                 detalhe.pack(fill="x")
                 rows.append((row, linha, detalhe))
-            legenda = tk.Label(radar, text="● bicho com alma   ·   • local de farm   ·   ○ área estimada",
+            legenda = tk.Label(radar, text=self.tr(
+                "● bicho com alma   ·   • local de farm   ·   ○ área estimada",
+                "● soul monster   ·   • farming spot   ·   ○ estimated area"),
                                fg=COR["suave"], bg=COR["painel"],
                                font=self.f_peq, anchor="w")
             legenda.pack(fill="x", padx=self.px(7), pady=(self.px(3), self.px(5)))
@@ -3894,22 +3955,31 @@ def main():
                 if botao.cget("fg") != cor:
                     botao.configure(fg=cor)
             if not especies and hasattr(self, "leitor"):
-                mensagem = "Catálogo do radar ausente. Atualize o aplicativo."
+                mensagem = self.tr("Catálogo do radar ausente. Atualize o aplicativo.",
+                                   "Radar catalog missing. Update the application.")
             elif self._radar_pos_estimada_ativa:
-                mensagem = f"{len(linhas)} bichos vistos · área aproximada pelos monstros"
+                mensagem = self.tr(f"{len(linhas)} bichos vistos · área aproximada pelos monstros",
+                                   f"{len(linhas)} monsters seen · area estimated from monsters")
             elif not self.rede_sincronizada:
-                mensagem = ("Progresso salvo; entre no personagem para confirmar."
-                            if linhas else "Aguardando monstros próximos; entre no personagem para sincronizar.")
+                mensagem = (self.tr("Progresso salvo; entre no personagem para confirmar.",
+                                    "Saved progress; enter the character to confirm.")
+                            if linhas else self.tr("Aguardando monstros próximos; entre no personagem para sincronizar.",
+                                                  "Waiting for nearby monsters; enter the character to sync."))
             elif self.radar_posicao is None:
-                mensagem = "Mapa de locais conhecidos · aguardando sua posição no jogo."
+                mensagem = self.tr("Mapa de locais conhecidos · aguardando sua posição no jogo.",
+                                   "Known locations map · waiting for your in-game position.")
             elif agora - self.radar_posicao[2] > 10:
-                mensagem = "Última posição conhecida; use uma habilidade para atualizar."
+                mensagem = self.tr("Última posição conhecida; use uma habilidade para atualizar.",
+                                   "Last known position; use a skill to update.")
             elif not linhas and conhecidos:
-                mensagem = f"{len(conhecidos)} locais de farm próximos · monstros ainda não vistos"
+                mensagem = self.tr(f"{len(conhecidos)} locais de farm próximos · monstros ainda não vistos",
+                                   f"{len(conhecidos)} nearby farming spots · monsters not seen yet")
             elif not linhas:
-                mensagem = "Nenhum monstro pendente visto por perto."
+                mensagem = self.tr("Nenhum monstro pendente visto por perto.",
+                                   "No pending soul monsters seen nearby.")
             else:
-                mensagem = f"{len(linhas)} monstro(s) visto(s) · distância aproximada"
+                mensagem = self.tr(f"{len(linhas)} monstro(s) visto(s) · distância aproximada",
+                                   f"{len(linhas)} monster(s) seen · approximate distance")
             status = ui[1]
             if status.cget("text") != mensagem:
                 status.configure(text=mensagem)
@@ -3931,10 +4001,11 @@ def main():
                 monstro, pet, faltam, distancia, direcao = item[:5]
                 prefixo = "●" if tipo == "vivo" else "•"
                 local = (f"{direcao} ~{distancia:.0f} m" if distancia is not None
-                         else "na área" if self._radar_pos_estimada_ativa
-                         else "última posição")
+                         else self.tr("na área", "in the area") if self._radar_pos_estimada_ativa
+                         else self.tr("última posição", "last position"))
                 linha = f"{prefixo} {local}  {monstro}"
-                sub = f"{pet} · faltam {faltam}" + (" · local conhecido" if tipo == "local" else "")
+                sub = self.tr(f"{pet} · faltam {faltam}", f"{pet} · {faltam} missing") + (
+                    self.tr(" · local conhecido", " · known location") if tipo == "local" else "")
                 if titulo.cget("text") != linha:
                     titulo.configure(text=linha)
                 if detalhe.cget("text") != sub:
@@ -3961,8 +4032,8 @@ def main():
 
             b1 = bloco()
             tk.Frame(b1, bg=bg, height=self.px(3)).pack()
-            linha(b1, "diario", "Reset di\u00e1rio (04:00)", COR["ouro"], self.fontes["relogio"])
-            linha(b1, "semanal", "Reset semanal (qua 04:00)", COR["ouro"], self.fontes["relogio"])
+            linha(b1, "diario", self.tr("Reset diário (04:00)"), COR["ouro"], self.fontes["relogio"])
+            linha(b1, "semanal", self.tr("Reset semanal (qua 04:00)"), COR["ouro"], self.fontes["relogio"])
             tk.Frame(b1, bg=bg, height=self.px(3)).pack()
             self._atualizar_info()
 
@@ -3989,7 +4060,7 @@ def main():
             titulo_od.pack(fill="x", pady=(self.px(4), self.px(8)))
             tk.Label(titulo_od, text="ODs", fg=COR["alma"], bg=COR["fundo"],
                      font=self.fontes["titulo"]).pack(side="left")
-            tk.Label(titulo_od, text="COLETA", fg=COR["suave"], bg=COR["fundo"],
+            tk.Label(titulo_od, text=self.tr("COLETA"), fg=COR["suave"], bg=COR["fundo"],
                      font=self.f_peq).pack(side="right")
             if compacto:
                 # grade 2x2 com nomes curtos (a cor do losango diz qual e)
@@ -4035,7 +4106,7 @@ def main():
                 self._od_ui[tipo] = (nome, n)
             barra = tk.Frame(self.corpo, bg=COR["fundo"])
             barra.pack(fill="x", pady=(self.px(5), self.px(5)))
-            self.botao(barra, "\u21ba Zerar ODs", lambda e: self.od_zerar(),
+            self.botao(barra, "\u21ba " + self.tr("Zerar ODs"), lambda e: self.od_zerar(),
                        fonte=self.f_peq, dica="Zerar os 4 contadores de OD (pergunta antes)").pack(side="right")
             # cronometro (para medir quanto OD voce faz por tempo)
             tk.Label(barra, text="\u23f1", fg=COR["suave"], bg=COR["fundo"],
@@ -4212,7 +4283,7 @@ def main():
                 quantidade = self.prog.materiais.get(str(item), 0)
                 if grupo == self._material_grupo and quantidade > 0:
                     linhas.append((grupo, nome, str(item), quantidade))
-            texto = self._material_grupo if grupos_visiveis else "Nenhum material coletado"
+            texto = self._material_grupo if grupos_visiveis else self.tr("Nenhum material coletado")
             if resumo.cget("text") != texto:
                 resumo.configure(text=texto)
             cor_grupo = MATERIAL_CORES[self._material_grupo]
@@ -4501,7 +4572,7 @@ def main():
 
         def menu_od(self, e):
             menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="Zerar os contadores de OD\u2026", command=self.od_zerar)
+            menu.add_command(label=self.tr("Zerar os contadores de OD…", "Reset Odyle counters…"), command=self.od_zerar)
             self.abrir_menu(menu, e)
 
         def od_zerar(self):
@@ -4539,8 +4610,12 @@ def main():
                         self._ev_cache, self._ev_quando = info, agora
                     if info:
                         nomes, t, fim_ev, andando = info
+                        if str(self.cfg.get("idioma", "pt-BR")).lower().startswith("en"):
+                            for original, traduzido in (("Loja nova", "New shop"), ("Loja", "Shop"),
+                                                        ("Invasão", "Invasion"), ("Fenda", "Rift")):
+                                nomes = nomes.replace(original, traduzido)
                         if andando:
-                            txt_n, txt_r, cor = f"\u25cf {nomes}", "agora", COR["ouro"]
+                            txt_n, txt_r, cor = f"\u25cf {nomes}", self.tr("agora"), COR["ouro"]
                         else:
                             falta = (t - agora).total_seconds()
                             txt_n, txt_r = f"\u25b8 {nomes}", formatar_relogio(falta)
@@ -5187,21 +5262,21 @@ def main():
         # ---------------- menus ----------------
         def menu_monstro(self, e, m):
             menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="Tenho nesta estrela\u2026", command=lambda: self.perguntar_tenho(m))
-            menu.add_command(label="+1 alma", command=lambda: self.ajustar(m, +1))
-            menu.add_command(label="\u22121 alma", command=lambda: self.ajustar(m, -1))
+            menu.add_command(label=self.tr("Tenho nesta estrela…", "Souls in this star…"), command=lambda: self.perguntar_tenho(m))
+            menu.add_command(label=self.tr("+1 alma", "+1 soul"), command=lambda: self.ajustar(m, +1))
+            menu.add_command(label=self.tr("−1 alma", "−1 soul"), command=lambda: self.ajustar(m, -1))
             menu.add_separator()
-            menu.add_command(label="Definir quantidade total\u2026", command=lambda: self.definir_qtd(m))
-            menu.add_command(label="Renomear\u2026", command=lambda: self.renomear(m))
+            menu.add_command(label=self.tr("Definir quantidade total…", "Set total amount…"), command=lambda: self.definir_qtd(m))
+            menu.add_command(label=self.tr("Renomear…", "Rename…"), command=lambda: self.renomear(m))
             outros = [o for o in self.prog.monstros if o is not m]
             if outros:
                 sub = tk.Menu(menu, tearoff=0)
                 for o in sorted(outros, key=lambda o: o["nome"]):
                     sub.add_command(label=o["nome"],
                                     command=lambda o=o: self.juntar(m, o))
-                menu.add_cascade(label="Juntar com (erro de leitura)", menu=sub)
+                menu.add_cascade(label=self.tr("Juntar com (erro de leitura)", "Merge with (reading error)"), menu=sub)
             menu.add_separator()
-            menu.add_command(label="Remover", command=lambda: self.remover(m))
+            menu.add_command(label=self.tr("Remover", "Remove"), command=lambda: self.remover(m))
             self.abrir_menu(menu, e)
 
         def renomear(self, m):
@@ -5243,7 +5318,7 @@ def main():
             sub_cor = tk.Menu(menu, tearoff=0)
             atual_cor = COR["alma"].lower()
             for nome, cor in CORES_DESTAQUE:
-                sub_cor.add_command(label=("\u2713 " if cor.lower() == atual_cor else "    ") + "\u25cf " + nome,
+                sub_cor.add_command(label=("\u2713 " if cor.lower() == atual_cor else "    ") + "\u25cf " + self.tr(nome),
                                     foreground=cor, activeforeground=cor,
                                     command=lambda c=cor: self.mudar_cor(c))
             menu.add_cascade(label=self.tr("Cor de destaque", "Accent color"), menu=sub_cor)
@@ -5267,7 +5342,7 @@ def main():
             vol = float(self.cfg.get("volume_aviso", 0.5))
             for nome, v in (("M\u00ednimo", 0.05), ("Muito baixo", 0.12), ("Baixo", 0.25),
                             ("M\u00e9dio", 0.5), ("Alto", 0.75), ("M\u00e1ximo", 1.0)):
-                sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + nome,
+                sub_vol.add_command(label=("\u2713 " if abs(v - vol) < 0.01 else "    ") + self.tr(nome),
                                     command=lambda v=v: self.mudar_volume(v))
             menu.add_cascade(label=self.tr("Volume do aviso", "Alert volume"), menu=sub_vol)
             menu.add_checkbutton(label=self.tr("Aparecer na stream (OBS/Discord)",
