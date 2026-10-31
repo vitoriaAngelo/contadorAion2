@@ -25,7 +25,7 @@ from collections import Counter, deque
 # Caminhos e configuracao
 # --------------------------------------------------------------------------
 APP_NOME = "Contador de Almas"
-VERSAO = "1.9.100"
+VERSAO = "1.9.101"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
@@ -4006,6 +4006,16 @@ def main():
                        dica="Zerar o cron\u00f4metro").pack(side="left")
             self._atualizar_od()
 
+        def _abreviar_material(self, rotulo, texto, largura):
+            """Mantem o nome em uma linha e corta apenas o final se faltar espaco."""
+            limite = max(self.px(30), int(largura))
+            base = texto
+            while len(base) > 1 and self.f_nome.measure(base + "…") > limite:
+                base = base[:-1]
+            exibido = texto if base == texto else base.rstrip() + "…"
+            if rotulo.cget("text") != exibido:
+                rotulo.configure(text=exibido)
+
         def _montar_materiais(self):
             from tkinter import ttk
             area = tk.Frame(self.corpo, bg=COR["fundo"])
@@ -4203,8 +4213,9 @@ def main():
                     titulo = tk.Label(interno, text=rotulo, fg=COR["texto"], bg=COR["painel"],
                                       font=self.f_nome, anchor="w", justify="left")
                     titulo.grid(row=0, column=1, sticky="ew")
-                    titulo.bind("<Configure>", lambda e, t=titulo:
-                                t.configure(wraplength=max(self.px(40), e.width)))
+                    titulo.bind("<Configure>", lambda e, t=titulo, n=rotulo:
+                                self._abreviar_material(t, n, e.width))
+                    self.dica(titulo, nome)
                     self.botao(interno, "+", lambda e, i=item_id: self.material_ajustar(i, 1),
                                fonte=self.fontes["botao_b"]).grid(row=0, column=4)
                     self.botao(interno, "\u2212", lambda e, i=item_id: self.material_ajustar(i, -1),
