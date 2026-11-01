@@ -258,6 +258,17 @@ class LeituraNpcap(unittest.TestCase):
             dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
             self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
 
+    def test_reconexao_avisa_pronto_de_novo_em_outra_porta(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        pacote = frame(pp.OP_ZONE, bytes.fromhex('0102'))
+        for conexao in (('servidor', 13328, 58664), ('servidor', 13328, 60001)):
+            dec.reset_connection()
+            for sequencia in (1000, 1000 + len(pacote), 1000 + 2 * len(pacote)):
+                dec.segment(conexao, sequencia, pacote)
+        self.assertEqual(eventos.count(('ready',)), 2)
+        self.assertEqual(list(dec.streams), [('servidor', 13328, 60001)])
+
     def test_filtro_de_captura_acompanha_portas_do_jogo(self):
         self.assertEqual(pp.capture_filter({57267, 55641}),
                          'tcp and (dst port 55641 or dst port 57267)')

@@ -779,6 +779,11 @@ class Decoder:
         except OSError as e:
             log("inventory state save:", type(e).__name__)
 
+    def reset_connection(self):
+        """O SYN da próxima conexão pode chegar antes de a porta entrar no filtro."""
+        self.ready = False
+        self.streams.clear()
+
     def _emit_collection(self, item, ganho):
         if item in OD_ITEM_TYPES:
             self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
@@ -1042,6 +1047,8 @@ def run_sniffer(emit, stop_event=None):
                     decoder_atual.party_names.clear()
                     decoder_atual.entity_names.clear()
                     emit(("identity_reset",))
+                if decoder_atual is not None and not connected:
+                    decoder_atual.reset_connection()
                 connection_active[0] = connected
                 emit(("conn", bool(ports)))
             except Exception as e:
