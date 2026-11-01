@@ -914,6 +914,10 @@ class Decoder:
                             # ela mantém apenas o próprio personagem.
                             self.party_names.clear()
                             if self.own_name:
+                                # O jogo pode não repetir OP_NICKNAME depois de
+                                # um TP. Reapresenta à interface o nome que esta
+                                # conexão já confirmou.
+                                self.emit(("nickname", self.own_name))
                                 self.emit(("dps_party", [self.own_name]))
                             self.emit(("zone",) + zone)
                     elif op == OP_LOCAL_POSITION:
