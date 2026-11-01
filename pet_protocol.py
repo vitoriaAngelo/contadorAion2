@@ -537,7 +537,7 @@ def parse_nickname(payload):
         i += tamanho
         servidor = struct.unpack_from("<H", payload, i)[0]
         classe = payload[i + 2]
-        if not servidor or classe > 32:
+        if not servidor or classe > 48:  # 48 é o limite de class_from_wire
             return None
         return nome
     except (IndexError, UnicodeDecodeError, ValueError, struct.error):
@@ -892,7 +892,7 @@ class Decoder:
                                 self.emit(("dps_party", [nome]))
                         else:
                             log("nickname ignored", "payload_len", len(payload),
-                                "prefix", payload[:8].hex())
+                                "prefix", payload[:40].hex())
                     elif op == OP_PLAYER_NICKNAME:
                         player = parse_player_nickname(payload)
                         if player:
