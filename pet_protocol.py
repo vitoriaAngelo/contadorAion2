@@ -52,8 +52,10 @@ OP_GAIN = b"\x0d\x90"
 OP_ABYSS_PROGRESS = b"\x84\x56"
 OP_ABYSS_SNAPSHOT = b"\x83\x56"
 OP_INVENTORY_CHANGE = b"\x1b\x56"
+OP_ITEM_ACQUIRED = b"\x33\x8d"
 ABYSS_POINT_ACHIEVEMENT = 230111500
 KINAH_ITEM_ID = 930100001
+ITEM_ACQUIRED_WINDOW = 2.0  # segundos entre o 0x1b56 e o 0x338d da mesma coleta
 OD_ITEM_TYPES = {
     610610013: "OD",
     610610014: "OD Fino",
@@ -124,7 +126,7 @@ KNOWN_OPS = {bytes.fromhex(h) for h in (
     "0036 1d37 1c37 0438 008d 0238 0638 1a37 1b37 4b36 0338 0138 3b38 3d38 2a37 0191 2937 8356 8456 "
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
-KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER))
+KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER, OP_ITEM_ACQUIRED))
 
 
 def log(*parts):
@@ -310,6 +312,17 @@ def parse_inventory_change(payload):
     instance = struct.unpack_from("<I", payload, 3)[0]
     quantity = struct.unpack_from("<Q", payload, 15)[0]
     return payload[1], instance, item, quantity
+
+
+def parse_item_acquired(payload):
+    """Item e quantidade recebidos no 0x338d, enviado logo após o 0x1b56."""
+    # índice u8, tipo u8, origem varint, item u32, quantidade u32, bônus u32
+    try:
+        _, p = read_varint(payload, 2)
+        item, base, bonus = struct.unpack_from("<III", payload, p)
+        return item, base + bonus
+    except (IndexError, struct.error):
+        return None
 
 
 def parse_damage(payload):
@@ -740,6 +753,9 @@ class Decoder:
         # usados com o contador fechado. Se a primeira atualização da sessão
         # voltar à mesma quantidade salva, ainda deve contar a coleta recebida.
         self.inventory_seen_session = set()
+        # O total salvo não basta nessa primeira atualização: o que já foi
+        # contado fica aqui até o 0x338d informar a quantidade recebida.
+        self.inventory_first_gain = {}
         if inventory_state_file:
             try:
                 with open(inventory_state_file, "r", encoding="utf-8") as f:
@@ -762,6 +778,12 @@ class Decoder:
             os.replace(temporary, self.inventory_state_file)
         except OSError as e:
             log("inventory state save:", type(e).__name__)
+
+    def _emit_collection(self, item, ganho):
+        if item in OD_ITEM_TYPES:
+            self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
+        else:
+            self.emit(("gather_gain", item, ganho))
 
     def segment(self, conn, seq, data):
         stream = self.streams.setdefault(conn, Stream())
@@ -814,15 +836,22 @@ class Decoder:
                                 ganho = quantity if kind == 0 else (
                                     quantity - old_quantity if old_quantity is not None else (
                                         1 if kind == 1 and tracked_collection else 0))
-                                if (tracked_collection and kind == 1 and not seen_session
-                                        and ganho <= 0):
-                                    ganho = 1
+                                if tracked_collection and kind == 1 and not seen_session:
+                                    if ganho <= 0:
+                                        ganho = 1
+                                    self.inventory_first_gain[item] = (ganho, time.monotonic())
                                 if item == KINAH_ITEM_ID and ganho > 0:
                                     self.emit(("kinah_gain", ganho))
-                                elif item in OD_ITEM_TYPES and ganho > 0:
-                                    self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
-                                elif item in GATHER_ITEM_TYPES and ganho > 0:
-                                    self.emit(("gather_gain", item, ganho))
+                                elif tracked_collection and ganho > 0:
+                                    self._emit_collection(item, ganho)
+                    elif op == OP_ITEM_ACQUIRED:
+                        acquired = parse_item_acquired(payload)
+                        if acquired and acquired[1] > 0:  # zero: aviso sem item recebido
+                            item, recebido = acquired
+                            contado = self.inventory_first_gain.pop(item, None)
+                            if (contado and recebido > contado[0] and
+                                    time.monotonic() - contado[1] < ITEM_ACQUIRED_WINDOW):
+                                self._emit_collection(item, recebido - contado[0])
                     elif op == OP_NICKNAME:
                         nome = parse_nickname(payload)
                         if nome:

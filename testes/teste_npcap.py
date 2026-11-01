@@ -258,6 +258,80 @@ class LeituraNpcap(unittest.TestCase):
             dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
             self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
 
+    def test_pacote_de_item_recebido_informa_quantidade_com_bonus(self):
+        x1 = bytes.fromhex('003aabce015d2b652401000000000000000000000000000000')
+        x2 = bytes.fromhex('003aabce015d2b652401000000010000000000000000000000')
+        self.assertEqual(pp.parse_item_acquired(x1), (610610013, 1))
+        self.assertEqual(pp.parse_item_acquired(x2), (610610013, 2))
+        self.assertIsNone(pp.parse_item_acquired(bytes.fromhex('003a01')))
+
+    def _primeira_coleta(self, recebido=None, estado=None, atraso=0.0):
+        """Primeira alteração de uma pilha que já existia, seguida do 0x338d."""
+        item_id = 610620016
+        payload = bytearray(23)
+        payload[0], payload[1] = 1, 1
+        struct.pack_into('<I', payload, 3, 601)
+        struct.pack_into('<I', payload, 11, item_id)
+        struct.pack_into('<Q', payload, 15, 9)
+        eventos = []
+        dec = pp.Decoder(eventos.append, estado)
+        pacotes = [frame(pp.OP_INVENTORY_CHANGE, bytes(payload))]
+        if recebido is not None:
+            base, bonus = recebido
+            pacotes.append(frame(pp.OP_ITEM_ACQUIRED, bytes.fromhex('003a') + varint(30000) +
+                                 struct.pack('<IIIQ', item_id, base, bonus, 0)))
+        relogio = [100.0]
+        with patch.object(pp.time, 'monotonic', side_effect=lambda: relogio[0]):
+            sequencia = 1000
+            for pacote in pacotes:
+                dec.segment('jogo', sequencia, pacote)
+                sequencia += len(pacote)
+                relogio[0] += atraso
+        return eventos[1:], item_id
+
+    def test_primeira_coleta_x2_conta_dois_em_pilha_desconhecida(self):
+        eventos, item_id = self._primeira_coleta((1, 1))
+        self.assertEqual(eventos, [('gather_gain', item_id, 1),
+                                   ('gather_gain', item_id, 1)])
+
+    def test_primeira_coleta_x1_nao_soma_de_novo(self):
+        eventos, item_id = self._primeira_coleta((1, 0))
+        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
+
+    def test_primeira_coleta_sem_item_recebido_mantem_a_contagem(self):
+        eventos, item_id = self._primeira_coleta()
+        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
+
+    def test_item_recebido_tardio_nao_altera_contagem(self):
+        eventos, item_id = self._primeira_coleta((1, 1), atraso=pp.ITEM_ACQUIRED_WINDOW)
+        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
+
+    def test_aviso_sem_quantidade_nao_consome_primeira_coleta(self):
+        item_id = 610620013
+        payload = bytearray(23)
+        payload[0], payload[1] = 1, 1
+        struct.pack_into('<I', payload, 3, 602)
+        struct.pack_into('<I', payload, 11, item_id)
+        struct.pack_into('<Q', payload, 15, 16)
+        aviso = bytes.fromhex('023adcde026d52652400000000000000000000000000000000')
+        x2 = bytes.fromhex('003adcde026d52652401000000010000000000000000000000')
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        sequencia = 1000
+        for pacote in (frame(pp.OP_INVENTORY_CHANGE, bytes(payload)),
+                       frame(pp.OP_ITEM_ACQUIRED, aviso), frame(pp.OP_ITEM_ACQUIRED, x2)):
+            dec.segment('jogo', sequencia, pacote)
+            sequencia += len(pacote)
+        self.assertEqual(sum(e[2] for e in eventos[1:]), 2)
+
+    def test_primeira_coleta_x2_com_total_salvo_igual_conta_dois(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            estado = os.path.join(pasta, 'inventario.json')
+            with open(estado, 'w', encoding='utf-8') as arquivo:
+                json.dump({'601': [610620016, 9]}, arquivo)
+            eventos, item_id = self._primeira_coleta((1, 1), estado)
+        self.assertEqual(sum(e[2] for e in eventos), 2)
+
     def test_todos_os_itens_coletaveis_contam_primeiro_evento_e_variacao(self):
         def alteracao(kind, instancia, item_id, quantidade):
             payload = bytearray(23)
