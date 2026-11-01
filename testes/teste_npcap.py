@@ -442,6 +442,20 @@ class LeituraNpcap(unittest.TestCase):
         self.assertIsNone(pp.parse_nickname(varint(2445) + b'\x00' * 5 +
                                              b'\x05A B C' + struct.pack('<HB', 11002, 14)))
 
+    def test_nome_do_proprio_personagem_em_todas_as_classes(self):
+        nome = 'Vitória'.encode('utf-8')
+        for classe, esperado in ((5, 'Gladiator'), (29, 'Cleric'), (32, 'Cleric'),
+                                 (33, 'Chanter'), (36, 'Chanter'), (45, 'Brawler'),
+                                 (48, 'Brawler')):
+            with self.subTest(classe=classe):
+                payload = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
+                           varint(len(nome)) + nome + struct.pack('<HB', 11002, classe))
+                self.assertEqual(pp.parse_nickname(payload), 'Vitória')
+                self.assertEqual(pp.class_from_wire(classe), esperado)
+        invalido = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
+                    varint(len(nome)) + nome + struct.pack('<HB', 11002, 49))
+        self.assertIsNone(pp.parse_nickname(invalido))
+
     def test_roster_da_pt_traz_classe_de_cada_jogador(self):
         nome = b'Misttylol'
         cabecalho = (struct.pack('<I', 1) + b'\x02PT' + b'\x06' +
