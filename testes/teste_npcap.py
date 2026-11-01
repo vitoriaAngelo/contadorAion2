@@ -258,6 +258,12 @@ class LeituraNpcap(unittest.TestCase):
             dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
             self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
 
+    def test_filtro_de_captura_acompanha_portas_do_jogo(self):
+        self.assertEqual(pp.capture_filter({57267, 55641}),
+                         'tcp and (dst port 55641 or dst port 57267)')
+        self.assertEqual(pp.capture_filter(set()),
+                         'tcp and not port 443 and not port 80')
+
     def test_pacote_de_item_recebido_informa_quantidade_com_bonus(self):
         x1 = bytes.fromhex('003aabce015d2b652401000000000000000000000000000000')
         x2 = bytes.fromhex('003aabce015d2b652401000000010000000000000000000000')

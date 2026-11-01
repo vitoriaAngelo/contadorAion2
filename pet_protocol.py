@@ -1005,6 +1005,12 @@ class Decoder:
 
 # ---------------------------------------------------------------- capture
 
+def capture_filter(ports):
+    filtro_portas = " or ".join(f"dst port {porta}" for porta in sorted(ports))
+    return f"tcp and ({filtro_portas})" if filtro_portas else \
+        "tcp and not port 443 and not port 80"
+
+
 def run_sniffer(emit, stop_event=None):
     """Captures passively until stop_event is set; emits decoded events."""
     import psutil
@@ -1050,9 +1056,7 @@ def run_sniffer(emit, stop_event=None):
         if stop_event is not None and stop_event.wait(0.2):
             return
         time.sleep(0.2) if stop_event is None else None
-    filtro_portas = " or ".join(f"dst port {porta}" for porta in sorted(game_ports))
-    filtro_captura = f"tcp and ({filtro_portas})" if filtro_portas else \
-        "tcp and not port 443 and not port 80"
+    portas_capturadas = set(game_ports)
     decoder = Decoder(emit, INVENTORY_STATE_FILE)
     decoder_ref[0] = decoder
     lock = threading.Lock()
@@ -1083,27 +1087,45 @@ def run_sniffer(emit, stop_event=None):
     # One sniffer per interface: a single multi-interface sniff polls them in turn on
     # Windows and falls far behind the game. The Npcap loopback adapter is included so
     # proxied (ExitLag) sessions are seen too.
-    sniffers = []
-    for iface in conf.ifaces.values():
-        if not iface.ip:
-            continue
-        try:
-            s = AsyncSniffer(iface=iface.network_name, filter=filtro_captura,
-                             prn=on_packet, store=False)
-            s.start()
-            sniffers.append(s)
-        except Exception as e:
-            log("sniffer", iface.name, e)
+    def abrir_sniffers(portas):
+        abertos = []
+        for iface in conf.ifaces.values():
+            if not iface.ip:
+                continue
+            try:
+                s = AsyncSniffer(iface=iface.network_name, filter=capture_filter(portas),
+                                 prn=on_packet, store=False)
+                s.start()
+                abertos.append(s)
+            except Exception as e:
+                log("sniffer", iface.name, e)
+        return abertos
+
+    def fechar_sniffers(abertos):
+        for s in abertos:
+            if s.running:
+                s.stop()
+
+    sniffers = abrir_sniffers(portas_capturadas)
     if not sniffers:
         raise RuntimeError("no interface could be opened")
     try:
         while stop_event is None or not stop_event.wait(0.5):
+            novas = set(game_ports) - portas_capturadas
+            if novas:
+                # Portais podem trocar a conexão do jogo. Os sniffers novos abrem
+                # antes de fechar os antigos; on_packet descarta o que vier em dobro.
+                abertos = abrir_sniffers(portas_capturadas | novas)
+                if abertos:
+                    portas_capturadas |= novas
+                    log("capture ports", sorted(portas_capturadas))
+                    antigos, sniffers = sniffers, abertos
+                    threading.Thread(target=fechar_sniffers, args=(antigos,),
+                                     daemon=True).start()
             if not any(s.running for s in sniffers):
                 raise RuntimeError("captura Npcap parou em todas as interfaces")
     finally:
-        for s in sniffers:
-            if s.running:
-                s.stop()
+        fechar_sniffers(sniffers)
 
 
 # ---------------------------------------------------------------- progress
