@@ -53,6 +53,9 @@ OP_ABYSS_PROGRESS = b"\x84\x56"
 OP_ABYSS_SNAPSHOT = b"\x83\x56"
 OP_INVENTORY_CHANGE = b"\x1b\x56"
 OP_ITEM_ACQUIRED = b"\x33\x8d"
+# Limites diários: o primeiro de cada par chega ao entrar, o segundo a cada ganho.
+DAILY_LIMIT_OPS = {b"\xa5\xff": "kina", b"\xa6\xff": "kina",
+                   b"\xa7\xff": "gathering", b"\xa8\xff": "gathering"}
 ABYSS_POINT_ACHIEVEMENT = 230111500
 KINAH_ITEM_ID = 930100001
 ITEM_ACQUIRED_WINDOW = 2.0  # segundos entre o 0x1b56 e o 0x338d da mesma coleta
@@ -127,6 +130,7 @@ KNOWN_OPS = {bytes.fromhex(h) for h in (
     "2a38 218d ffff 2b38 2c38 1b56 3538 4738 4136 1838 1938 0336 3438 3138 1f56 4a36 3436 4236 "
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
 KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER, OP_ITEM_ACQUIRED))
+KNOWN_OPS.update(DAILY_LIMIT_OPS)
 
 
 def log(*parts):
@@ -323,6 +327,11 @@ def parse_item_acquired(payload):
         return item, base + bonus
     except (IndexError, struct.error):
         return None
+
+
+def parse_daily_limit(payload):
+    """Valor atual de um limite diário: valor u64 e horário do servidor u64."""
+    return struct.unpack_from("<Q", payload, 0)[0] if len(payload) == 16 else None
 
 
 def parse_damage(payload):
@@ -779,6 +788,11 @@ class Decoder:
         except OSError as e:
             log("inventory state save:", type(e).__name__)
 
+    def reset_connection(self):
+        """O SYN da próxima conexão pode chegar antes de a porta entrar no filtro."""
+        self.ready = False
+        self.streams.clear()
+
     def _emit_collection(self, item, ganho):
         if item in OD_ITEM_TYPES:
             self.emit(("od_gain", OD_ITEM_TYPES[item], ganho))
@@ -844,6 +858,10 @@ class Decoder:
                                     self.emit(("kinah_gain", ganho))
                                 elif tracked_collection and ganho > 0:
                                     self._emit_collection(item, ganho)
+                    elif op in DAILY_LIMIT_OPS:
+                        valor = parse_daily_limit(payload)
+                        if valor is not None:
+                            self.emit(("daily_limit", DAILY_LIMIT_OPS[op], valor))
                     elif op == OP_ITEM_ACQUIRED:
                         acquired = parse_item_acquired(payload)
                         if acquired and acquired[1] > 0:  # zero: aviso sem item recebido
@@ -1042,6 +1060,8 @@ def run_sniffer(emit, stop_event=None):
                     decoder_atual.party_names.clear()
                     decoder_atual.entity_names.clear()
                     emit(("identity_reset",))
+                if decoder_atual is not None and not connected:
+                    decoder_atual.reset_connection()
                 connection_active[0] = connected
                 emit(("conn", bool(ports)))
             except Exception as e:

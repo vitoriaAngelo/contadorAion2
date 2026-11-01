@@ -258,6 +258,59 @@ class LeituraNpcap(unittest.TestCase):
             dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
             self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
 
+    def test_reconexao_avisa_pronto_de_novo_em_outra_porta(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        pacote = frame(pp.OP_ZONE, bytes.fromhex('0102'))
+        for conexao in (('servidor', 13328, 58664), ('servidor', 13328, 60001)):
+            dec.reset_connection()
+            for sequencia in (1000, 1000 + len(pacote), 1000 + 2 * len(pacote)):
+                dec.segment(conexao, sequencia, pacote)
+        self.assertEqual(eventos.count(('ready',)), 2)
+        self.assertEqual(list(dec.streams), [('servidor', 13328, 60001)])
+
+    def test_limites_diarios_vem_dos_pacotes_de_entrada_e_de_ganho(self):
+        pacotes = (('a5ff', '8488000000000000d833f598a1010000', ('daily_limit', 'kina', 34948)),
+                   ('a6ff', '8488000000000000ec70f498a1010000', ('daily_limit', 'kina', 34948)),
+                   ('a7ff', 'd100000000000000d833f598a1010000', ('daily_limit', 'gathering', 209)),
+                   ('a8ff', 'd300000000000000bb83f598a1010000', ('daily_limit', 'gathering', 211)))
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        sequencia = 1000
+        for opcode, dados, _ in pacotes:
+            pacote = frame(bytes.fromhex(opcode), bytes.fromhex(dados))
+            dec.segment('jogo', sequencia, pacote)
+            sequencia += len(pacote)
+        self.assertEqual(eventos[1:], [esperado for _, _, esperado in pacotes])
+        self.assertIsNone(pp.parse_daily_limit(bytes.fromhex('0200')))
+
+    def test_texto_do_limite_mostra_atual_e_quanto_falta(self):
+        self.assertEqual(ca.texto_limite('Coleta diária', 211, 1000),
+                         'Coleta diária: 211/1.000 · faltam 789')
+        self.assertEqual(ca.texto_limite('Kina diário', 34948, 1_000_000),
+                         'Kina diário: 34.948/1.000.000 · faltam 965.052')
+        self.assertEqual(ca.texto_limite('Coleta diária', 1000, 1000),
+                         'Coleta diária: 1.000/1.000 · limite atingido')
+        self.assertEqual(ca.texto_limite('Kina diário', None, 1_000_000),
+                         'Kina diário: aguardando próximo ganho')
+
+    def test_barra_do_limite_fica_entre_vazia_e_cheia(self):
+        self.assertEqual(ca.fracao_limite(None, 1000), 0.0)
+        self.assertEqual(ca.fracao_limite(250, 1000), 0.25)
+        self.assertEqual(ca.fracao_limite(1500, 1000), 1.0)
+
+    def test_limite_salvo_vale_ate_o_reset_das_quatro(self):
+        import datetime as dt
+        salvos = {'dia': '2026-11-01', 'gathering': 211}
+        noite = dt.datetime(2026, 11, 1, 23, 0)
+        madrugada = dt.datetime(2026, 11, 2, 3, 59)
+        depois = dt.datetime(2026, 11, 2, 4, 0)
+        self.assertEqual(ca.limite_salvo(salvos, 'gathering', noite), 211)
+        self.assertEqual(ca.limite_salvo(salvos, 'gathering', madrugada), 211)
+        self.assertEqual(ca.limite_salvo(salvos, 'gathering', depois), 0)
+        self.assertIsNone(ca.limite_salvo(salvos, 'kina', noite))
+        self.assertIsNone(ca.limite_salvo(None, 'kina', noite))
+
     def test_filtro_de_captura_acompanha_portas_do_jogo(self):
         self.assertEqual(pp.capture_filter({57267, 55641}),
                          'tcp and (dst port 55641 or dst port 57267)')
