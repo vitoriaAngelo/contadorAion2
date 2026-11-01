@@ -724,6 +724,7 @@ class Decoder:
         self.streams = {}
         self.ready = False
         self.own_entity = None
+        self.identity_port = None
         self.zone_id = None
         self.abyss_progress = None
         self.entity_names = {}
@@ -826,6 +827,7 @@ class Decoder:
                         nome = parse_nickname(payload)
                         if nome:
                             self.own_entity, _ = read_varint(payload, 0)
+                            self.identity_port = conn[2]
                             self.own_name = nome
                             self.entity_names[self.own_entity] = nome
                             log("nickname decoded", nome)
@@ -980,6 +982,8 @@ def run_sniffer(emit, stop_event=None):
     from scapy.all import IP, TCP, IPv6, AsyncSniffer, Raw, conf
 
     game_ports = set()
+    decoder_ref = [None]
+    connection_active = [False]
 
     def watch_game():
         while stop_event is None or not stop_event.is_set():
@@ -991,6 +995,19 @@ def run_sniffer(emit, stop_event=None):
                          if c.pid in pids and c.raddr and c.raddr[1] not in (80, 443)}
                 game_ports.clear()
                 game_ports.update(ports)
+                connected = bool(ports)
+                decoder_atual = decoder_ref[0]
+                perdeu_identidade = (decoder_atual is not None and decoder_atual.own_name and
+                                     (not connected or (decoder_atual.identity_port is not None and
+                                                        decoder_atual.identity_port not in ports)))
+                if perdeu_identidade:
+                    decoder_atual.own_entity = None
+                    decoder_atual.own_name = None
+                    decoder_atual.identity_port = None
+                    decoder_atual.party_names.clear()
+                    decoder_atual.entity_names.clear()
+                    emit(("identity_reset",))
+                connection_active[0] = connected
                 emit(("conn", bool(ports)))
             except Exception as e:
                 log("psutil:", e)
@@ -1008,6 +1025,7 @@ def run_sniffer(emit, stop_event=None):
     filtro_captura = f"tcp and ({filtro_portas})" if filtro_portas else \
         "tcp and not port 443 and not port 80"
     decoder = Decoder(emit, INVENTORY_STATE_FILE)
+    decoder_ref[0] = decoder
     lock = threading.Lock()
     recent_packets = {}
 
