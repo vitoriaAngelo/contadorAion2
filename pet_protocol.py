@@ -735,6 +735,10 @@ class Decoder:
         self.current_boss = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
+        # O arquivo persistido pode estar desatualizado quando materiais foram
+        # usados com o contador fechado. Se a primeira atualização da sessão
+        # voltar à mesma quantidade salva, ainda deve contar a coleta recebida.
+        self.inventory_seen_session = set()
         if inventory_state_file:
             try:
                 with open(inventory_state_file, "r", encoding="utf-8") as f:
@@ -794,11 +798,14 @@ class Decoder:
                         if change:
                             kind, instance, item, quantity = change
                             previous = self.inventory_instances.get(instance)
+                            seen_session = instance in self.inventory_seen_session
                             if kind == 2 or quantity == 0:
                                 self.inventory_instances.pop(instance, None)
+                                self.inventory_seen_session.discard(instance)
                                 self._save_inventory()
                             else:
                                 self.inventory_instances[instance] = (item, quantity)
+                                self.inventory_seen_session.add(instance)
                                 if item in OD_ITEM_TYPES or item in GATHER_ITEM_TYPES:
                                     self._save_inventory()
                                 old_quantity = previous[1] if previous and previous[0] == item else None
@@ -806,6 +813,9 @@ class Decoder:
                                 ganho = quantity if kind == 0 else (
                                     quantity - old_quantity if old_quantity is not None else (
                                         1 if kind == 1 and tracked_collection else 0))
+                                if (tracked_collection and kind == 1 and not seen_session
+                                        and ganho <= 0):
+                                    ganho = 1
                                 if item == KINAH_ITEM_ID and ganho > 0:
                                     self.emit(("kinah_gain", ganho))
                                 elif item in OD_ITEM_TYPES and ganho > 0:

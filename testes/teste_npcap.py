@@ -243,6 +243,21 @@ class LeituraNpcap(unittest.TestCase):
             segundo.segment('jogo', 2000, od_fino(40))
             self.assertEqual(eventos, [('ready',), ('od_gain', 'OD Fino', 2)])
 
+    def test_orichalcum_radiante_conta_quando_pilha_volta_ao_total_salvo(self):
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
+            estado = os.path.join(pasta, 'inventario.json')
+            with open(estado, 'w', encoding='utf-8') as arquivo:
+                json.dump({'501': [610620016, 9]}, arquivo)
+            eventos = []
+            payload = bytearray(23)
+            payload[0], payload[1] = 1, 1
+            struct.pack_into('<I', payload, 3, 501)
+            struct.pack_into('<I', payload, 11, 610620016)
+            struct.pack_into('<Q', payload, 15, 9)
+            dec = pp.Decoder(eventos.append, estado)
+            dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
+            self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
+
     def test_todos_os_itens_coletaveis_contam_primeiro_evento_e_variacao(self):
         def alteracao(kind, instancia, item_id, quantidade):
             payload = bytearray(23)
