@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import contador_almas as ca
@@ -75,6 +76,48 @@ class Regressoes(unittest.TestCase):
         r = ca.Rastreador(ca.PADROES_PADRAO)
         quadro = lambda linhas: [(t, 100 + i * 30, 18) for i, t in enumerate(linhas)]
         self.assertEqual(r.quadro_pos(quadro(['Voce obteve 150 Pontos do Abismo']), 0), [])
+
+    def _atualizar_com_requirements(self, local, remoto):
+        with tempfile.TemporaryDirectory() as pasta:
+            os.mkdir(os.path.join(pasta, 'psutil'))
+            for nome, dados in [('requirements.txt', local), ('contador_almas.py', b'')]:
+                with open(os.path.join(pasta, nome), 'wb') as f:
+                    f.write(dados)
+            with mock.patch.object(ca, 'baixar_texto',
+                                   lambda url: remoto if 'requirements' in url else b''):
+                return ca.aplicar_atualizacao(b'', pasta)
+
+    def test_quebra_de_linha_nao_conta_como_requirements_novo(self):
+        self.assertFalse(self._atualizar_com_requirements(b'mss>=9.0\r\npsutil>=6.0\r\n',
+                                                          b'mss>=9.0\npsutil>=6.0\n'))
+
+    def test_requirements_novo_pede_instalacao(self):
+        self.assertTrue(self._atualizar_com_requirements(b'mss>=9.0\n', b'mss>=9.0\npsutil>=6.0\n'))
+
+    def test_abertura_repara_so_bibliotecas_instaladas_na_pasta(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            with mock.patch.object(ca, 'bibliotecas_ok', return_value=False), \
+                    mock.patch.object(ca, 'instalar_bibliotecas', return_value=True) as pip:
+                ca.reparar_bibliotecas(pasta)  # RODAR.bat: nada instalado aqui
+                pip.assert_not_called()
+                os.mkdir(os.path.join(pasta, 'psutil-7.2.2.dist-info'))
+                ca.reparar_bibliotecas(pasta)
+                pip.assert_called_once_with(pasta)
+
+    def test_abertura_nao_chama_pip_com_bibliotecas_inteiras(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            os.mkdir(os.path.join(pasta, 'psutil-7.2.2.dist-info'))
+            with mock.patch.object(ca, 'bibliotecas_ok', return_value=True), \
+                    mock.patch.object(ca, 'instalar_bibliotecas') as pip:
+                ca.reparar_bibliotecas(pasta)
+                pip.assert_not_called()
+                ca.reparar_bibliotecas(pasta, forcar=True)
+                pip.assert_called_once_with(pasta)
+
+    def test_erro_de_import_nao_culpa_o_npcap(self):
+        erro = "cannot import name '_common' from partially initialized module 'psutil'"
+        self.assertNotIn('Npcap', ca.dica_erro_leitura(erro, 'npcap'))
+        self.assertIn('Npcap', ca.dica_erro_leitura('Npcap ausente', 'npcap'))
 
 
 if __name__ == '__main__':

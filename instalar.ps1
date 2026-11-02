@@ -141,6 +141,8 @@ try {
 
     # 2) Bibliotecas ----------------------------------------------------------
     Passo 2 $total "Instalando as bibliotecas de captura Npcap..."
+    # o pip nao apaga DLL de contador aberto e deixaria a biblioteca pela metade
+    Fechar-Contador
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     $cod = Rodar $py @("-m", "pip", "install", "--target", $Destino, "--upgrade", "--disable-pip-version-check", "-q", "-r", (Join-Path $Origem "requirements.txt"))
     if ($cod -ne 0) { throw "Falha ao instalar as bibliotecas do Python" }
@@ -157,7 +159,6 @@ try {
 
     # 4) Copiar o programa ------------------------------------------------------
     Passo 4 $total "Copiando o programa para $Destino ..."
-    Fechar-Contador
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     foreach ($arq in @("contador_almas.py", "pet_protocol.py", "pet_nomes_npcap.json",
                       "LICENSE-PET-PROTOCOL.txt", "icone.ico", "desinstalar.ps1",
