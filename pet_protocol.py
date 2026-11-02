@@ -404,10 +404,14 @@ def _network_name(payload, start, minimum=2):
 def parse_player_nickname(payload):
     try:
         entity, p = read_varint(payload, 0)
-        for at in range(p, min(len(payload) - 3, p + 24)):
-            name = _network_name(payload, at, 3)
-            if name:
+        curto = None
+        for at in range(p, min(len(payload) - 2, p + 24)):
+            name = _network_name(payload, at, 2)
+            if name and len(name) >= 3:
                 return entity, name
+            curto = curto or name
+        if curto:  # nomes de 2 letras existem, mas perdem para um nome maior
+            return entity, curto
     except IndexError:
         pass
     return None
