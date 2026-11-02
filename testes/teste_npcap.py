@@ -47,6 +47,48 @@ class LeituraNpcap(unittest.TestCase):
         cura = base + varint(100) + varint(80) + struct.pack('<I', 14050340)
         self.assertIsNone(pp.parse_dot_damage(cura))
 
+    def _pt_com_teleporte(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name, dec.own_entity = 'fz', 7432
+        dec.party_names = {'fz', 'misaa', 'Bug'}
+        dec.entity_names.update({7432: 'fz', 3210: 'misaa'})
+        zona = bytearray(24)
+        struct.pack_into('<I', zona, 4, 500)
+        struct.pack_into('<ff', zona, 16, 1000.0, 2000.0)
+        dec.zone_id = 500
+        pacote = frame(pp.OP_ZONE, bytes(zona))
+        dec.segment('jogo', 1000, pacote)
+        return dec, eventos, 1000 + len(pacote)
+
+    def test_teleporte_mantem_a_pt_e_o_dano_dos_outros(self):
+        dec, eventos, sequencia = self._pt_com_teleporte()
+        dano = (varint(9000) + bytes.fromhex('0400') + varint(3210) + struct.pack('<I', 14050340) +
+                bytes.fromhex('0102000000010000008101') + varint(12345) + bytes.fromhex('0000'))
+        dec.segment('jogo', sequencia, frame(pp.OP_DAMAGE, dano))
+        self.assertEqual(dec.party_names, {'fz', 'misaa', 'Bug'})
+        self.assertNotIn(('dps_party', ['fz']), eventos)
+        self.assertIn(('dps_damage', 'misaa', 12345), eventos)
+
+    def test_roster_menor_depois_do_teleporte_atualiza_a_pt(self):
+        dec, eventos, sequencia = self._pt_com_teleporte()
+        nomes = (b'fz', b'misaa')
+        roster = b''.join(bytes.fromhex('1805') + bytes([len(n)]) + n + struct.pack('<II', 24, 45) for n in nomes)
+        with patch.object(pp, 'parse_party_roster_details', return_value=[('fz', ''), ('misaa', '')]):
+            dec.segment('jogo', sequencia, frame(pp.OP_PARTY_ROSTER, roster))
+        self.assertEqual(dec.party_names, {'fz', 'misaa'})
+        self.assertFalse(dec.party_unconfirmed)
+
+    def test_teleporte_sem_pt_mostra_so_o_proprio_personagem(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name = 'fz'
+        zona = bytearray(24)
+        struct.pack_into('<I', zona, 4, 500)
+        struct.pack_into('<ff', zona, 16, 1000.0, 2000.0)
+        dec.segment('jogo', 1000, frame(pp.OP_ZONE, bytes(zona)))
+        self.assertIn(('dps_party', ['fz']), eventos)
+
     def test_cura_direta_da_pt_nao_entra_no_dps(self):
         eventos = []
         dec = pp.Decoder(eventos.append)

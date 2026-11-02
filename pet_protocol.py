@@ -751,6 +751,7 @@ class Decoder:
         self.abyss_progress = None
         self.entity_names = {}
         self.party_names = set()
+        self.party_unconfirmed = False
         self.summon_owners = {}
         self.own_name = None
         self.boss_entities = set()
@@ -913,8 +914,12 @@ class Decoder:
                             self.party_names = set()
                         elif len(members) == 1 and members[0] == self.own_name:
                             self.party_names = set(members)
-                        elif not self.party_names or len(members) >= len(self.party_names):
+                        elif (not self.party_names or self.party_unconfirmed or
+                              len(members) >= len(self.party_names)):
                             self.party_names = set(members)
+                        log("party roster", len(members), "after_tp", self.party_unconfirmed,
+                            "party", len(self.party_names))
+                        self.party_unconfirmed = False
                         classes = {name: classe for name, classe in details if classe}
                         if classes:
                             self.emit(("dps_classes", classes))
@@ -967,17 +972,18 @@ class Decoder:
                                 self.emit(("boss_health", 0, 0))
                                 self.own_entity = None
                             self.zone_id = zone[0]
-                            # Teleport pode manter, trocar ou desfazer a PT.
-                            # Limpa a referência de rede e deixa a interface
-                            # aguardar brevemente um roster novo; sem roster,
-                            # ela mantém apenas o próprio personagem.
-                            self.party_names.clear()
+                            # Teleport pode manter, trocar ou desfazer a PT, mas o
+                            # jogo pode só reenviar o roster depois do chefe. Mantém
+                            # a lista e deixa o próximo roster valer mesmo se menor.
+                            self.party_unconfirmed = bool(self.party_names)
+                            log("party zone", zone[0], "party", len(self.party_names))
                             if self.own_name:
                                 # O jogo pode não repetir OP_NICKNAME depois de
                                 # um TP. Reapresenta à interface o nome que esta
                                 # conexão já confirmou.
                                 self.emit(("nickname", self.own_name))
-                                self.emit(("dps_party", [self.own_name]))
+                                if not self.party_names:
+                                    self.emit(("dps_party", [self.own_name]))
                             self.emit(("zone",) + zone)
                     elif op == OP_LOCAL_POSITION:
                         position = parse_local_position(payload, self.own_entity)
