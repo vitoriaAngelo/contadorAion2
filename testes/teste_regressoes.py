@@ -12,6 +12,24 @@ class Regressoes(unittest.TestCase):
         self.assertEqual(ca.carregar_nomes_pets('en')['1001'], 'Black Dragon')
         self.assertEqual(ca.carregar_nomes_pets('pt-BR')['1001'], 'Dragão Negro')
 
+    def test_cores_do_dps_nao_repetem_com_classes_iguais(self):
+        classes = {'a': 'Chanter', 'b': 'Chanter', 'c': 'Chanter', 'd': '', 'e': 'Cleric'}
+        cores = ca.cores_dps(list(classes), classes)
+        self.assertEqual(len(set(cores.values())), 5)
+        self.assertEqual(cores['a'], ca.CORES_DPS_CLASSE['Chanter'])
+
+    def test_barra_do_dps_e_relativa_ao_maior_dano(self):
+        self.assertEqual(ca.fracoes_dps(['a', 'b'], {'a': 200, 'b': 50}), {'a': 1.0, 'b': 0.25})
+        self.assertEqual(ca.fracoes_dps(['a'], {}), {'a': 0.0})
+
+    def test_barra_do_dps_desliza_ate_o_alvo(self):
+        passo = ca.avancar_barra(0.0, 1.0)
+        self.assertTrue(0.0 < passo < 1.0)
+        atual = 0.0
+        for _ in range(80):
+            atual = ca.avancar_barra(atual, 1.0)
+        self.assertEqual(atual, 1.0)
+
     def test_dps_fica_em_ordem_do_maior_dano(self):
         nomes = ['Cleric', 'Gladiator', 'Ranger', 'Templar']
         danos = {'Cleric': 800, 'Gladiator': 2500, 'Ranger': 1200, 'Templar': 1200}
