@@ -89,6 +89,25 @@ class LeituraNpcap(unittest.TestCase):
         dec.segment('jogo', 1000, frame(pp.OP_ZONE, bytes(zona)))
         self.assertIn(('dps_party', ['fz']), eventos)
 
+    def test_dano_de_outro_jogador_com_nome_de_duas_letras(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name, dec.own_entity = 'misaa', 7432
+        dec.party_names = {'fz', 'misaa'}
+        nome = varint(4626) + bytes.fromhex('0000') + bytes([2]) + b'fz' + bytes(4)
+        dano = (varint(9000) + bytes.fromhex('0400') + varint(4626) + struct.pack('<I', 18040000) +
+                bytes.fromhex('0102000000010000008101') + varint(12345) + bytes.fromhex('0000'))
+        pacotes = [frame(pp.OP_PLAYER_NICKNAME, nome), frame(pp.OP_DAMAGE, dano)]
+        sequencia = 1000
+        for pacote in pacotes:
+            dec.segment('jogo', sequencia, pacote)
+            sequencia += len(pacote)
+        self.assertIn(('dps_damage', 'fz', 12345), eventos)
+
+    def test_nome_maior_vence_nome_curto_no_mesmo_pacote(self):
+        payload = varint(4626) + bytes([2]) + b'ab' + bytes([5]) + b'misaa' + bytes(4)
+        self.assertEqual(pp.parse_player_nickname(payload), (4626, 'misaa'))
+
     def test_cura_direta_da_pt_nao_entra_no_dps(self):
         eventos = []
         dec = pp.Decoder(eventos.append)
