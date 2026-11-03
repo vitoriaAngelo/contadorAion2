@@ -582,6 +582,21 @@ def parse_npc_spawn(payload):
         return None
 
 
+def parse_npc_spawn_name(payload):
+    """Nome opcional enviado junto ao surgimento do NPC."""
+    try:
+        _, p = read_varint(payload, 0)
+        if len(payload) < p + 4 or payload[p + 2] != 1:
+            return ""
+        size = payload[p + 3]
+        if not 1 <= size <= 100 or p + 4 + size > len(payload):
+            return ""
+        nome = payload[p + 4:p + 4 + size].decode("utf-8", "ignore").strip(" \0")
+        return nome if len(nome) >= 2 and sum(c.isprintable() for c in nome) == len(nome) else ""
+    except (IndexError, ValueError):
+        return ""
+
+
 def parse_spawn_health(payload):
     """Vida atual e máxima anunciadas no spawn do monstro."""
     trailer = b"\x64\0\0\0\x64\0\0\0"
@@ -760,6 +775,7 @@ class Decoder:
         self.own_name = None
         self.boss_entities = set()
         self.boss_health = {}
+        self.boss_names = {}
         self.current_boss = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
@@ -951,11 +967,15 @@ class Decoder:
                                 # vida; sem este evento o painel ficava preso no
                                 # chefe anterior.
                                 if maximum <= 0:
-                                    self.emit(("boss_health", 0, 0))
+                                    nome_boss = self.boss_names.get(self.current_boss, "")
+                                    self.emit(("boss_health", 0, 0, nome_boss) if nome_boss else
+                                              ("boss_health", 0, 0))
                                 if maximum > 0:
                                     current = max(0, current - amount)
                                     self.boss_health[self.current_boss] = (current, maximum)
-                                    self.emit(("boss_health", current, maximum))
+                                    nome_boss = self.boss_names.get(self.current_boss, "")
+                                    self.emit(("boss_health", current, maximum, nome_boss) if nome_boss else
+                                              ("boss_health", current, maximum))
                             owner = self.summon_owners.get(actor)
                             source_id = owner[0] if owner and owner[0] else actor
                             source_name = (owner[1] if owner and owner[1] else
@@ -972,6 +992,7 @@ class Decoder:
                                     self.emit(("dps_reset",))
                                 self.boss_entities.clear()
                                 self.boss_health.clear()
+                                self.boss_names.clear()
                                 self.current_boss = None
                                 self.emit(("boss_health", 0, 0))
                                 self.own_entity = None
@@ -1009,8 +1030,12 @@ class Decoder:
                             if maximum is not None and maximum >= 500_000:
                                 self.boss_entities.add(mob[0])
                                 self.boss_health[mob[0]] = health
+                                nome_boss = parse_npc_spawn_name(payload)
+                                if nome_boss:
+                                    self.boss_names[mob[0]] = nome_boss
                                 if self.current_boss is None:
-                                    self.emit(("boss_health", health[0], health[1]))
+                                    self.emit(("boss_health", health[0], health[1], nome_boss) if nome_boss else
+                                              ("boss_health", health[0], health[1]))
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
@@ -1019,6 +1044,7 @@ class Decoder:
                             self.summon_owners.pop(entity, None)
                             self.boss_entities.discard(entity)
                             self.boss_health.pop(entity, None)
+                            self.boss_names.pop(entity, None)
                             if entity == self.current_boss:
                                 # Só marca fim real quando a vida chegou a zero.
                                 # Ao morrer/teleportar, o boss pode apenas sair
