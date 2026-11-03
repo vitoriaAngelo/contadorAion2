@@ -31,6 +31,27 @@ class Regressoes(unittest.TestCase):
             atual = ca.avancar_barra(atual, 1.0)
         self.assertEqual(atual, 1.0)
 
+    def test_aba_automatica_vai_para_a_atividade(self):
+        aba = ca.aba_automatica
+        self.assertEqual(aba('almas', 'boss', 100, -1e9, {}, True), 'dps')
+        self.assertEqual(aba('almas', 'materiais', 100, -1e9, {}, False), 'materiais')
+        self.assertEqual(aba('dps', 'alma', 100, -1e9, {'dps': 50}, False), 'almas')
+        self.assertIsNone(aba('od', 'materiais', 100, -1e9, {}, False))
+
+    def test_aba_automatica_nao_sai_do_boss_nem_de_aba_ativa(self):
+        aba = ca.aba_automatica
+        self.assertIsNone(aba('dps', 'alma', 100, -1e9, {'dps': 99}, True))
+        self.assertIsNone(aba('dps', 'od', 100, -1e9, {'dps': 99}, True))
+        self.assertIsNone(aba('materiais', 'alma', 100, -1e9, {'coleta': 90}, False))
+        self.assertEqual(aba('materiais', 'alma', 100, -1e9, {'coleta': 84}, False), 'almas')
+
+    def test_aba_automatica_respeita_troca_manual_e_outras_telas(self):
+        aba = ca.aba_automatica
+        self.assertIsNone(aba('almas', 'boss', 100, 85, {}, True))
+        self.assertEqual(aba('almas', 'boss', 100, 79, {}, True), 'dps')
+        self.assertIsNone(aba('info', 'boss', 100, -1e9, {}, True))
+        self.assertIsNone(aba('pets', 'alma', 100, -1e9, {}, False))
+
     def test_dps_fica_em_ordem_do_maior_dano(self):
         nomes = ['Cleric', 'Gladiator', 'Ranger', 'Templar']
         danos = {'Cleric': 800, 'Gladiator': 2500, 'Ranger': 1200, 'Templar': 1200}
