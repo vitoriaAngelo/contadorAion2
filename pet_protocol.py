@@ -119,6 +119,7 @@ OP_EFFECT = b"\x2a\x38"
 OP_EFFECT_RENEWED = b"\x2b\x38"
 OP_DAMAGE = b"\x04\x38"
 OP_DOT = b"\x05\x38"
+OP_REMAIN_HP = b"\x00\x8d"
 OP_PLAYER_NICKNAME = b"\x45\x36"
 OP_PARTY_ROSTER = b"\x02\x97"
 OP_LZ4 = b"\xff\xff"
@@ -597,6 +598,38 @@ def parse_npc_spawn_name(payload):
         return ""
 
 
+def parse_npc_spawn_code(payload):
+    """Instância e código do NPC no 0x4136 (marcador usado pelo cliente global)."""
+    try:
+        entity, _ = read_varint(payload, 0)
+        if not 0 < entity < 10_000_000:
+            return None
+        marcador = next((payload.find(p) for p in (b"\x00\x40\x02", b"\x00\x00\x02")
+                          if payload.find(p) >= 3), -1)
+        if marcador < 3:
+            return None
+        codigo = int.from_bytes(payload[marcador - 3:marcador], "little")
+        return (entity, codigo) if 0 < codigo < 10_000_000 else None
+    except (IndexError, ValueError):
+        return None
+
+
+def parse_remain_hp(payload):
+    """Vida atual enviada no 0x008d: alvo + três varints + uint32 LE."""
+    try:
+        target, p = read_varint(payload, 0)
+        if not 0 < target < 10_000_000:
+            return None
+        for _ in range(3):
+            _, p = read_varint(payload, p)
+        if p + 4 > len(payload):
+            return None
+        hp = struct.unpack_from("<I", payload, p)[0]
+        return (target, hp) if hp <= 1_000_000_000 else None
+    except (IndexError, struct.error, ValueError):
+        return None
+
+
 def parse_spawn_health(payload):
     """Vida atual e máxima anunciadas no spawn do monstro."""
     trailer = b"\x64\0\0\0\x64\0\0\0"
@@ -776,6 +809,7 @@ class Decoder:
         self.boss_entities = set()
         self.boss_health = {}
         self.boss_names = {}
+        self.mob_codes = {}
         self.current_boss = None
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
@@ -993,6 +1027,7 @@ class Decoder:
                                 self.boss_entities.clear()
                                 self.boss_health.clear()
                                 self.boss_names.clear()
+                                self.mob_codes.clear()
                                 self.current_boss = None
                                 self.emit(("boss_health", 0, 0))
                                 self.own_entity = None
@@ -1024,19 +1059,31 @@ class Decoder:
                         if owner and owner[1]:
                             self.summon_owners[owner[0]] = (owner[1], owner[2])
                         mob = parse_npc_spawn(payload)
+                        codigo = parse_npc_spawn_code(payload)
+                        if codigo:
+                            self.mob_codes[codigo[0]] = codigo[1]
                         if mob:
-                            health = parse_spawn_health(payload)
-                            maximum = health[1] if health else None
-                            if maximum is not None and maximum >= 500_000:
-                                self.boss_entities.add(mob[0])
-                                self.boss_health[mob[0]] = health
-                                nome_boss = parse_npc_spawn_name(payload)
-                                if nome_boss:
-                                    self.boss_names[mob[0]] = nome_boss
-                                if self.current_boss is None:
-                                    self.emit(("boss_health", health[0], health[1], nome_boss) if nome_boss else
-                                              ("boss_health", health[0], health[1]))
                             self.emit(("mob_spawn",) + mob)
+                    elif op == OP_REMAIN_HP:
+                        vida = parse_remain_hp(payload)
+                        if vida:
+                            target, current = vida
+                            anterior = self.boss_health.get(target, (0, 0))
+                            maximum = max(anterior[1], current)
+                            # O pacote não traz o tipo de unidade. Vida alta ou
+                            # o alvo atual do combate identificam o boss.
+                            if current >= 500_000 or target == self.current_boss or target in self.boss_entities:
+                                self.boss_entities.add(target)
+                                self.boss_health[target] = (current, maximum)
+                                codigo = self.mob_codes.get(target)
+                                nome_boss = self.boss_names.get(target) or (
+                                    f"Boss #{codigo}" if codigo else "Boss")
+                                self.boss_names[target] = nome_boss
+                                if self.current_boss in (None, -1):
+                                    self.current_boss = target
+                                if target == self.current_boss:
+                                    self.emit(("boss_health", current, maximum, nome_boss))
+                                    log("boss hp", target, codigo or "?", current, maximum)
                     elif op == OP_NPC_REMOVE:
                         entity = parse_npc_remove(payload)
                         if entity is not None:
@@ -1045,6 +1092,7 @@ class Decoder:
                             self.boss_entities.discard(entity)
                             self.boss_health.pop(entity, None)
                             self.boss_names.pop(entity, None)
+                            self.mob_codes.pop(entity, None)
                             if entity == self.current_boss:
                                 # Só marca fim real quando a vida chegou a zero.
                                 # Ao morrer/teleportar, o boss pode apenas sair
