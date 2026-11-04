@@ -42,6 +42,7 @@ if sys.stderr is None:  # windowed exe / pythonw: libraries still print warnings
 STATE_FILE = os.path.join(APP_DIR, "pet_state.json")
 LEGACY_STATE_FILE = os.path.join(APP_DIR, "aion2_pet_tracker_state.json")
 LOG_FILE = os.path.join(APP_DIR, "pet_overlay.log")
+PROFESSION_TRACE_FILE = os.path.join(APP_DIR, "profession_trace.log")
 INVENTORY_STATE_FILE = os.path.join(APP_DIR, "inventory_state.json")
 
 
@@ -884,6 +885,16 @@ class Decoder:
                 self.emit(("ready",))
             try:
                 for op, payload in unpack(frame):
+                    # Amostras curtas para identificar os pacotes de XP de profissões.
+                    # Limite por opcode evita crescimento contínuo durante o jogo.
+                    if not hasattr(self, "_profession_trace_counts"):
+                        self._profession_trace_counts = {}
+                    trace_count = self._profession_trace_counts.get(op, 0)
+                    if trace_count < 40 and op not in (OP_DAMAGE, OP_DOT, OP_REMAIN_HP):
+                        self._profession_trace_counts[op] = trace_count + 1
+                        with open(PROFESSION_TRACE_FILE, "a", encoding="ascii") as trace:
+                            trace.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
+                                        f"{op.hex()} {len(payload)} {payload[:96].hex()}\n")
                     if op == OP_GAIN:
                         for pid, amount in parse_gain(payload):
                             if 0 < amount <= 100:

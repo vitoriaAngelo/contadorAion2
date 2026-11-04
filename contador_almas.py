@@ -6149,7 +6149,7 @@ def main():
                     pass
                 destino = os.path.join(desk, "ContadorDeAlmas-relatorio.zip")
                 with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
-                    for nome in ("diagnostico.log", "diagnostico.log.old", "pet_overlay.log", "config.json",
+                    for nome in ("diagnostico.log", "diagnostico.log.old", "pet_overlay.log", "profession_trace.log", "config.json",
                                  "captura_original.png", "captura_tratada.png",
                                  "tela_monitor1.jpg", "tela_monitor2.jpg", "tela_monitor3.jpg"):
                         cam = os.path.join(BASE, nome)
