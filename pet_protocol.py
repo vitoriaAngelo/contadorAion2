@@ -44,6 +44,22 @@ LEGACY_STATE_FILE = os.path.join(APP_DIR, "aion2_pet_tracker_state.json")
 LOG_FILE = os.path.join(APP_DIR, "pet_overlay.log")
 INVENTORY_STATE_FILE = os.path.join(APP_DIR, "inventory_state.json")
 
+
+def _load_boss_catalog():
+    """Load NPC id -> boss name without making capture depend on the catalog."""
+    for base in (APP_DIR, RES_DIR):
+        try:
+            with open(os.path.join(base, "boss_nomes.json"), "r", encoding="utf-8") as f:
+                bosses = json.load(f).get("bosses", {})
+            return {int(npc_id): info["name"] for npc_id, info in bosses.items()
+                    if info.get("name")}
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+    return {}
+
+
+BOSS_NAMES_BY_NPC_ID = _load_boss_catalog()
+
 REQ = [5, 25, 75]  # souls needed for levels 1, 2 and 3 (counter resets each level)
 MAX_LEVEL = len(REQ)
 
@@ -1076,8 +1092,9 @@ class Decoder:
                                 self.boss_entities.add(target)
                                 self.boss_health[target] = (current, maximum)
                                 codigo = self.mob_codes.get(target)
-                                nome_boss = self.boss_names.get(target) or (
-                                    f"Boss #{codigo}" if codigo else "Boss")
+                                nome_boss = (self.boss_names.get(target)
+                                             or BOSS_NAMES_BY_NPC_ID.get(codigo)
+                                             or (f"Boss #{codigo}" if codigo else "Boss"))
                                 self.boss_names[target] = nome_boss
                                 if self.current_boss in (None, -1):
                                     self.current_boss = target

@@ -161,7 +161,8 @@ try {
     Passo 4 $total "Copiando o programa para $Destino ..."
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     foreach ($arq in @("contador_almas.py", "pet_protocol.py", "pet_nomes_npcap.json",
-                      "LICENSE-PET-PROTOCOL.txt", "icone.ico", "desinstalar.ps1",
+                      "LICENSE-PET-PROTOCOL.txt", "LICENSE-BOSS-CATALOG.txt",
+                      "boss_nomes.json", "material_icons.png", "icone.ico", "desinstalar.ps1",
                       "requirements.txt", "LICENSE", "README.md")) {
         $de = Join-Path $Origem $arq
         if (Test-Path $de) { Copy-Item $de -Destination $Destino -Force }
@@ -171,7 +172,7 @@ try {
 
     # 5) Verificar arquivos da captura ---------------------------------------
     Passo 5 $total "Verificando os arquivos da leitura de rede..."
-    foreach ($arq in @("pet_protocol.py", "pet_nomes_npcap.json")) {
+    foreach ($arq in @("pet_protocol.py", "pet_nomes_npcap.json", "boss_nomes.json")) {
         if (-not (Test-Path (Join-Path $Destino $arq))) { throw "Arquivo ausente: $arq" }
     }
     Ok "Leitura de rede pronta"
@@ -225,25 +226,3 @@ catch {
     Write-Host "    Se precisar de ajuda, mande um print desta janela."
     exit 1
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
