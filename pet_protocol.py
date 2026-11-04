@@ -615,18 +615,24 @@ def parse_npc_spawn_name(payload):
 
 
 def parse_npc_spawn_code(payload):
-    """Instância e código do NPC no 0x4136 (marcador usado pelo cliente global)."""
+    """Instância e código do NPC no 0x4136.
+
+    O formato é entity(varint), três bytes de tipo e npc_id(uint32 LE). Quando
+    o terceiro byte vale 1, há antes do npc_id um nome com tamanho em um byte.
+    """
     try:
-        entity, _ = read_varint(payload, 0)
-        if not 0 < entity < 10_000_000:
+        entity, p = read_varint(payload, 0)
+        if not 0 < entity < 10_000_000 or p + 7 > len(payload):
             return None
-        marcador = next((payload.find(p) for p in (b"\x00\x40\x02", b"\x00\x00\x02")
-                          if payload.find(p) >= 3), -1)
-        if marcador < 3:
-            return None
-        codigo = int.from_bytes(payload[marcador - 3:marcador], "little")
+        if payload[p + 2] == 1:
+            tamanho = payload[p + 3]
+            if not 1 <= tamanho <= 100 or p + 4 + tamanho + 4 > len(payload):
+                return None
+            p += 1 + tamanho
+        p += 3
+        codigo = struct.unpack_from("<I", payload, p)[0]
         return (entity, codigo) if 0 < codigo < 10_000_000 else None
-    except (IndexError, ValueError):
+    except (IndexError, struct.error, ValueError):
         return None
 
 
