@@ -1024,9 +1024,12 @@ class Decoder:
                                 # limite de vida de boss. Não troque de encontro
                                 # a cada alvo: isso reiniciava o timer em 00:01.
                                 if self.current_boss in (None, -1):
-                                    if self.current_boss == -1:
+                                    if self.current_boss == -1 and \
+                                            self.mob_codes.get(target) in BOSS_NAMES_BY_NPC_ID:
                                         self.emit(("dps_reset",))
-                                    self.current_boss = target
+                                        self.current_boss = target
+                                    elif self.current_boss is None:
+                                        self.current_boss = target
                                 current, maximum = (self.boss_health.get(self.current_boss, (0, 0))
                                                     if target == self.current_boss else (0, 0))
                                 # Sempre avisa a interface quando o alvo muda.
@@ -1126,9 +1129,11 @@ class Decoder:
                                     self.emit(("dps_reset",))
                                     self.current_boss = target
                                 elif self.current_boss in (None, -1):
-                                    if self.current_boss == -1:
+                                    if self.current_boss == -1 and codigo in BOSS_NAMES_BY_NPC_ID:
                                         self.emit(("dps_reset",))
-                                    self.current_boss = target
+                                        self.current_boss = target
+                                    elif self.current_boss is None:
+                                        self.current_boss = target
                                 if target == self.current_boss:
                                     self.emit(("boss_health", current, maximum, nome_boss))
                                     log("boss hp", target, codigo or "?", current, maximum)
