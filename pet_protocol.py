@@ -1095,6 +1095,12 @@ class Decoder:
                         codigo = parse_npc_spawn_code(payload)
                         if codigo:
                             self.mob_codes[codigo[0]] = codigo[1]
+                            nome = BOSS_NAMES_BY_NPC_ID.get(codigo[1])
+                            if nome and codigo[0] in self.boss_entities:
+                                self.boss_names[codigo[0]] = nome
+                                if codigo[0] == self.current_boss:
+                                    atual, maxima = self.boss_health.get(codigo[0], (0, 0))
+                                    self.emit(("boss_health", atual, maxima, nome))
                         if mob:
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_REMAIN_HP:
@@ -1109,11 +1115,19 @@ class Decoder:
                                 self.boss_entities.add(target)
                                 self.boss_health[target] = (current, maximum)
                                 codigo = self.mob_codes.get(target)
-                                nome_boss = (self.boss_names.get(target)
-                                             or BOSS_NAMES_BY_NPC_ID.get(codigo)
-                                             or (f"Boss #{codigo}" if codigo else "Boss"))
+                                nome_boss = (BOSS_NAMES_BY_NPC_ID.get(codigo)
+                                             or self.boss_names.get(target)
+                                             or "Chefe")
                                 self.boss_names[target] = nome_boss
-                                if self.current_boss in (None, -1):
+                                anterior_boss = self.boss_health.get(self.current_boss, (0, 0))
+                                if (self.current_boss not in (None, -1, target)
+                                        and anterior_boss[0] <= 0
+                                        and codigo in BOSS_NAMES_BY_NPC_ID):
+                                    self.emit(("dps_reset",))
+                                    self.current_boss = target
+                                elif self.current_boss in (None, -1):
+                                    if self.current_boss == -1:
+                                        self.emit(("dps_reset",))
                                     self.current_boss = target
                                 if target == self.current_boss:
                                     self.emit(("boss_health", current, maximum, nome_boss))
@@ -1131,8 +1145,7 @@ class Decoder:
                                 # Só marca fim real quando a vida chegou a zero.
                                 # Ao morrer/teleportar, o boss pode apenas sair
                                 # do alcance do cliente e o DPS deve continuar.
-                                if vida_removida and vida_removida[0] <= 0:
-                                    self.current_boss = -1
+                                self.current_boss = -1
                                 self.emit(("boss_health", 0, 0))
                             self.emit(("mob_remove", entity))
             except Exception as e:
