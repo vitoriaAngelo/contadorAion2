@@ -890,7 +890,8 @@ class Decoder:
                     if not hasattr(self, "_profession_trace_counts"):
                         self._profession_trace_counts = {}
                     trace_count = self._profession_trace_counts.get(op, 0)
-                    if trace_count < 40 and op not in (OP_DAMAGE, OP_DOT, OP_REMAIN_HP):
+                    limite = 2000 if op in (OP_ABYSS_PROGRESS, OP_INVENTORY_CHANGE) else 40
+                    if trace_count < limite and op not in (OP_DAMAGE, OP_DOT, OP_REMAIN_HP):
                         self._profession_trace_counts[op] = trace_count + 1
                         with open(PROFESSION_TRACE_FILE, "a", encoding="ascii") as trace:
                             trace.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
