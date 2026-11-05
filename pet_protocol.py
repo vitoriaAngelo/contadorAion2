@@ -75,6 +75,8 @@ DAILY_LIMIT_OPS = {b"\xa5\xff": "kina", b"\xa6\xff": "kina",
                    b"\xa7\xff": "gathering", b"\xa8\xff": "gathering"}
 ABYSS_POINT_ACHIEVEMENT = 230111500
 KINAH_ITEM_ID = 930100001
+KINAH_ITEM_IDS = {KINAH_ITEM_ID, 930100031}
+ABYSS_CURRENCY_ID = 930100003
 ITEM_ACQUIRED_WINDOW = 2.0  # segundos entre o 0x1b56 e o 0x338d da mesma coleta
 OD_ITEM_TYPES = {
     610610013: "OD",
@@ -913,7 +915,7 @@ class Decoder:
                         if total is not None:
                             previous = self.abyss_progress
                             self.abyss_progress = total
-                            if previous is not None and total > previous:
+                            if previous is not None and total > previous and not getattr(self, "abyss_currency_seen", False):
                                 self.emit(("abyss_points", total - previous))
                     elif op == OP_ABYSS_SNAPSHOT:
                         total = parse_abyss_snapshot(payload)
@@ -943,7 +945,11 @@ class Decoder:
                                     if ganho <= 0:
                                         ganho = 1
                                     self.inventory_first_gain[item] = (ganho, time.monotonic())
-                                if item == KINAH_ITEM_ID and ganho > 0:
+                                if item == ABYSS_CURRENCY_ID:
+                                    self.abyss_currency_seen = True
+                                    if ganho > 0:
+                                        self.emit(("abyss_points", ganho))
+                                if item in KINAH_ITEM_IDS and ganho > 0:
                                     self.emit(("kinah_gain", ganho))
                                 elif tracked_collection and ganho > 0:
                                     self._emit_collection(item, ganho)
