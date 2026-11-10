@@ -223,6 +223,7 @@ def pasta_base():
 BASE = pasta_base()
 ARQ_CONFIG = os.path.join(BASE, "config.json")
 ARQ_DADOS = os.path.join(BASE, "progresso.json")
+PASTA_ICONES_FARM = os.path.join(BASE, "farm_icons")
 CLASS_ICON_FILES = {
     "Gladiator": "gladiator.png", "Templar": "templar.png",
     "Ranger": "ranger.png", "Assassin": "assassin.png",
@@ -526,6 +527,12 @@ def chave_dia(agora):
 
 
 LIMITES_DIARIOS = {"kina": 1_000_000, "gathering": 1_000}
+FARM_NOMES_CONHECIDOS = {
+    "531900009": ("Cristal da Alma (Vinculado)", "NORMAL"),
+    "630840002": ("Silentium (Vinculado)", "NORMAL"),
+    "510800006": ("Doce de Transformação em Shugo", "NORMAL"),
+    "511490001": ("Semente da Perspicácia", "NORMAL"),
+}
 
 
 def limite_salvo(salvos, nome, agora):
@@ -1748,6 +1755,16 @@ class Progresso:
         self.od = {t: int((dados.get("od") or {}).get(t, 0)) for t in OD_TIPOS}
         self.materiais = {str(k): max(0, int(v)) for k, v in
                           (dados.get("materiais") or {}).items()}
+        self.farm = dados.get("farm", {}) if isinstance(dados.get("farm"), dict) else {}
+        farm_antes = len(self.farm)
+        self.farm = {str(k): v for k, v in self.farm.items()
+                     if not (str(k).isdigit() and 534660000 <= int(k) < 534661000)}
+        farm_renomeado = False
+        for item_id, registro in self.farm.items():
+            conhecido = FARM_NOMES_CONHECIDOS.get(item_id)
+            if conhecido and registro.get("nome") == f"Item {item_id}":
+                registro["nome"], registro["raridade"] = conhecido
+                farm_renomeado = True
         # almas por dia do jogo (o dia vira no reset das 04:00)
         self.dias = dados.get("dias", {}) if isinstance(dados.get("dias"), dict) else {}
         for m in self.monstros:
@@ -1771,13 +1788,14 @@ class Progresso:
                 self.pet_estado.setdefault(pet_id, int(m["qtd"]))
                 self.monstros.remove(m)
                 migrou_catalogo = True
-        if migrou_catalogo:
+        if migrou_catalogo or len(self.farm) != farm_antes or farm_renomeado:
             self.salvar()
 
     def salvar(self):
         try:
             salvar_json(self.arquivo, {"monstros": self.monstros, "dias": self.dias,
                                       "od": self.od, "materiais": self.materiais,
+                                      "farm": self.farm,
                                       "pets_ocultos": self.pets_ocultos,
                                       "pet_estado": self.pet_estado,
                                       "pet_estado_em": self.pet_estado_em})
@@ -2017,6 +2035,19 @@ class Progresso:
         self.monstros.clear()
         self.salvar()
         return n
+
+
+def linhas_exportacao_pets(monstros, meta):
+    """Somente as linhas ativas do overlay, na mesma ordem da aba Pets."""
+    ativos = sorted(monstros, key=lambda m: (
+        m.get("qtd", 0) >= meta,
+        -float(m.get("ultima_alma", m.get("atualizado", 0)) or 0)
+        if m.get("qtd", 0) >= meta else 0))
+    linhas = []
+    for pet in ativos:
+        total = max(0, min(meta, int(pet.get("qtd", 0))))
+        linhas.append((pet["nome"], str(pet.get("pet_id", "")), total, meta - total))
+    return linhas
 
 
 # --------------------------------------------------------------------------
@@ -2598,8 +2629,8 @@ class LeitorRede(threading.Thread):
                 if evento[0] == "gain" and self.ativo.is_set():
                     _, pet_id, quantidade = evento
                     self.fila.put(("alma_rede", (pet_id, quantidade)))
-                elif evento[0] in ("abyss_points", "kinah_gain", "od_gain", "gather_gain") and self.ativo.is_set():
-                    if evento[0] in ("od_gain", "gather_gain"):
+                elif evento[0] in ("abyss_points", "kinah_gain", "od_gain", "gather_gain", "farm_gain") and self.ativo.is_set():
+                    if evento[0] in ("od_gain", "gather_gain", "farm_gain"):
                         self.fila.put((evento[0], (evento[1], evento[2])))
                     else:
                         self.fila.put(evento)
@@ -2737,6 +2768,8 @@ def main():
     class App:
         def __init__(self):
             self.cfg = carregar_config()
+            self._farm_consultas = set()
+            self._farm_semaforo = threading.Semaphore(2)
             self.cfg["recolhido"] = False
             self.cfg["compacto"] = True
             # O progresso agora vem integralmente do Npcap. Mantém uma única
@@ -2867,25 +2900,28 @@ def main():
             self.area_abas.pack(fill="both", expand=True, padx=self.px(4), pady=(0, self.px(4)))
             rod = tk.Frame(self.area_abas, bg=COR["fundo"])
             self._rodape = rod
-            rod.pack(side="bottom", fill="x", pady=(self.px(4), 0))
+            rod.pack(side="bottom", fill="x", pady=(self.px(3), 0))
             rod.columnconfigure(0, weight=1)
-            rod.columnconfigure(5, minsize=self.px(14))
+            tk.Frame(rod, bg=COR["barra"], height=max(1, self.px(1))).grid(
+                row=0, column=0, columnspan=3, sticky="ew", pady=(0, self.px(3)))
             self._lbl_rodape = tk.Label(rod, text="", fg=COR["suave"],
                                         bg=COR["fundo"], font=self.f_peq, anchor="w")
-            self._lbl_rodape.grid(row=0, column=0, sticky="w")
-            tk.Label(rod, text=f"v{VERSAO}", fg="#5a6070", bg=COR["fundo"],
+            self._lbl_rodape.grid(row=1, column=0, sticky="w")
+            tk.Label(rod, text=f"v{VERSAO}", fg=COR["suave"], bg=COR["fundo"],
                      font=self.fontes["versao"]).grid(
-                         row=0, column=1, padx=(self.px(5), self.px(8)))
+                         row=1, column=1, padx=(self.px(5), self.px(8)))
             self._lbl_hora_local = tk.Label(
                 rod, text="", fg=COR["alma"], bg=COR["fundo"],
                 font=self.fontes["relogio"], width=6, anchor="center")
-            self._lbl_hora_local.grid(row=0, column=2, padx=(0, self.px(6)))
+            self._lbl_hora_local.grid(row=1, column=2, padx=(0, self.px(6)))
             self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
-                                        bg=COR["fundo"], font=self.fontes["evento"], anchor="e")
-            self._lbl_evento.grid(row=0, column=3, sticky="e")
+                                        bg=COR["fundo"], font=self.fontes["evento"], anchor="w")
+            self._lbl_evento.grid(row=2, column=0, columnspan=2, sticky="w",
+                                  pady=(self.px(2), 0))
             self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
                                          font=self.fontes["relogio"], width=7, anchor="e")
-            self._lbl_relogio.grid(row=0, column=4, padx=(self.px(3), 0))
+            self._lbl_relogio.grid(row=2, column=2, sticky="e",
+                                   pady=(self.px(2), 0), padx=(self.px(3), self.px(6)))
             self._ev_cache = None
             self._ev_quando = None
             self._abas_visuais = {}
@@ -3295,7 +3331,7 @@ def main():
             nav = tk.Frame(self.root, bg=COR["fundo"])
             nav.pack(fill="x", padx=self.px(4), pady=(0, self.px(1)))
             self._nav = nav
-            for coluna in range(5):
+            for coluna in range(6):
                 nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
             self.b_inicio = self.botao(nav, "Pets", lambda e: self.alternar_aba("almas"),
                                        fonte=self.f_alma_peq, dica="Almas recebidas")
@@ -3305,11 +3341,13 @@ def main():
                                        fonte=self.f_alma_peq, dica="Tempo, pontos e Kina da sessão")
             self.b_od = self.botao(nav, self.tr("Materiais", "Materials"), lambda e: self.selecionar_coleta("od"),
                 fonte=self.f_alma_peq, dica="ODs e materiais de coleta")
+            self.b_farm = self.botao(nav, "FARM", lambda e: self.alternar_aba("farm"),
+                                     fonte=self.f_alma_peq, dica="Itens recebidos")
             b_config = self.botao(nav, "\u2699", self.menu_principal,
                                   fonte=self.f_alma_peq, dica="Opções")
-            for coluna, botao in enumerate((self.b_inicio, self.b_dps, self.b_abismo, self.b_od, b_config)):
+            for coluna, botao in enumerate((self.b_inicio, self.b_dps, self.b_abismo, self.b_od, self.b_farm, b_config)):
                 botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1))
-            for botao in (self.b_inicio, self.b_dps, self.b_abismo, self.b_od):
+            for botao in (self.b_inicio, self.b_dps, self.b_abismo, self.b_od, self.b_farm):
                 botao.bind("<Leave>", lambda e: self._pintar_nav())
             self._pintar_nav()
             # Reserve espaço para os controles da direita antes do status.
@@ -3330,7 +3368,8 @@ def main():
             for botao, ativo in ((self.b_inicio, aba == "almas"),
                                   (self.b_dps, aba == "dps"),
                                   (self.b_abismo, aba == "abyss"),
-                                  (self.b_od, aba in ("od", "materiais"))):
+                                  (self.b_od, aba in ("od", "materiais")),
+                                  (self.b_farm, aba == "farm")):
                 botao.configure(bg=COR["painel"] if ativo else COR["fundo"],
                                 fg=COR["alma"] if ativo else COR["suave"])
 
@@ -3522,6 +3561,11 @@ def main():
                                  f"{concl_visiveis}/{len(lista)} completed")
                 if ocultos:
                     rodape += f"  \u00b7  +{ocultos} ocultos"
+            aba_atual = self.cfg.get("aba", "almas")
+            if aba_atual == "farm":
+                rodape = self.tr(f"{len(self.prog.farm)} itens", f"{len(self.prog.farm)} items")
+            elif aba_atual != "almas":
+                rodape = ""
             vazio = ""
             if not lista:
                 vazio = (self.tr("Aguardando as almas recebidas pelo AION 2 via Npcap…",
@@ -3532,7 +3576,7 @@ def main():
                          if not self.cfg.get("regiao") else
                          "Chat encontrado. Aguardando a primeira alma\u2026")
 
-            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps", "abyss"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps", "abyss", "farm"):
                 visiveis, vazio = [], ""
             estrutura = (tuple(id(m) for m in visiveis), mostra_rodape, vazio,
                          bool(self.cfg.get("recolhido")), self.cfg.get("aba", "almas"),
@@ -3554,6 +3598,8 @@ def main():
                     self._atualizar_dps()
                 elif self.cfg.get("aba") == "abyss":
                     self._atualizar_abismo()
+                elif self.cfg.get("aba") == "farm":
+                    self._atualizar_farm()
                 # so atualiza os numeros (sem apagar nada)
                 for m in visiveis:
                     w = self._ui.get(id(m))
@@ -3585,8 +3631,13 @@ def main():
                 exportacao.pack(fill="x")
                 self.botao(exportacao, self.tr("↓ Exportar pets", "↓ Export pets"),
                            lambda e: self._exportar_pets(), fonte=self.f_peq,
-                           dica=self.tr("Salvar pets concluídos e em andamento", "Save completed and in-progress pets")
+                           dica=self.tr("Salvar apenas os pets desta lista", "Save only pets in this list")
                            ).pack(side="right")
+                self.botao(exportacao, self.tr("Limpar lista", "Clear list"),
+                           lambda e: self.remover_todos(), fonte=self.f_peq,
+                           dica=self.tr("Tirar os pets desta lista; cria uma cópia antes",
+                                        "Remove pets from this list; saves a copy first")
+                           ).pack(side="right", padx=(0, self.px(7)))
             if vazio:
                 tk.Label(self.corpo, text=vazio, fg=COR["suave"], bg=COR["fundo"],
                          font=self.f_peq, wraplength=self.px(240),
@@ -3594,7 +3645,7 @@ def main():
             self._rolagem = None
             self._info = None
             limite = 5 if self.cfg.get("aba", "almas") == "almas" else max(1, int(self.cfg.get("max_linhas", 6)))
-            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps", "abyss"):
+            if self.cfg.get("aba") in ("info", "od", "pets", "materiais", "dps", "abyss", "farm"):
                 # mesma largura da lista de almas (o contador nao muda de tamanho)
                 chave = f"{self.cfg.get('compacto')}-{self.cfg.get('escala_fonte', 100)}"
                 larg = (self.cfg.get("larguras") or {}).get(chave) or getattr(self, "_larg_almas", 0)
@@ -3628,6 +3679,9 @@ def main():
                     self._montar_dps()
                 elif self.cfg.get("aba") == "abyss":
                     self._montar_abismo()
+                elif self.cfg.get("aba") == "farm":
+                    self._montar_limite("kina", COR["ouro"])
+                    self._montar_farm()
                 else:
                     self._montar_info()
             elif len(visiveis) > limite:
@@ -3719,7 +3773,7 @@ def main():
         def _titulo_aba(self):
             return {"info": "\u25f7 Info", "od": self.tr("Materiais", "Materials"),
                     "materiais": self.tr("Materiais", "Materials"),
-                    "pets": "\u2661 Pets", "dps": "DPS", "abyss": "Abyss"}.get(
+                    "pets": "\u2661 Pets", "dps": "DPS", "abyss": "Abyss", "farm": "FARM"}.get(
                         self.cfg.get("aba"), self.tr("\u2726 Almas", "\u2726 Souls"))
 
         def selecionar_coleta(self, destino, auto=False):
@@ -3779,7 +3833,7 @@ def main():
             self.root.update_idletasks()
             largura, altura = self._tamanho_fixo_abas
             largura = min(largura, self.root.winfo_screenwidth() - self.root.winfo_x())
-            if self.cfg.get("aba", "almas") in ("almas", "od", "abyss", "dps"):
+            if self.cfg.get("aba", "almas") in ("almas", "od", "abyss", "dps", "farm"):
                 altura = max(altura, self.root.winfo_reqheight())
             limite = self.root.winfo_screenheight() - self.root.winfo_y() - self.px(20)
             altura = min(altura, max(self.px(180), limite))
@@ -4028,19 +4082,12 @@ def main():
             import csv
             from tkinter import filedialog
 
-            tiers = self.cfg.get("tiers", [5, 25, 75])
-            meta = sum(tiers)
-            linhas = [(nome, pet_id, meta - int(falta), int(falta))
-                      for pet_id, nome, _, falta, _ in self.prog.catalogo_pets(self.nomes_pets, tiers)
-                      if falta != "—" and int(falta) < meta]
-            for pet in self.prog.monstros:
-                if not pet.get("pet_id") and pet["qtd"] > 0:
-                    total = min(meta, pet["qtd"])
-                    linhas.append((pet["nome"], "", total, meta - total))
+            meta = sum(self.cfg.get("tiers", [5, 25, 75]))
+            linhas = linhas_exportacao_pets(self.prog.monstros, meta)
             if not linhas:
                 self.dialogo(messagebox.showinfo, APP_NOME,
-                             self.tr("Ainda não há pets com progresso para exportar.",
-                                     "There are no pets with progress to export yet."))
+                             self.tr("Não há pets nesta lista para exportar.",
+                                     "There are no pets in this list to export."))
                 return
 
             caminho = self.dialogo(filedialog.asksaveasfilename,
@@ -4054,7 +4101,7 @@ def main():
                     saida = csv.writer(arquivo, delimiter=";")
                     saida.writerow(("Pet", "ID", self.tr("Almas", "Souls"),
                                     self.tr("Faltam", "Remaining"), "Status"))
-                    for nome, pet_id, total, falta in sorted(linhas, key=lambda linha: normalizar(linha[0])):
+                    for nome, pet_id, total, falta in linhas:
                         if nome.lstrip().startswith(("=", "+", "-", "@")):
                             nome = "'" + nome
                         status = (self.tr("Concluído", "Completed") if falta == 0 else
@@ -4555,6 +4602,203 @@ def main():
                 if info[k].cget("text") != v:
                     info[k].configure(text=v)
 
+        # ---------------- aba FARM ----------------
+        @staticmethod
+        def _farm_equipamento(item_id):
+            """IDs 1xx do cliente representam armas, armaduras e acessórios."""
+            try:
+                numero = int(item_id)
+            except (TypeError, ValueError):
+                return False
+            return 100000000 <= numero < 200000000
+
+        def _farm_item_visivel(self, item_id, registro):
+            return (not self._farm_equipamento(item_id) or
+                    registro.get("raridade") == "LENDÁRIO")
+
+        def _buscar_nome_farm(self, item_id):
+            """Consulta nome e ícone públicos sem bloquear a interface."""
+            consultas = getattr(self, "_farm_consultas", set())
+            self._farm_consultas = consultas
+            idioma = "en" if self.cfg.get("idioma") == "en" else "pt"
+            chave_consulta = (str(item_id), idioma)
+            if chave_consulta in consultas:
+                return
+            consultas.add(chave_consulta)
+            def consultar():
+                import urllib.request
+                from urllib.parse import urljoin
+                import html
+                url = f"https://aion2quest.pro/{idioma}/items/{int(item_id)}"
+                try:
+                    with self._farm_semaforo:
+                        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req, timeout=15) as resposta:
+                            pagina = resposta.read(400000).decode("utf-8", "replace")
+                        achou_nome = re.search(r'<h1 id="kbItemName">([^<]+)</h1>', pagina)
+                        achou_grade = re.search(r'<b class="kb-grade">([^<]+)</b>', pagina)
+                        achou_icone = re.search(r'<img class="kb-icon" src="(/kb-icons/[^"?]+\.webp)"', pagina)
+                        icone_salvo = False
+                        destino = os.path.join(PASTA_ICONES_FARM, f"{int(item_id)}.webp")
+                        if achou_icone and not os.path.isfile(destino):
+                            os.makedirs(PASTA_ICONES_FARM, exist_ok=True)
+                            req_icone = urllib.request.Request(
+                                urljoin("https://aion2quest.pro", achou_icone.group(1)),
+                                headers={"User-Agent": "Mozilla/5.0"})
+                            with urllib.request.urlopen(req_icone, timeout=15) as resposta:
+                                dados_icone = resposta.read(500001)
+                            if dados_icone and len(dados_icone) <= 500000:
+                                temporario = destino + ".tmp"
+                                with open(temporario, "wb") as arquivo:
+                                    arquivo.write(dados_icone)
+                                os.replace(temporario, destino)
+                                icone_salvo = True
+                    if achou_nome:
+                        nome = html.unescape(achou_nome.group(1)).strip()
+                        grade = html.unescape(achou_grade.group(1)) if achou_grade else ""
+                        self.leitor.fila.put(("farm_info", (str(item_id), nome, grade, idioma)))
+                    elif icone_salvo:
+                        self.leitor.fila.put(("farm_icon", str(item_id)))
+                except (OSError, ValueError, TypeError) as exc:
+                    registrar(f"FARM: nome indisponível para {item_id}: {type(exc).__name__}")
+                    self.leitor.fila.put(("farm_error", chave_consulta))
+            threading.Thread(target=consultar, daemon=True).start()
+
+        def _farm_editar(self, item_id, campo):
+            registro = self.prog.farm.get(item_id)
+            if not registro:
+                return
+            if campo == "nome":
+                valor = simpledialog.askstring("FARM", "Nome do item:",
+                                                initialvalue=registro.get("nome", ""), parent=self.root)
+                if valor is None or not valor.strip():
+                    return
+                registro["nome"] = valor.strip()
+                registro["nome_manual"] = True
+            else:
+                ordem = ("NORMAL", "VERDE", "AZUL", "LENDÁRIO")
+                atual = registro.get("raridade", "NORMAL")
+                registro["raridade"] = ordem[(ordem.index(atual) + 1) % len(ordem)] if atual in ordem else ordem[0]
+            self.prog.salvar()
+            self._estrutura = None
+            self.render()
+
+        def _limpar_farm(self):
+            if not self.prog.farm:
+                return
+            pergunta = self.tr("Limpar toda a lista FARM?", "Clear the entire FARM list?")
+            if not self.dialogo(messagebox.askyesno, APP_NOME, pergunta):
+                return
+            try:
+                salvar_json(os.path.join(BASE, "farm_antes_de_limpar.json"), self.prog.farm)
+            except OSError as erro:
+                self.dialogo(messagebox.showerror, APP_NOME,
+                             self.tr("Não foi possível guardar uma cópia da FARM.",
+                                     "Could not save a copy of FARM.") + f"\n{erro}")
+                return
+            self.prog.farm.clear()
+            self.prog.salvar()
+            self._estrutura = None
+            self.render()
+
+        def _montar_farm(self):
+            cores = {"NORMAL": COR["texto"], "VERDE": "#79dfa0",
+                     "AZUL": "#63b3ff", "LENDÁRIO": "#efbd73"}
+            self._farm_ui = {}
+            ordem = {"NORMAL": 0, "VERDE": 1, "AZUL": 2, "LENDÁRIO": 3}
+            todos = sorted(self.prog.farm.items(),
+                           key=lambda par: (ordem.get(par[1].get("raridade"), 0),
+                                            -float(par[1].get("atualizado", 0)), par[0]))
+            itens = [(item_id, registro) for item_id, registro in todos
+                     if self._farm_item_visivel(item_id, registro)]
+            consultas = getattr(self, "_farm_consultas", set())
+            self._farm_consultas = consultas
+            idioma = "en" if self.cfg.get("idioma") == "en" else "pt"
+            for item_id, registro in todos:
+                icone = os.path.join(PASTA_ICONES_FARM, f"{item_id}.webp")
+                if ((registro.get("nome_idioma") != idioma or not os.path.isfile(icone))
+                        and (item_id, idioma) not in consultas):
+                    self._buscar_nome_farm(item_id)
+            acoes = tk.Frame(self.corpo, bg=COR["fundo"])
+            acoes.pack(fill="x", pady=(0, self.px(3)))
+            self.botao(acoes, self.tr("Limpar FARM", "Clear FARM"),
+                       lambda e: self._limpar_farm(), fonte=self.f_peq).pack(side="right")
+            if not itens:
+                tk.Label(self.corpo, text=self.tr("Aguardando itens recebidos pelo jogo…",
+                                                   "Waiting for items received from the game…"),
+                         fg=COR["suave"], bg=COR["fundo"], font=self.f_peq).pack(anchor="w", pady=self.px(5))
+                return
+            pai = self._montar_rolagem() if len(itens) > 10 else self.corpo
+            grade = tk.Frame(pai, bg=COR["fundo"])
+            grade.pack(fill="x")
+            for coluna in range(5):
+                grade.columnconfigure(coluna, weight=1, uniform="farm")
+            cartoes = []
+            for indice, (item_id, registro) in enumerate(itens):
+                grupo = registro.get("raridade", "NORMAL")
+                linha = tk.Frame(grade, bg=COR["fundo"], highlightthickness=1,
+                                 highlightbackground=COR["barra"])
+                linha.grid(row=indice // 5, column=indice % 5, sticky="ew",
+                           padx=self.px(2), pady=self.px(2))
+                icone = self._imagem_item_farm(item_id)
+                kwargs_icone = ({"image": icone, "width": self.px(22), "height": self.px(22)}
+                                if icone is not None else {"text": "◆", "width": 2})
+                foto = tk.Label(linha, fg=cores.get(grupo, COR["texto"]),
+                                bg=COR["fundo"], **kwargs_icone)
+                foto.pack(side="left", padx=(self.px(3), 0), pady=self.px(2))
+                qtd = tk.Label(linha, text=str(registro.get("qtd", 0)),
+                               fg=cores.get(grupo, COR["texto"]),
+                               bg=COR["fundo"], font=self.f_nome, anchor="e")
+                qtd.pack(side="right", padx=self.px(3))
+                dica = registro.get("nome") or f"Item {item_id}"
+                self.dica(foto, dica)
+                self.dica(qtd, dica)
+                self._farm_ui[item_id] = {"qtd": qtd, "foto": foto, "linha": linha}
+                cartoes.append(linha)
+            if len(itens) > 10:
+                self.root.update_idletasks()
+                cv, dentro = self._rolagem
+                decimo = cartoes[9]
+                altura = decimo.winfo_rooty() - dentro.winfo_rooty() + decimo.winfo_height()
+                cv.configure(height=altura, width=dentro.winfo_reqwidth(),
+                             scrollregion=(0, 0, dentro.winfo_reqwidth(), dentro.winfo_reqheight()))
+                dentro.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+
+        def _imagem_item_farm(self, item_id):
+            caminho = os.path.join(PASTA_ICONES_FARM, f"{item_id}.webp")
+            if not os.path.isfile(caminho):
+                return None
+            cache = getattr(self, "_farm_imagens", {})
+            self._farm_imagens = cache
+            chave = (item_id, self.px(22))
+            if chave not in cache:
+                try:
+                    from PIL import Image, ImageTk
+                    with Image.open(caminho) as origem:
+                        foto = origem.convert("RGBA").resize((self.px(22), self.px(22)), Image.Resampling.LANCZOS)
+                    cache[chave] = ImageTk.PhotoImage(foto, master=self.root)
+                except (OSError, ValueError):
+                    return None
+            return cache[chave]
+
+        def _atualizar_farm(self):
+            cores = {"NORMAL": COR["texto"], "VERDE": "#79dfa0",
+                     "AZUL": "#63b3ff", "LENDÁRIO": "#efbd73"}
+            for item_id, widgets in getattr(self, "_farm_ui", {}).items():
+                registro = self.prog.farm.get(item_id, {})
+                label = widgets.get("qtd") if isinstance(widgets, dict) else widgets
+                if label.winfo_exists():
+                    cor = cores.get(registro.get("raridade", "NORMAL"), COR["texto"])
+                    label.configure(text=str(registro.get("qtd", 0)), fg=cor)
+                if isinstance(widgets, dict):
+                    foto = widgets.get("foto")
+                    imagem = self._imagem_item_farm(item_id)
+                    if foto and foto.winfo_exists():
+                        if imagem is not None:
+                            foto.configure(image=imagem, text="", fg=cor)
+                        else:
+                            foto.configure(image="", text="◆", fg=cor)
+
         # ---------------- aba OD ----------------
         def _icone_od(self, pai, tipo):
             """Exibe a regiao do icone original fornecido pelo usuario."""
@@ -4889,13 +5133,16 @@ def main():
                                 self._abreviar_material(t, n, e.width))
                     self.dica(titulo, nome)
                     numero = tk.Label(interno, text="", fg=COR["alma"], bg=COR["painel"],
-                                      font=self.fontes["material"], cursor="hand2", width=2, anchor="e")
+                                      font=self.fontes["material"], cursor="hand2", width=4, anchor="e")
                     numero.grid(row=0, column=2, padx=(self.px(2), self.px(1)))
                     numero.bind("<Button-1>", lambda e, i=item_id: self.material_definir(i))
                     self.dica(numero, f"{nome}: clique para digitar a quantidade")
                     widgets[item_id] = (titulo, numero)
                 titulo, numero = widgets[item_id]
                 valor = str(quantidade)
+                largura_numero = max(4, len(valor))
+                if int(numero.cget("width")) != largura_numero:
+                    numero.configure(width=largura_numero)
                 if numero.cget("text") != valor:
                     numero.configure(text=valor)
                 novo = time.time() - self.destaque.get("\u00a7material:" + item_id, 0) < 2.5
@@ -5184,13 +5431,11 @@ def main():
                                 # ultimo minuto: vermelho piscando (2x por segundo)
                                 aceso = int(agora.timestamp() * 2) % 2 == 0
                                 cor = COR["erro"] if aceso else COR["fundo"]
-                        # nao deixa o texto alargar o contador
+                        # O evento usa a segunda linha do rodapé; só precisa
+                        # reservar espaço para a contagem regressiva à direita.
                         f_ev = self.fontes["evento"]
-                        # Usa o espaço livre do rodapé antes de abreviar. O
-                        # limite fixo anterior cortava o horário/nome do Shugo
-                        # mesmo quando a janela ainda tinha espaço à direita.
-                        disponivel = max(self.px(80), self.root.winfo_width() - self.px(230))
-                        larg = min(self.px(220), disponivel)
+                        disponivel = self._rodape.winfo_width() - rel.winfo_reqwidth() - self.px(15)
+                        larg = max(self.px(80), disponivel)
                         if f_ev.measure(txt_n) > larg:
                             while len(txt_n) > 3 and f_ev.measure(txt_n + "\u2026") > larg:
                                 txt_n = txt_n[:-1]
@@ -5201,6 +5446,9 @@ def main():
                             rel.configure(text=txt_r)
                         if rel.cget("fg") != cor:
                             rel.configure(fg=cor)
+                    else:
+                        lbl.configure(text="")
+                        rel.configure(text="")
                 except Exception:
                     pass
             try:
@@ -6576,6 +6824,54 @@ def main():
                             self.destaque["\u00a7material:" + chave] = time.time()
                             ultimo_grupo = GATHER_ITEM_TYPES[item_id][0]
                             registrar(f"NPCAP: +{quantidade} {GATHER_ITEM_TYPES[item_id][1]}")
+                    elif tipo == "farm_gain":
+                        item_id, quantidade = dado
+                        quantidade = int(quantidade)
+                        if quantidade > 0:
+                            chave = str(item_id)
+                            novo = chave not in self.prog.farm
+                            registro = self.prog.farm.setdefault(chave, {
+                                "nome": f"Item {chave}", "raridade": "NORMAL", "qtd": 0})
+                            registro["qtd"] = max(0, int(registro.get("qtd", 0))) + quantidade
+                            registro["atualizado"] = time.time()
+                            self.prog.salvar()
+                            if self.cfg.get("aba") == "farm":
+                                if novo:
+                                    self._estrutura = None
+                                    self.render()
+                                else:
+                                    self._atualizar_farm()
+                            if novo:
+                                self._buscar_nome_farm(chave)
+                            registrar(f"NPCAP: +{quantidade} item {chave}")
+                    elif tipo == "farm_info":
+                        item_id, nome, grade, idioma = dado
+                        registro = self.prog.farm.get(item_id)
+                        if registro:
+                            visivel_antes = self._farm_item_visivel(item_id, registro)
+                            if not registro.get("nome_manual"):
+                                registro["nome"] = nome
+                                registro["nome_idioma"] = idioma
+                            categorias = {"Common": "NORMAL", "Comum": "NORMAL",
+                                          "Rare": "VERDE", "Raro": "VERDE",
+                                          "Legend": "AZUL", "Epic": "AZUL", "Épico": "AZUL",
+                                          "Unique": "LENDÁRIO", "Único": "LENDÁRIO",
+                                          "Heroic": "LENDÁRIO", "Heróico": "LENDÁRIO"}
+                            if grade in categorias:
+                                registro["raridade"] = categorias[grade]
+                            self.prog.salvar()
+                            if self.cfg.get("aba") == "farm":
+                                visivel_agora = self._farm_item_visivel(item_id, registro)
+                                if visivel_antes != visivel_agora:
+                                    self._estrutura = None
+                                    self.render()
+                                else:
+                                    self._atualizar_farm()
+                    elif tipo == "farm_icon":
+                        if self.cfg.get("aba") == "farm":
+                            self._atualizar_farm()
+                    elif tipo == "farm_error":
+                        getattr(self, "_farm_consultas", set()).discard(dado)
                     elif tipo == "dps_party":
                         names = list(dict.fromkeys(str(n).strip() for n in dado
                                                    if n and str(n).strip().upper() not in {"ALL", "UNKNOWN", "NONE"}

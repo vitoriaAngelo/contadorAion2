@@ -78,6 +78,10 @@ KINAH_ITEM_ID = 930100001
 KINAH_ITEM_IDS = {KINAH_ITEM_ID, 930100031}
 ABYSS_CURRENCY_ID = 930100003
 ITEM_ACQUIRED_WINDOW = 2.0  # segundos entre o 0x1b56 e o 0x338d da mesma coleta
+
+def is_pet_soul_item(item):
+    """IDs de almas de pets; o contador já as registra na aba Pets."""
+    return 534660000 <= int(item) < 534661000
 OD_ITEM_TYPES = {
     610610013: "OD",
     610610014: "OD Fino",
@@ -845,6 +849,8 @@ class Decoder:
         # O total salvo não basta nessa primeira atualização: o que já foi
         # contado fica aqui até o 0x338d informar a quantidade recebida.
         self.inventory_first_gain = {}
+        self.farm_recent_gain = {}  # item -> (quantidade já emitida, instante)
+        self.farm_recent_acquired = {}
         if inventory_state_file:
             try:
                 with open(inventory_state_file, "r", encoding="utf-8") as f:
@@ -872,6 +878,8 @@ class Decoder:
         """O SYN da próxima conexão pode chegar antes de a porta entrar no filtro."""
         self.ready = False
         self.streams.clear()
+        self.farm_recent_gain.clear()
+        self.farm_recent_acquired.clear()
 
     def _emit_collection(self, item, ganho):
         if item in OD_ITEM_TYPES:
@@ -953,6 +961,22 @@ class Decoder:
                                     self.emit(("kinah_gain", ganho))
                                 elif tracked_collection and ganho > 0:
                                     self._emit_collection(item, ganho)
+                                elif (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
+                                      and not is_pet_soul_item(item)
+                                      and not tracked_collection and self.own_name):
+                                    # Drops comuns chegam como 0x1b56 sem 0x338d.
+                                    # Uma instância nova é um ganho; atualizações de
+                                    # pilha só contam a diferença positiva.
+                                    farm_gain = (quantity if kind == 0 and previous is None else
+                                                 quantity - old_quantity if old_quantity is not None else
+                                                 1 if kind == 1 and not seen_session else 0)
+                                    if farm_gain > 0:
+                                        recente = self.farm_recent_acquired.pop(item, None)
+                                        ja_contado = (recente[0] if recente and
+                                                      time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
+                                        if farm_gain > ja_contado:
+                                            self.emit(("farm_gain", item, farm_gain - ja_contado))
+                                        self.farm_recent_gain[item] = (farm_gain, time.monotonic())
                     elif op in DAILY_LIMIT_OPS:
                         valor = parse_daily_limit(payload)
                         if valor is not None:
@@ -961,6 +985,15 @@ class Decoder:
                         acquired = parse_item_acquired(payload)
                         if acquired and acquired[1] > 0:  # zero: aviso sem item recebido
                             item, recebido = acquired
+                            if (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
+                                    and not is_pet_soul_item(item)
+                                    and item not in OD_ITEM_TYPES and item not in GATHER_ITEM_TYPES):
+                                recente = self.farm_recent_gain.pop(item, None)
+                                ja_contado = (recente[0] if recente and
+                                              time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
+                                if recebido > ja_contado:
+                                    self.emit(("farm_gain", item, recebido - ja_contado))
+                                self.farm_recent_acquired[item] = (recebido, time.monotonic())
                             contado = self.inventory_first_gain.pop(item, None)
                             if (contado and recebido > contado[0] and
                                     time.monotonic() - contado[1] < ITEM_ACQUIRED_WINDOW):
