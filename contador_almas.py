@@ -2902,6 +2902,7 @@ def main():
             self._rodape = rod
             rod.pack(side="bottom", fill="x", pady=(self.px(3), 0))
             rod.columnconfigure(0, weight=1)
+            rod.columnconfigure(2, weight=0)
             tk.Frame(rod, bg=COR["barra"], height=max(1, self.px(1))).grid(
                 row=0, column=0, columnspan=3, sticky="ew", pady=(0, self.px(3)))
             self._lbl_rodape = tk.Label(rod, text="", fg=COR["suave"],
@@ -2910,17 +2911,21 @@ def main():
             tk.Label(rod, text=f"v{VERSAO}", fg=COR["suave"], bg=COR["fundo"],
                      font=self.fontes["versao"]).grid(
                          row=1, column=1, padx=(self.px(5), self.px(8)))
+            self._lbl_conta_rodape = tk.Label(
+                rod, text="", fg=COR["texto"], bg=COR["fundo"],
+                font=self.fontes["versao"], anchor="e")
+            self._lbl_conta_rodape.grid(row=1, column=2, padx=(self.px(2), self.px(6)))
             self._lbl_hora_local = tk.Label(
                 rod, text="", fg=COR["alma"], bg=COR["fundo"],
                 font=self.fontes["relogio"], width=6, anchor="center")
-            self._lbl_hora_local.grid(row=1, column=2, padx=(0, self.px(6)))
+            self._lbl_hora_local.grid(row=1, column=3, padx=(0, self.px(6)))
             self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
                                         bg=COR["fundo"], font=self.fontes["evento"], anchor="w")
-            self._lbl_evento.grid(row=2, column=0, columnspan=2, sticky="w",
+            self._lbl_evento.grid(row=2, column=0, columnspan=3, sticky="w",
                                   pady=(self.px(2), 0))
             self._lbl_relogio = tk.Label(rod, text="", fg=COR["ouro"], bg=COR["fundo"],
                                          font=self.fontes["relogio"], width=7, anchor="e")
-            self._lbl_relogio.grid(row=2, column=2, sticky="e",
+            self._lbl_relogio.grid(row=2, column=3, sticky="e",
                                    pady=(self.px(2), 0), padx=(self.px(3), self.px(6)))
             self._ev_cache = None
             self._ev_quando = None
@@ -3468,6 +3473,12 @@ def main():
                         widget.grid_remove()
                     else:
                         widget.grid()
+                conta = getattr(self, "_lbl_conta_rodape", None)
+                if conta is not None:
+                    if ocultar_topo and not oculto:
+                        conta.grid()
+                    else:
+                        conta.grid_remove()
                 rodape.pack_configure(pady=(self.px(1 if oculto else 4), 0))
             canto = getattr(self, "_canto_resize", None)
             if canto is not None:
@@ -3528,6 +3539,9 @@ def main():
                 texto += self.tr(" (salvo)", " (saved)")
             if self.lbl_personagem.cget("text") != texto:
                 self.lbl_personagem.configure(text=texto)
+            conta = getattr(self, "_lbl_conta_rodape", None)
+            if conta is not None:
+                conta.configure(text=(f"● {nome}" if nome else ""))
 
         def pedir_sincronizacao(self):
             # A coleção completa só chega em um pacote enviado pelo jogo ao entrar
