@@ -964,23 +964,11 @@ class Decoder:
                                 elif (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
                                       and not is_pet_soul_item(item)
                                       and not tracked_collection and self.own_name):
-                                    # Drops comuns chegam como 0x1b56 sem 0x338d.
-                                    # Uma instância nova é um ganho; atualizações de
-                                    # pilha só contam a diferença positiva.
-                                    # Uma primeira atualização kind=1 pode ser consumo,
-                                    # recompensa ou abertura de baú; sem o pacote de
-                                    # aquisição não há como afirmar que foi drop de mob.
-                                    # Só contamos novas instâncias (kind=0) e aumentos
-                                    # de pilha já conhecida.
-                                    farm_gain = (quantity if kind == 0 and previous is None else
-                                                 quantity - old_quantity if old_quantity is not None else 0)
-                                    if farm_gain > 0:
-                                        recente = self.farm_recent_acquired.pop(item, None)
-                                        ja_contado = (recente[0] if recente and
-                                                      time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
-                                        if farm_gain > ja_contado:
-                                            self.emit(("farm_gain", item, farm_gain - ja_contado))
-                                        self.farm_recent_gain[item] = (farm_gain, time.monotonic())
+                                    # Alterações de inventário não informam a origem:
+                                    # craft, compra, recompensa e drop podem chegar
+                                    # pelo mesmo opcode. O FARM só aceita o evento
+                                    # explícito de aquisição tratado abaixo.
+                                    pass
                     elif op in DAILY_LIMIT_OPS:
                         valor = parse_daily_limit(payload)
                         if valor is not None:
