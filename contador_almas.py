@@ -3436,7 +3436,9 @@ def main():
             if nav is not None and not nav.winfo_manager():
                 nav.pack(fill="x", padx=self.px(4), pady=(self.px(1), self.px(2)),
                          before=self.area_abas)
-            if ocultar_topo and not self.cfg.get("travar_posicao", False):
+            if not self.cfg.get("travar_posicao", False):
+                # A alça fica disponível também com o cabeçalho visível;
+                # assim o overlay continua fácil de mover em qualquer modo.
                 self._alca_hud.pack(fill="x", before=self.area_abas)
             else:
                 self._alca_hud.pack_forget()
