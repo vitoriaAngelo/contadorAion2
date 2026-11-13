@@ -3469,6 +3469,10 @@ def main():
                 for widget in rodape.winfo_children():
                     if widget is self._lbl_hora_local:
                         continue
+                    if widget in (getattr(self, "_lbl_evento", None),
+                                  getattr(self, "_lbl_relogio", None)):
+                        widget.grid_remove()
+                        continue
                     if oculto:
                         widget.grid_remove()
                     else:
