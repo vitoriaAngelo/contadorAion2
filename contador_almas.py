@@ -7179,14 +7179,36 @@ def main():
             if barra is None or not barra.winfo_exists():
                 return
             idioma = self.cfg.get("idioma", "pt-BR").lower()
-            texto = (f"✦ Alma recebida: {nome}  +{quantidade}"
+            tiers = self.cfg.get("tiers", [5, 25, 75])
+            # O nome/quantidade recebidos continuam imediatos; o progresso usa
+            # o total consolidado do pet quando disponível.
+            progresso = ""
+            pet = next((m for m in self.prog.monstros if m.get("nome") == nome), None)
+            if pet:
+                estrela, faltam = tier_atual(pet.get("qtd", 0), tiers)
+                progresso = f"  ·  {tiers[estrela - 1] - faltam}/{tiers[estrela - 1]}"
+            texto = (f"✦ Alma recebida: {nome}  +{quantidade}{progresso}"
                      if not idioma.startswith("en") else
-                     f"✦ Soul received: {nome}  +{quantidade}")
+                     f"✦ Soul received: {nome}  +{quantidade}{progresso}")
             barra.configure(text=texto)
+            barra.configure(fg=COR["alma"])
             barra.grid()
             token = time.monotonic()
             self._farm_alma_aviso_token = token
-            self.root.after(3500, lambda: self._esconder_farm_alma(token))
+            self.root.after(3000, lambda: self._animar_farm_alma(token))
+
+        def _animar_farm_alma(self, token, passo=0):
+            if token != getattr(self, "_farm_alma_aviso_token", None):
+                return
+            barra = getattr(self, "_lbl_farm_alma", None)
+            if barra is None or not barra.winfo_exists():
+                return
+            cores = (COR["alma"], "#86bdd0", "#7899a8", "#6b7a85", COR["destaque"])
+            if passo < len(cores):
+                barra.configure(fg=cores[passo])
+                self.root.after(85, lambda: self._animar_farm_alma(token, passo + 1))
+            else:
+                barra.grid_remove()
 
         def _esconder_farm_alma(self, token):
             if token != getattr(self, "_farm_alma_aviso_token", None):
