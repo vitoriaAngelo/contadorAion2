@@ -3297,6 +3297,20 @@ def main():
             self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
             self.lbl_status = tk.Label(h, text="", bg=COR["painel"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(4), 0))
+            cab_info = tk.Frame(h, bg=COR["painel"])
+            cab_info.pack(side="right", padx=(self.px(4), self.px(3)))
+            self._lbl_hora_header = tk.Label(cab_info, text="--:--", fg=COR["alma"],
+                                             bg=COR["painel"], font=self.fontes["relogio"],
+                                             width=5, anchor="e")
+            self._lbl_hora_header.pack(side="right", padx=(self.px(5), 0))
+            self._lbl_evento_header = tk.Label(cab_info, text="", fg=COR["ouro"],
+                                               bg=COR["painel"], font=self.fontes["evento"],
+                                               anchor="e")
+            self._lbl_evento_header.pack(side="right")
+            self._lbl_relogio_header = tk.Label(cab_info, text="", fg=COR["ouro"],
+                                                bg=COR["painel"], font=self.fontes["evento"],
+                                                anchor="e")
+            self._lbl_relogio_header.pack(side="right", padx=(self.px(4), 0))
             self.botao(h, "\u2715", lambda e: self.sair(),
                        dica="Fechar o contador").pack(side="right")
             self.botao(h, "\u2013", lambda e: self.minimizar(),
@@ -5412,6 +5426,9 @@ def main():
                     texto_hora = dt.datetime.now().strftime("%H:%M")
                     if hora_local.cget("text") != texto_hora:
                         hora_local.configure(text=texto_hora)
+                    hora_header = getattr(self, "_lbl_hora_header", None)
+                    if hora_header is not None and hora_header.cget("text") != texto_hora:
+                        hora_header.configure(text=texto_hora)
                 except Exception:
                     pass
             lbl, rel = getattr(self, "_lbl_evento", None), getattr(self, "_lbl_relogio", None)
@@ -5461,9 +5478,17 @@ def main():
                             rel.configure(text=txt_r)
                         if rel.cget("fg") != cor:
                             rel.configure(fg=cor)
+                        for alvo, texto in ((getattr(self, "_lbl_evento_header", None), txt_n),
+                                            (getattr(self, "_lbl_relogio_header", None), txt_r)):
+                            if alvo is not None and alvo.cget("text") != texto:
+                                alvo.configure(text=texto, fg=cor)
                     else:
                         lbl.configure(text="")
                         rel.configure(text="")
+                        for alvo in (getattr(self, "_lbl_evento_header", None),
+                                     getattr(self, "_lbl_relogio_header", None)):
+                            if alvo is not None:
+                                alvo.configure(text="")
                 except Exception:
                     pass
             try:
