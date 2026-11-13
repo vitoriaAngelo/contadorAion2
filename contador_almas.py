@@ -3328,8 +3328,9 @@ def main():
             for antigo in (self.b_od, self.b_dps, self.b_inicio):
                 antigo.destroy()
             self.b_config_top.destroy()
-            nav = tk.Frame(self.root, bg=COR["fundo"])
-            nav.pack(fill="x", padx=self.px(4), pady=(0, self.px(1)))
+            nav = tk.Frame(self.root, bg=COR["painel"],
+                           highlightthickness=1, highlightbackground=COR["barra"])
+            nav.pack(fill="x", padx=self.px(4), pady=(self.px(2), self.px(2)))
             self._nav = nav
             for coluna in range(6):
                 nav.grid_columnconfigure(coluna, weight=1, uniform="menu")
@@ -3346,9 +3347,12 @@ def main():
             b_config = self.botao(nav, "\u2699", self.menu_principal,
                                   fonte=self.f_alma_peq, dica="Opções")
             for coluna, botao in enumerate((self.b_inicio, self.b_dps, self.b_abismo, self.b_od, self.b_farm, b_config)):
-                botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1))
+                botao.configure(padx=self.px(6), pady=self.px(3))
+                botao.grid(row=0, column=coluna, sticky="nsew", padx=self.px(1), pady=self.px(1))
             for botao in (self.b_inicio, self.b_dps, self.b_abismo, self.b_od, self.b_farm):
                 botao.bind("<Leave>", lambda e: self._pintar_nav())
+            b_config.configure(bg=COR["painel"], fg=COR["suave"],
+                               highlightthickness=0)
             self._pintar_nav()
             # Reserve espaço para os controles da direita antes do status.
             for widget in (t, self.lbl_personagem, self.b_sincronizar, self.lbl_status):
@@ -3370,8 +3374,10 @@ def main():
                                   (self.b_abismo, aba == "abyss"),
                                   (self.b_od, aba in ("od", "materiais")),
                                   (self.b_farm, aba == "farm")):
-                botao.configure(bg=COR["painel"] if ativo else COR["fundo"],
-                                fg=COR["alma"] if ativo else COR["suave"])
+                botao.configure(bg=COR["destaque"] if ativo else COR["painel"],
+                                fg=COR["alma"] if ativo else COR["suave"],
+                                highlightthickness=1 if ativo else 0,
+                                highlightbackground=COR["alma"] if ativo else COR["painel"])
 
         def _arrastar_ini(self, e):
             if self.cfg.get("travar_posicao"):
