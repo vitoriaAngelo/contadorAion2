@@ -2670,14 +2670,14 @@ class LeitorRede(threading.Thread):
 # Interface (overlay)
 # --------------------------------------------------------------------------
 COR = {
-    "fundo": "#0d1118",
-    "painel": "#171d27",
-    "destaque": "#173a3b",
-    "texto": "#f2f5f7",
-    "suave": "#9aa6b5",
-    "barra": "#293342",
-    "alma": "#54dccb",
-    "ouro": "#f0c96a",
+    "fundo": "#101317",
+    "painel": "#181c22",
+    "destaque": "#232a33",
+    "texto": "#edf1f5",
+    "suave": "#8c98a6",
+    "barra": "#303842",
+    "alma": "#69d2ff",
+    "ouro": "#f0c56b",
     "erro": "#ff6b6b",
     "novo": "#ffe08a",  # monstro que acabou de ganhar alma
 }
@@ -2700,9 +2700,9 @@ TEMAS = {
     "rosa": {"nome": "Rosa", "fundo": "#190f1a", "painel": "#2b1b2d",
               "destaque": "#50304e", "texto": "#fff2fc", "suave": "#c3a6bd",
               "barra": "#443045", "alma": "#eca1d8", "ouro": "#f9c7e8"},
-    "aion": {"nome": "Aion", "fundo": "#0d1118", "painel": "#171d27",
-              "destaque": "#173a3b", "texto": "#f2f5f7", "suave": "#9aa6b5",
-              "barra": "#293342", "alma": "#54dccb", "ouro": "#f0c96a"},
+    "aion": {"nome": "Aion", "fundo": "#101317", "painel": "#181c22",
+              "destaque": "#232a33", "texto": "#edf1f5", "suave": "#8c98a6",
+              "barra": "#303842", "alma": "#69d2ff", "ouro": "#f0c56b"},
     "azul": {"nome": "Azul", "fundo": "#0b1220", "painel": "#121f33",
               "destaque": "#173a63", "texto": "#edf5ff", "suave": "#91a6c4",
               "barra": "#253b59", "alma": "#63b3ff", "ouro": "#8dd8ff"},
