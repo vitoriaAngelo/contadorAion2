@@ -3379,7 +3379,6 @@ def main():
             for widget in (t, self.lbl_personagem, self.b_sincronizar, self.lbl_status):
                 widget.pack_forget()
             t.pack(side="left")
-            self.lbl_personagem.pack(side="left", padx=(self.px(3), 0))
             self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
             self.lbl_status.pack(side="left", padx=(self.px(4), 0))
             for w in (h, t, self.lbl_status):
