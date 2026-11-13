@@ -3277,11 +3277,13 @@ def main():
 
         # ---------------- cabecalho ----------------
         def _montar_cabecalho(self):
-            h = tk.Frame(self.root, bg=COR["fundo"])
-            h.pack(fill="x", padx=self.px(4), pady=(0, 0))
+            h = tk.Frame(self.root, bg=COR["painel"],
+                         highlightthickness=1, highlightbackground=COR["barra"])
+            h.pack(fill="x", padx=self.px(4), pady=(self.px(2), self.px(1)))
             self.cab = h
             t = tk.Label(h, text=self._titulo_aba(),
-                         fg=COR["alma"], bg=COR["fundo"], font=self.f_peq)
+                         fg=COR["alma"], bg=COR["painel"], font=self.f_peq,
+                         padx=self.px(5))
             t.pack(side="left")
             self.lbl_titulo = t
             self.lbl_personagem = tk.Label(h, text="", fg=COR["texto"],
@@ -3293,7 +3295,7 @@ def main():
             self.b_sincronizar = self.botao(h, "⟳", lambda e: self.pedir_sincronizacao(), cor=COR["ouro"], fonte=self.f_peq,
                                             dica="Sincronizar personagem e progresso da conta")
             self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
-            self.lbl_status = tk.Label(h, text="", bg=COR["fundo"], font=self.f_peq)
+            self.lbl_status = tk.Label(h, text="", bg=COR["painel"], font=self.f_peq)
             self.lbl_status.pack(side="left", padx=(self.px(4), 0))
             self.botao(h, "\u2715", lambda e: self.sair(),
                        dica="Fechar o contador").pack(side="right")
@@ -3421,14 +3423,19 @@ def main():
 
         def _aplicar_opcoes_layout(self):
             ocultar_topo = self.cfg.get("ocultar_cabecalho", False)
-            for widget in (getattr(self, "cab", None), getattr(self, "_nav", None)):
-                if widget is None:
-                    continue
+            # "Esconder cabeçalho" oculta apenas a faixa de identificação e
+            # controles; a navegação continua disponível para trocar de aba.
+            cab = getattr(self, "cab", None)
+            if cab is not None:
                 if ocultar_topo:
-                    widget.pack_forget()
-                elif not widget.winfo_manager():
-                    widget.pack(fill="x", padx=self.px(4), pady=(0, self.px(1)),
-                                before=self.area_abas)
+                    cab.pack_forget()
+                elif not cab.winfo_manager():
+                    cab.pack(fill="x", padx=self.px(4), pady=(self.px(2), self.px(1)),
+                             before=self._nav)
+            nav = getattr(self, "_nav", None)
+            if nav is not None and not nav.winfo_manager():
+                nav.pack(fill="x", padx=self.px(4), pady=(self.px(1), self.px(2)),
+                         before=self.area_abas)
             if ocultar_topo and not self.cfg.get("travar_posicao", False):
                 self._alca_hud.pack(fill="x", before=self.area_abas)
             else:
