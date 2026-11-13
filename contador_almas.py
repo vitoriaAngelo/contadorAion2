@@ -3386,7 +3386,6 @@ def main():
                 widget.pack_forget()
             t.pack(side="left")
             self.b_sincronizar.pack(side="left", padx=(self.px(2), 0))
-            self.lbl_status.pack(side="left", padx=(self.px(4), 0))
             for w in (h, t, self.lbl_status):
                 w.bind("<ButtonPress-1>", self._arrastar_ini)
                 w.bind("<B1-Motion>", self._arrastar)
