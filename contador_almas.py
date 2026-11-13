@@ -2927,6 +2927,12 @@ def main():
                                          font=self.fontes["relogio"], width=7, anchor="e")
             self._lbl_relogio.grid(row=2, column=3, sticky="e",
                                    pady=(self.px(2), 0), padx=(self.px(3), self.px(6)))
+            self._lbl_farm_alma = tk.Label(
+                rod, text="", fg=COR["alma"], bg=COR["destaque"],
+                font=self.fontes["evento"], anchor="w", padx=self.px(5))
+            self._lbl_farm_alma.grid(row=3, column=0, columnspan=4, sticky="ew",
+                                     pady=(self.px(2), 0))
+            self._lbl_farm_alma.grid_remove()
             self._ev_cache = None
             self._ev_quando = None
             self._abas_visuais = {}
@@ -3470,6 +3476,9 @@ def main():
                         continue
                     if widget in (getattr(self, "_lbl_evento", None),
                                   getattr(self, "_lbl_relogio", None)):
+                        widget.grid_remove()
+                        continue
+                    if widget is getattr(self, "_lbl_farm_alma", None):
                         widget.grid_remove()
                         continue
                     if oculto:
@@ -7164,6 +7173,29 @@ def main():
             if self.cfg.get("aba", "almas") != "dps":
                 self._trocar_aba_suave("dps")
 
+        def _mostrar_farm_alma(self, nome, quantidade):
+            if self.cfg.get("aba") != "farm" or self.cfg.get("ocultar_rodape", False):
+                return
+            barra = getattr(self, "_lbl_farm_alma", None)
+            if barra is None or not barra.winfo_exists():
+                return
+            idioma = self.cfg.get("idioma", "pt-BR").lower()
+            texto = (f"✦ Alma recebida: {nome}  +{quantidade}"
+                     if not idioma.startswith("en") else
+                     f"✦ Soul received: {nome}  +{quantidade}")
+            barra.configure(text=texto)
+            barra.grid()
+            token = time.monotonic()
+            self._farm_alma_aviso_token = token
+            self.root.after(3500, lambda: self._esconder_farm_alma(token))
+
+        def _esconder_farm_alma(self, token):
+            if token != getattr(self, "_farm_alma_aviso_token", None):
+                return
+            barra = getattr(self, "_lbl_farm_alma", None)
+            if barra is not None and barra.winfo_exists():
+                barra.grid_remove()
+
         def ao_alma_rede(self, pet_id, quantidade):
             try:
                 quantidade = int(quantidade)
@@ -7173,6 +7205,7 @@ def main():
                 monstro = self.prog.somar_pet(pet_id, nome, quantidade)
                 self.prog.salvar()
                 self.destaque[normalizar(monstro["nome"])] = time.time()
+                self._mostrar_farm_alma(monstro["nome"], quantidade)
                 self._rolar_para = monstro
                 registrar(f"NPCAP: {nome} x{quantidade} (pet {pet_id})")
                 self.render_em_breve()
