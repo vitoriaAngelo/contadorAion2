@@ -4750,6 +4750,8 @@ def main():
         def _montar_farm(self):
             cores = {"NORMAL": COR["texto"], "VERDE": "#79dfa0",
                      "AZUL": "#63b3ff", "LENDÁRIO": "#efbd73"}
+            fundos = {"NORMAL": COR["fundo"], "VERDE": "#1b3028",
+                      "AZUL": "#1b2b3b", "LENDÁRIO": "#382d1c"}
             self._farm_ui = {}
             ordem = {"NORMAL": 0, "VERDE": 1, "AZUL": 2, "LENDÁRIO": 3}
             todos = sorted(self.prog.farm.items(),
@@ -4782,19 +4784,20 @@ def main():
             cartoes = []
             for indice, (item_id, registro) in enumerate(itens):
                 grupo = registro.get("raridade", "NORMAL")
-                linha = tk.Frame(grade, bg=COR["fundo"], highlightthickness=1,
-                                 highlightbackground=COR["barra"])
+                fundo_item = fundos.get(grupo, COR["fundo"])
+                linha = tk.Frame(grade, bg=fundo_item, highlightthickness=1,
+                                 highlightbackground=COR["barra"] if grupo == "NORMAL" else cores.get(grupo, COR["barra"]))
                 linha.grid(row=indice // 5, column=indice % 5, sticky="ew",
                            padx=self.px(2), pady=self.px(2))
                 icone = self._imagem_item_farm(item_id)
                 kwargs_icone = ({"image": icone, "width": self.px(22), "height": self.px(22)}
                                 if icone is not None else {"text": "◆", "width": 2})
                 foto = tk.Label(linha, fg=cores.get(grupo, COR["texto"]),
-                                bg=COR["fundo"], **kwargs_icone)
+                                bg=fundo_item, **kwargs_icone)
                 foto.pack(side="left", padx=(self.px(3), 0), pady=self.px(2))
                 qtd = tk.Label(linha, text=str(registro.get("qtd", 0)),
                                fg=cores.get(grupo, COR["texto"]),
-                               bg=COR["fundo"], font=self.f_nome, anchor="e")
+                               bg=fundo_item, font=self.f_nome, anchor="e")
                 qtd.pack(side="right", padx=self.px(3))
                 dica = registro.get("nome") or f"Item {item_id}"
                 self.dica(foto, dica)
@@ -4830,20 +4833,27 @@ def main():
         def _atualizar_farm(self):
             cores = {"NORMAL": COR["texto"], "VERDE": "#79dfa0",
                      "AZUL": "#63b3ff", "LENDÁRIO": "#efbd73"}
+            fundos = {"NORMAL": COR["fundo"], "VERDE": "#1b3028",
+                      "AZUL": "#1b2b3b", "LENDÁRIO": "#382d1c"}
             for item_id, widgets in getattr(self, "_farm_ui", {}).items():
                 registro = self.prog.farm.get(item_id, {})
                 label = widgets.get("qtd") if isinstance(widgets, dict) else widgets
                 if label.winfo_exists():
                     cor = cores.get(registro.get("raridade", "NORMAL"), COR["texto"])
-                    label.configure(text=str(registro.get("qtd", 0)), fg=cor)
+                    fundo_item = fundos.get(registro.get("raridade", "NORMAL"), COR["fundo"])
+                    label.configure(text=str(registro.get("qtd", 0)), fg=cor, bg=fundo_item)
                 if isinstance(widgets, dict):
                     foto = widgets.get("foto")
+                    linha = widgets.get("linha")
                     imagem = self._imagem_item_farm(item_id)
+                    if linha and linha.winfo_exists():
+                        linha.configure(bg=fundo_item,
+                                        highlightbackground=COR["barra"] if registro.get("raridade", "NORMAL") == "NORMAL" else cor)
                     if foto and foto.winfo_exists():
                         if imagem is not None:
-                            foto.configure(image=imagem, text="", fg=cor)
+                            foto.configure(image=imagem, text="", fg=cor, bg=fundo_item)
                         else:
-                            foto.configure(image="", text="◆", fg=cor)
+                            foto.configure(image="", text="◆", fg=cor, bg=fundo_item)
 
         # ---------------- aba OD ----------------
         def _icone_od(self, pai, tipo):
