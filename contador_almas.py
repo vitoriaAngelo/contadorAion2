@@ -2931,11 +2931,9 @@ def main():
             self._lbl_relogio.grid(row=2, column=3, sticky="e",
                                    pady=(self.px(2), 0), padx=(self.px(3), self.px(6)))
             self._lbl_farm_alma = tk.Label(
-                rod, text="", fg=COR["alma"], bg=COR["destaque"],
+                self.root, text="", fg=COR["alma"], bg=COR["destaque"],
                 font=self.fontes["evento"], anchor="w", padx=self.px(5))
-            self._lbl_farm_alma.grid(row=3, column=0, columnspan=4, sticky="ew",
-                                     pady=(self.px(2), 0))
-            self._lbl_farm_alma.grid_remove()
+            self._lbl_farm_alma.place_forget()
             self._ev_cache = None
             self._ev_quando = None
             self._abas_visuais = {}
@@ -3291,8 +3289,14 @@ def main():
 
         # ---------------- cabecalho ----------------
         def _montar_caixa_combate(self):
-            caixa = tk.Frame(self.root, bg=COR["painel"],
+            janela = tk.Toplevel(self.root)
+            janela.overrideredirect(True)
+            janela.attributes("-topmost", True)
+            janela.withdraw()
+            self._combate_janela = janela
+            caixa = tk.Frame(janela, bg=COR["painel"],
                              highlightthickness=1, highlightbackground=COR["barra"])
+            caixa.pack(fill="both", expand=True)
             self._combate_box = caixa
             topo = tk.Frame(caixa, bg=COR["painel"])
             topo.pack(fill="x", padx=self.px(6), pady=(self.px(3), self.px(1)))
@@ -3308,7 +3312,6 @@ def main():
                 dados, text="", fg=COR["suave"], bg=COR["painel"],
                 font=self.f_peq, anchor="w")
             self._combate_info.pack(fill="x")
-            caixa.pack_forget()
 
         def _mostrar_combate(self, vida, maxima, nome=""):
             if not any((vida, maxima, nome)):
@@ -3325,9 +3328,13 @@ def main():
             self._combate_info.configure(
                 text=self.tr(f"Classe: {classe}   ·   Vida: {vida_txt}   ·   CP: —   ·   Gear: —",
                               f"Class: {classe}   ·   HP: {vida_txt}   ·   CP: —   ·   Gear: —"))
-            if not caixa.winfo_manager():
-                caixa.pack(fill="x", padx=self.px(4), pady=(0, self.px(3)),
-                           after=self.area_abas)
+            janela = getattr(self, "_combate_janela", None)
+            if janela is not None:
+                self.root.update_idletasks()
+                x = self.root.winfo_x()
+                y = self.root.winfo_y() + self.root.winfo_height() + self.px(4)
+                janela.geometry(f"{self.root.winfo_width()}x{caixa.winfo_reqheight()}+{x}+{y}")
+                janela.deiconify()
             token = time.monotonic()
             self._combate_token = token
             self.root.after(4500, lambda: self._esconder_combate(token))
@@ -3335,9 +3342,9 @@ def main():
         def _esconder_combate(self, token=None):
             if token is not None and token != getattr(self, "_combate_token", None):
                 return
-            caixa = getattr(self, "_combate_box", None)
-            if caixa is not None and caixa.winfo_manager():
-                caixa.pack_forget()
+            janela = getattr(self, "_combate_janela", None)
+            if janela is not None:
+                janela.withdraw()
 
         def _montar_cabecalho(self):
             h = tk.Frame(self.root, bg=COR["painel"],
@@ -7250,7 +7257,8 @@ def main():
                      f"✦ Soul received: {nome}  +{quantidade}{progresso}")
             barra.configure(text=texto)
             barra.configure(fg=COR["alma"])
-            barra.grid()
+            # Sobrepõe o rodapé sem alterar a altura da janela.
+            barra.place(relx=0.5, rely=1.0, anchor="s", relwidth=0.92)
             token = time.monotonic()
             self._farm_alma_aviso_token = token
             self.root.after(3000, lambda: self._animar_farm_alma(token))
@@ -7266,14 +7274,14 @@ def main():
                 barra.configure(fg=cores[passo])
                 self.root.after(85, lambda: self._animar_farm_alma(token, passo + 1))
             else:
-                barra.grid_remove()
+                barra.place_forget()
 
         def _esconder_farm_alma(self, token):
             if token != getattr(self, "_farm_alma_aviso_token", None):
                 return
             barra = getattr(self, "_lbl_farm_alma", None)
             if barra is not None and barra.winfo_exists():
-                barra.grid_remove()
+                barra.place_forget()
 
         def ao_alma_rede(self, pet_id, quantidade):
             try:
