@@ -2898,6 +2898,7 @@ def main():
             alca.bind("<ButtonRelease-1>", self._arrastar_fim)
             self._alca_hud = alca
             self.area_abas.pack(fill="both", expand=True, padx=self.px(4), pady=(0, self.px(4)))
+            self._montar_caixa_combate()
             rod = tk.Frame(self.area_abas, bg=COR["fundo"])
             self._rodape = rod
             rod.pack(side="bottom", fill="x", pady=(self.px(3), 0))
@@ -3287,6 +3288,55 @@ def main():
             return b
 
         # ---------------- cabecalho ----------------
+        def _montar_caixa_combate(self):
+            caixa = tk.Frame(self.root, bg=COR["painel"],
+                             highlightthickness=1, highlightbackground=COR["barra"])
+            self._combate_box = caixa
+            topo = tk.Frame(caixa, bg=COR["painel"])
+            topo.pack(fill="x", padx=self.px(6), pady=(self.px(3), self.px(1)))
+            self._combate_alvo = tk.Label(topo, text="", fg=COR["texto"],
+                                          bg=COR["painel"], font=self.f_nome, anchor="w")
+            self._combate_alvo.pack(side="left")
+            self._combate_estado = tk.Label(topo, text="COMBAT", fg=COR["alma"],
+                                            bg=COR["painel"], font=self.f_peq, anchor="e")
+            self._combate_estado.pack(side="right")
+            dados = tk.Frame(caixa, bg=COR["painel"])
+            dados.pack(fill="x", padx=self.px(6), pady=(0, self.px(3)))
+            self._combate_info = tk.Label(
+                dados, text="", fg=COR["suave"], bg=COR["painel"],
+                font=self.f_peq, anchor="w")
+            self._combate_info.pack(fill="x")
+            caixa.pack_forget()
+
+        def _mostrar_combate(self, vida, maxima, nome=""):
+            if not any((vida, maxima, nome)):
+                self._esconder_combate()
+                return
+            caixa = getattr(self, "_combate_box", None)
+            if caixa is None:
+                return
+            nome = str(nome or "Alvo atual")
+            classe = self.dps_classes.get(nome, "") or self.tr("desconhecida", "unknown")
+            vida_txt = (f"{int(vida):,}/{int(maxima):,}".replace(",", ".")
+                        if maxima else self.tr("indisponível", "unavailable"))
+            self._combate_alvo.configure(text=nome)
+            self._combate_info.configure(
+                text=self.tr(f"Classe: {classe}   ·   Vida: {vida_txt}   ·   CP: —   ·   Gear: —",
+                              f"Class: {classe}   ·   HP: {vida_txt}   ·   CP: —   ·   Gear: —"))
+            if not caixa.winfo_manager():
+                caixa.pack(fill="x", padx=self.px(4), pady=(0, self.px(3)),
+                           after=self.area_abas)
+            token = time.monotonic()
+            self._combate_token = token
+            self.root.after(4500, lambda: self._esconder_combate(token))
+
+        def _esconder_combate(self, token=None):
+            if token is not None and token != getattr(self, "_combate_token", None):
+                return
+            caixa = getattr(self, "_combate_box", None)
+            if caixa is not None and caixa.winfo_manager():
+                caixa.pack_forget()
+
         def _montar_cabecalho(self):
             h = tk.Frame(self.root, bg=COR["painel"],
                          highlightthickness=1, highlightbackground=COR["barra"])
@@ -7000,6 +7050,7 @@ def main():
                         elif self.boss_health == (0, 0):
                             self.boss_name = ""
                         boss_visto = boss_visto or self.boss_health[0] > 0
+                        self._mostrar_combate(self.boss_health[0], self.boss_health[1], self.boss_name)
                         self._atualizar_dps()
                     elif tipo == "estado_rede":
                         # Um estado de conta decodificado é uma confirmação mais forte
