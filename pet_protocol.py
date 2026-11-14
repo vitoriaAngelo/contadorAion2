@@ -1049,6 +1049,9 @@ class Decoder:
                         hit = parse_damage(payload) if op == OP_DAMAGE else parse_dot_damage(payload)
                         if hit:
                             actor, target, amount, skill = hit
+                            alvo_nome = (self.boss_names.get(target) or
+                                         self.entity_names.get(target) or "")
+                            self.emit(("combat_target", target, alvo_nome))
                             if skill // 10000 * 10000 in HEAL_SKILL_BASES or 2_000_000 <= skill < 3_000_000:
                                 continue
                             if target in self.boss_entities:

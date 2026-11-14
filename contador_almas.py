@@ -2652,6 +2652,8 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("dps_classes", evento[1]))
                 elif evento[0] == "dps_damage" and self.ativo.is_set():
                     self.fila.put(("dps_damage", (evento[1], evento[2], time.monotonic())))
+                elif evento[0] == "combat_target" and self.ativo.is_set():
+                    self.fila.put(("combat_target", (evento[1], evento[2])))
                 elif evento[0] == "dps_reset":
                     self.fila.put(("dps_reset", None))
                 elif evento[0] == "boss_health":
@@ -7041,6 +7043,11 @@ def main():
                             self.dps_started = now
                         self.dps_last_hit = now
                         self.dps_damage[name] = self.dps_damage.get(name, 0) + max(0, amount)
+                    elif tipo == "combat_target":
+                        alvo_id, nome_alvo = dado
+                        nome_alvo = str(nome_alvo or f"Alvo #{alvo_id}")
+                        vida, maxima = self.boss_health
+                        self._mostrar_combate(vida, maxima, nome_alvo)
                     elif tipo == "dps_reset":
                         self.dps_zerar()
                     elif tipo == "boss_health":
