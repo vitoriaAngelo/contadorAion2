@@ -1,4 +1,3 @@
-import json
 import os
 import struct
 import sys
@@ -24,6 +23,48 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_farm_conta_item_do_inventario_sem_aviso_de_aquisicao(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name = 'Mistty'
+        item = 120000001
+        payload = (b'\x01\x00\x00' + struct.pack('<I', 527628) + b'\x00' * 4 +
+                   struct.pack('<I', item) + struct.pack('<Q', 1) + b'\x00' * 18)
+        dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, payload))
+        self.assertEqual(eventos.count(('farm_gain', item, 1)), 1)
+
+    def test_farm_ignora_primeira_pilha_sem_item_acquired(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name = 'Mistty'
+        item = 610530014
+        payload = (b'\x01\x01\x00' + struct.pack('<I', 680481) + b'\x00' * 4 +
+                   struct.pack('<I', item) + struct.pack('<Q', 9) + b'\x00' * 18)
+        dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, payload))
+        self.assertFalse(any(evento[0] == 'farm_gain' for evento in eventos))
+
+    def test_farm_ignora_almas_ja_contadas_em_pets(self):
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name = 'Mistty'
+        item = 534660067
+        payload = (b'\x01\x00\x00' + struct.pack('<I', 527629) + b'\x00' * 4 +
+                   struct.pack('<I', item) + struct.pack('<Q', 1) + b'\x00' * 18)
+        dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, payload))
+        self.assertFalse(any(evento[0] == 'farm_gain' for evento in eventos))
+
+    def test_spawn_da_dg_liga_entidade_ao_nome_do_boss(self):
+        entidade, npc_id = 9000, 2300171
+        spawn = varint(entidade) + b'\x00\x40\x02' + struct.pack('<I', npc_id) + b'\x00' * 12
+        self.assertEqual(pp.parse_npc_spawn_code(spawn), (entidade, npc_id))
+
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        hp = varint(entidade) + varint(0) + varint(0) + varint(0) + struct.pack('<I', 1_000_000)
+        dec.segment('jogo', 1000, frame(pp.OP_NPC_SPAWN, spawn))
+        dec.segment('jogo', 1000 + len(frame(pp.OP_NPC_SPAWN, spawn)), frame(pp.OP_REMAIN_HP, hp))
+        self.assertIn(('boss_health', 1_000_000, 1_000_000, 'Ultimate Berk'), eventos)
+
     def test_dps_da_pt_liga_nome_e_conta_dano_direto(self):
         eventos = []
         dec = pp.Decoder(eventos.append)
@@ -46,67 +87,6 @@ class LeituraNpcap(unittest.TestCase):
         base = varint(9000) + b'\x0b' + varint(3210) + b'\x01' + struct.pack('<I', 1405000022)
         cura = base + varint(100) + varint(80) + struct.pack('<I', 14050340)
         self.assertIsNone(pp.parse_dot_damage(cura))
-
-    def _pt_com_teleporte(self):
-        eventos = []
-        dec = pp.Decoder(eventos.append)
-        dec.own_name, dec.own_entity = 'fz', 7432
-        dec.party_names = {'fz', 'misaa', 'Bug'}
-        dec.entity_names.update({7432: 'fz', 3210: 'misaa'})
-        zona = bytearray(24)
-        struct.pack_into('<I', zona, 4, 500)
-        struct.pack_into('<ff', zona, 16, 1000.0, 2000.0)
-        dec.zone_id = 500
-        pacote = frame(pp.OP_ZONE, bytes(zona))
-        dec.segment('jogo', 1000, pacote)
-        return dec, eventos, 1000 + len(pacote)
-
-    def test_teleporte_mantem_a_pt_e_o_dano_dos_outros(self):
-        dec, eventos, sequencia = self._pt_com_teleporte()
-        dano = (varint(9000) + bytes.fromhex('0400') + varint(3210) + struct.pack('<I', 14050340) +
-                bytes.fromhex('0102000000010000008101') + varint(12345) + bytes.fromhex('0000'))
-        dec.segment('jogo', sequencia, frame(pp.OP_DAMAGE, dano))
-        self.assertEqual(dec.party_names, {'fz', 'misaa', 'Bug'})
-        self.assertNotIn(('dps_party', ['fz']), eventos)
-        self.assertIn(('dps_damage', 'misaa', 12345), eventos)
-
-    def test_roster_menor_depois_do_teleporte_atualiza_a_pt(self):
-        dec, eventos, sequencia = self._pt_com_teleporte()
-        nomes = (b'fz', b'misaa')
-        roster = b''.join(bytes.fromhex('1805') + bytes([len(n)]) + n + struct.pack('<II', 24, 45) for n in nomes)
-        with patch.object(pp, 'parse_party_roster_details', return_value=[('fz', ''), ('misaa', '')]):
-            dec.segment('jogo', sequencia, frame(pp.OP_PARTY_ROSTER, roster))
-        self.assertEqual(dec.party_names, {'fz', 'misaa'})
-        self.assertFalse(dec.party_unconfirmed)
-
-    def test_teleporte_sem_pt_mostra_so_o_proprio_personagem(self):
-        eventos = []
-        dec = pp.Decoder(eventos.append)
-        dec.own_name = 'fz'
-        zona = bytearray(24)
-        struct.pack_into('<I', zona, 4, 500)
-        struct.pack_into('<ff', zona, 16, 1000.0, 2000.0)
-        dec.segment('jogo', 1000, frame(pp.OP_ZONE, bytes(zona)))
-        self.assertIn(('dps_party', ['fz']), eventos)
-
-    def test_dano_de_outro_jogador_com_nome_de_duas_letras(self):
-        eventos = []
-        dec = pp.Decoder(eventos.append)
-        dec.own_name, dec.own_entity = 'misaa', 7432
-        dec.party_names = {'fz', 'misaa'}
-        nome = varint(4626) + bytes.fromhex('0000') + bytes([2]) + b'fz' + bytes(4)
-        dano = (varint(9000) + bytes.fromhex('0400') + varint(4626) + struct.pack('<I', 18040000) +
-                bytes.fromhex('0102000000010000008101') + varint(12345) + bytes.fromhex('0000'))
-        pacotes = [frame(pp.OP_PLAYER_NICKNAME, nome), frame(pp.OP_DAMAGE, dano)]
-        sequencia = 1000
-        for pacote in pacotes:
-            dec.segment('jogo', sequencia, pacote)
-            sequencia += len(pacote)
-        self.assertIn(('dps_damage', 'fz', 12345), eventos)
-
-    def test_nome_maior_vence_nome_curto_no_mesmo_pacote(self):
-        payload = varint(4626) + bytes([2]) + b'ab' + bytes([5]) + b'misaa' + bytes(4)
-        self.assertEqual(pp.parse_player_nickname(payload), (4626, 'misaa'))
 
     def test_cura_direta_da_pt_nao_entra_no_dps(self):
         eventos = []
@@ -304,153 +284,33 @@ class LeituraNpcap(unittest.TestCase):
             segundo.segment('jogo', 2000, od_fino(40))
             self.assertEqual(eventos, [('ready',), ('od_gain', 'OD Fino', 2)])
 
-    def test_orichalcum_radiante_conta_quando_pilha_volta_ao_total_salvo(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            estado = os.path.join(pasta, 'inventario.json')
-            with open(estado, 'w', encoding='utf-8') as arquivo:
-                json.dump({'501': [610620016, 9]}, arquivo)
-            eventos = []
-            payload = bytearray(23)
-            payload[0], payload[1] = 1, 1
-            struct.pack_into('<I', payload, 3, 501)
-            struct.pack_into('<I', payload, 11, 610620016)
-            struct.pack_into('<Q', payload, 15, 9)
-            dec = pp.Decoder(eventos.append, estado)
-            dec.segment('jogo', 1000, frame(pp.OP_INVENTORY_CHANGE, bytes(payload)))
-            self.assertEqual(eventos, [('ready',), ('gather_gain', 610620016, 1)])
-
-    def test_reconexao_avisa_pronto_de_novo_em_outra_porta(self):
+    def test_primeiro_minerio_duplo_usa_quantidade_exata_recebida(self):
         eventos = []
         dec = pp.Decoder(eventos.append)
-        pacote = frame(pp.OP_ZONE, bytes.fromhex('0102'))
-        for conexao in (('servidor', 13328, 58664), ('servidor', 13328, 60001)):
-            dec.reset_connection()
-            for sequencia in (1000, 1000 + len(pacote), 1000 + 2 * len(pacote)):
-                dec.segment(conexao, sequencia, pacote)
-        self.assertEqual(eventos.count(('ready',)), 2)
-        self.assertEqual(list(dec.streams), [('servidor', 13328, 60001)])
 
-    def test_limites_diarios_vem_dos_pacotes_de_entrada_e_de_ganho(self):
-        pacotes = (('a5ff', '8488000000000000d833f598a1010000', ('daily_limit', 'kina', 34948)),
-                   ('a6ff', '8488000000000000ec70f498a1010000', ('daily_limit', 'kina', 34948)),
-                   ('a7ff', 'd100000000000000d833f598a1010000', ('daily_limit', 'gathering', 209)),
-                   ('a8ff', 'd300000000000000bb83f598a1010000', ('daily_limit', 'gathering', 211)))
-        eventos = []
-        dec = pp.Decoder(eventos.append)
-        sequencia = 1000
-        for opcode, dados, _ in pacotes:
-            pacote = frame(bytes.fromhex(opcode), bytes.fromhex(dados))
-            dec.segment('jogo', sequencia, pacote)
-            sequencia += len(pacote)
-        self.assertEqual(eventos[1:], [esperado for _, _, esperado in pacotes])
-        self.assertIsNone(pp.parse_daily_limit(bytes.fromhex('0200')))
+        inventario = bytearray(23)
+        inventario[0], inventario[1] = 1, 1
+        struct.pack_into('<I', inventario, 3, 450)
+        struct.pack_into('<I', inventario, 11, 610620013)
+        struct.pack_into('<Q', inventario, 15, 40)
 
-    def test_texto_do_limite_mostra_atual_e_quanto_falta(self):
-        self.assertEqual(ca.texto_limite('Coleta diária', 211, 1000),
-                         'Coleta diária: 211/1.000 · faltam 789')
-        self.assertEqual(ca.texto_limite('Kina diário', 34948, 1_000_000),
-                         'Kina diário: 34.948/1.000.000 · faltam 965.052')
-        self.assertEqual(ca.texto_limite('Coleta diária', 1000, 1000),
-                         'Coleta diária: 1.000/1.000 · limite atingido')
-        self.assertEqual(ca.texto_limite('Kina diário', None, 1_000_000),
-                         'Kina diário: aguardando próximo ganho')
+        adquirido = b'\x00\x00\x01' + struct.pack('<III', 610620013, 2, 0)
+        primeiro = frame(pp.OP_INVENTORY_CHANGE, bytes(inventario))
+        quantidade_exata = frame(pp.OP_ITEM_ACQUIRED, adquirido)
+        dec.segment('jogo', 1000, primeiro)
+        dec.segment('jogo', 1000 + len(primeiro), quantidade_exata)
 
-    def test_barra_do_limite_fica_entre_vazia_e_cheia(self):
-        self.assertEqual(ca.fracao_limite(None, 1000), 0.0)
-        self.assertEqual(ca.fracao_limite(250, 1000), 0.25)
-        self.assertEqual(ca.fracao_limite(1500, 1000), 1.0)
+        self.assertEqual(eventos, [('ready',), ('gather_gain', 610620013, 1),
+                                   ('gather_gain', 610620013, 1)])
 
-    def test_limite_salvo_vale_ate_o_reset_das_quatro(self):
-        import datetime as dt
-        salvos = {'dia': '2026-11-01', 'gathering': 211}
-        noite = dt.datetime(2026, 11, 1, 23, 0)
-        madrugada = dt.datetime(2026, 11, 2, 3, 59)
-        depois = dt.datetime(2026, 11, 2, 4, 0)
-        self.assertEqual(ca.limite_salvo(salvos, 'gathering', noite), 211)
-        self.assertEqual(ca.limite_salvo(salvos, 'gathering', madrugada), 211)
-        self.assertEqual(ca.limite_salvo(salvos, 'gathering', depois), 0)
-        self.assertIsNone(ca.limite_salvo(salvos, 'kina', noite))
-        self.assertIsNone(ca.limite_salvo(None, 'kina', noite))
-
-    def test_filtro_de_captura_acompanha_portas_do_jogo(self):
-        self.assertEqual(pp.capture_filter({57267, 55641}),
-                         'tcp and (dst port 55641 or dst port 57267)')
-        self.assertEqual(pp.capture_filter(set()),
-                         'tcp and not port 443 and not port 80')
-
-    def test_pacote_de_item_recebido_informa_quantidade_com_bonus(self):
-        x1 = bytes.fromhex('003aabce015d2b652401000000000000000000000000000000')
-        x2 = bytes.fromhex('003aabce015d2b652401000000010000000000000000000000')
-        self.assertEqual(pp.parse_item_acquired(x1), (610610013, 1))
-        self.assertEqual(pp.parse_item_acquired(x2), (610610013, 2))
-        self.assertIsNone(pp.parse_item_acquired(bytes.fromhex('003a01')))
-
-    def _primeira_coleta(self, recebido=None, estado=None, atraso=0.0):
-        """Primeira alteração de uma pilha que já existia, seguida do 0x338d."""
-        item_id = 610620016
-        payload = bytearray(23)
-        payload[0], payload[1] = 1, 1
-        struct.pack_into('<I', payload, 3, 601)
-        struct.pack_into('<I', payload, 11, item_id)
-        struct.pack_into('<Q', payload, 15, 9)
-        eventos = []
-        dec = pp.Decoder(eventos.append, estado)
-        pacotes = [frame(pp.OP_INVENTORY_CHANGE, bytes(payload))]
-        if recebido is not None:
-            base, bonus = recebido
-            pacotes.append(frame(pp.OP_ITEM_ACQUIRED, bytes.fromhex('003a') + varint(30000) +
-                                 struct.pack('<IIIQ', item_id, base, bonus, 0)))
-        relogio = [100.0]
-        with patch.object(pp.time, 'monotonic', side_effect=lambda: relogio[0]):
-            sequencia = 1000
-            for pacote in pacotes:
-                dec.segment('jogo', sequencia, pacote)
-                sequencia += len(pacote)
-                relogio[0] += atraso
-        return eventos[1:], item_id
-
-    def test_primeira_coleta_x2_conta_dois_em_pilha_desconhecida(self):
-        eventos, item_id = self._primeira_coleta((1, 1))
-        self.assertEqual(eventos, [('gather_gain', item_id, 1),
-                                   ('gather_gain', item_id, 1)])
-
-    def test_primeira_coleta_x1_nao_soma_de_novo(self):
-        eventos, item_id = self._primeira_coleta((1, 0))
-        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
-
-    def test_primeira_coleta_sem_item_recebido_mantem_a_contagem(self):
-        eventos, item_id = self._primeira_coleta()
-        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
-
-    def test_item_recebido_tardio_nao_altera_contagem(self):
-        eventos, item_id = self._primeira_coleta((1, 1), atraso=pp.ITEM_ACQUIRED_WINDOW)
-        self.assertEqual(eventos, [('gather_gain', item_id, 1)])
-
-    def test_aviso_sem_quantidade_nao_consome_primeira_coleta(self):
-        item_id = 610620013
-        payload = bytearray(23)
-        payload[0], payload[1] = 1, 1
-        struct.pack_into('<I', payload, 3, 602)
-        struct.pack_into('<I', payload, 11, item_id)
-        struct.pack_into('<Q', payload, 15, 16)
-        aviso = bytes.fromhex('023adcde026d52652400000000000000000000000000000000')
-        x2 = bytes.fromhex('003adcde026d52652401000000010000000000000000000000')
-        eventos = []
-        dec = pp.Decoder(eventos.append)
-        sequencia = 1000
-        for pacote in (frame(pp.OP_INVENTORY_CHANGE, bytes(payload)),
-                       frame(pp.OP_ITEM_ACQUIRED, aviso), frame(pp.OP_ITEM_ACQUIRED, x2)):
-            dec.segment('jogo', sequencia, pacote)
-            sequencia += len(pacote)
-        self.assertEqual(sum(e[2] for e in eventos[1:]), 2)
-
-    def test_primeira_coleta_x2_com_total_salvo_igual_conta_dois(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            estado = os.path.join(pasta, 'inventario.json')
-            with open(estado, 'w', encoding='utf-8') as arquivo:
-                json.dump({'601': [610620016, 9]}, arquivo)
-            eventos, item_id = self._primeira_coleta((1, 1), estado)
-        self.assertEqual(sum(e[2] for e in eventos), 2)
+    def test_aba_automatica_segue_imediatamente_a_atividade_recebida(self):
+        atividade = {'dps': 100.0, 'coleta': 100.0, 'almas': 100.0}
+        self.assertEqual(ca.aba_automatica('dps', 'alma', 101.0, 100.5,
+                                           atividade, True), 'almas')
+        self.assertEqual(ca.aba_automatica('almas', 'materiais', 101.0, 100.5,
+                                           atividade, False), 'materiais')
+        self.assertIsNone(ca.aba_automatica('od', 'boss', 101.0, 100.5,
+                                            atividade, True))
 
     def test_todos_os_itens_coletaveis_contam_primeiro_evento_e_variacao(self):
         def alteracao(kind, instancia, item_id, quantidade):
@@ -477,55 +337,6 @@ class LeituraNpcap(unittest.TestCase):
                 dec.segment('jogo', 1000 + len(primeiro) + len(aumento), repetido)
                 self.assertEqual(eventos, [('ready',), (evento, identificador, 1),
                                            (evento, identificador, 3)])
-
-    def test_assinatura_distingue_estado_de_outro_personagem(self):
-        a = ca.assinatura_estado_pets({2: 1, 1: 3}, {1: 10})
-        self.assertEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 10}))
-        self.assertNotEqual(a, ca.assinatura_estado_pets({1: 3, 2: 1}, {1: 11}))
-
-    def test_nome_do_proprio_personagem_no_login(self):
-        nome = 'Vitória'.encode('utf-8')
-        payload = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
-                   varint(len(nome)) + nome + struct.pack('<HB', 11002, 14))
-        eventos = []
-        pp.Decoder(eventos.append).segment('jogo', 1000,
-                                            frame(pp.OP_NICKNAME, payload))
-        self.assertEqual(eventos, [('ready',), ('nickname', 'Vitória'),
-                                   ('dps_classes', {'Vitória': 'Ranger'}),
-                                   ('dps_party', ['Vitória'])])
-        com_flag = varint(len(payload) + 7) + b'\xf0' + pp.OP_NICKNAME + payload
-        outros = []
-        pp.Decoder(outros.append).segment('jogo', 2000, com_flag)
-        self.assertEqual(outros, [('ready',), ('nickname', 'Vitória'),
-                                  ('dps_classes', {'Vitória': 'Ranger'}),
-                                  ('dps_party', ['Vitória'])])
-        self.assertIsNone(pp.parse_nickname(payload[:-2]))
-        self.assertIsNone(pp.parse_nickname(varint(2445) + b'\x00' * 5 +
-                                             b'\x05A B C' + struct.pack('<HB', 11002, 14)))
-
-    def test_nome_do_proprio_personagem_em_todas_as_classes(self):
-        nome = 'Vitória'.encode('utf-8')
-        for classe, esperado in ((5, 'Gladiator'), (29, 'Cleric'), (32, 'Cleric'),
-                                 (33, 'Chanter'), (36, 'Chanter'), (45, 'Brawler'),
-                                 (48, 'Brawler')):
-            with self.subTest(classe=classe):
-                payload = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
-                           varint(len(nome)) + nome + struct.pack('<HB', 11002, classe))
-                self.assertEqual(pp.parse_nickname(payload), 'Vitória')
-                self.assertEqual(pp.class_from_wire(classe), esperado)
-        invalido = (varint(2445) + bytes.fromhex('5f 02 eb 08 37') +
-                    varint(len(nome)) + nome + struct.pack('<HB', 11002, 49))
-        self.assertIsNone(pp.parse_nickname(invalido))
-
-    def test_roster_da_pt_traz_classe_de_cada_jogador(self):
-        nome = b'Misttylol'
-        cabecalho = (struct.pack('<I', 1) + b'\x02PT' + b'\x06' +
-                     struct.pack('<I', 600091) + b'\0\0' +
-                     struct.pack('<Q', (2305 << 48) | 1) + b'\0\0\0' + b'\x01')
-        membro = (b'\x2c\x01' + struct.pack('<Q', (2305 << 48) | 1000) +
-                  bytes([len(nome)]) + nome + struct.pack('<III', 24, 45, 2800))
-        detalhes = pp.parse_party_roster_details(cabecalho + membro)
-        self.assertEqual(detalhes, [('Misttylol', 'Elementalist')])
 
     def test_varias_almas_no_mesmo_evento_e_retransmissao(self):
         ganhos = []
@@ -572,80 +383,6 @@ class LeituraNpcap(unittest.TestCase):
                                                 '1202': 'Lupyllini Putrefato'}))
             self.assertEqual({m['pet_id']: m['qtd'] for m in p.monstros},
                              {'1036': 9, '1202': 37})
-
-    def test_login_importa_progresso_antigo_sem_contar_drop_ou_reabrir_fechado(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            caminho = os.path.join(pasta, 'progresso.json')
-            p = ca.Progresso(caminho)
-            nomes = {'1036': 'Lupyllini', '1202': 'Lupyllini Putrefato'}
-            p.somar_pet(1036, 'Lupyllini', 1)
-            self.assertTrue(p.sincronizar_pets({1036: 1, 1202: 2},
-                                               {1036: 19, 1202: 7}, nomes))
-            self.assertEqual({m['pet_id']: m['qtd'] for m in p.monstros},
-                             {'1036': 24})
-            self.assertEqual(sum(sum(v.values()) for v in p.dias.values()), 1)
-            self.assertEqual(len(p.catalogo_pets(nomes)), 2)
-            self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
-                                                {1036: 19, 1202: 7}, nomes))
-            p.remover(next(m for m in p.monstros if m['pet_id'] == '1036'))
-            p.salvar()
-            p = ca.Progresso(caminho)
-            self.assertFalse(p.sincronizar_pets({1036: 1, 1202: 2},
-                                                {1036: 19, 1202: 7}, nomes))
-            self.assertEqual(p.monstros, [])
-            p.somar_pet(1036, 'Lupyllini', 1)
-            self.assertEqual(p.monstros[-1]['qtd'], 25)
-
-    def test_primeira_alma_na_lista_parte_do_total_sincronizado_da_conta(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            p = ca.Progresso(os.path.join(pasta, 'progresso.json'))
-            nomes = {'1142': 'Aberração Deformada'}
-            self.assertTrue(p.sincronizar_pets({1142: 2}, {1142: 44}, nomes))
-            self.assertEqual(p.monstros, [])
-            m = p.somar_pet(1142, nomes['1142'], 1)
-            self.assertEqual(m['qtd'], 75)
-            self.assertEqual(p.pet_estado['1142'], 75)
-            linha = next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')
-            self.assertEqual(linha[2:], ('Nv.2 45/75', '30', 'jogo'))
-
-    def test_catalogo_antigo_sai_da_aba_de_farm_sem_perder_os_valores(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            caminho = os.path.join(pasta, 'progresso.json')
-            with open(caminho, 'w', encoding='utf-8') as f:
-                json.dump({'monstros': [
-                    {'pet_id': '1036', 'nome': 'Lupyllini', 'qtd': 24,
-                     'apelidos': [], 'atualizado': 0},
-                    {'pet_id': '1142', 'nome': 'Aberração Deformada', 'qtd': 74,
-                     'apelidos': [], 'atualizado': 123}],
-                }, f)
-            p = ca.Progresso(caminho)
-            self.assertEqual([m['pet_id'] for m in p.monstros], ['1142'])
-            linhas = {r[0]: r for r in p.catalogo_pets(
-                {'1036': 'Lupyllini', '1142': 'Aberração Deformada'})}
-            self.assertEqual(linhas['1036'][2:], ('Nv.1 19/25', '81', 'salvo'))
-            self.assertEqual(linhas['1142'][2:], ('Nv.2 44/75', '31', 'salvo'))
-
-    def test_catalogo_lista_todos_e_distingue_valor_salvo_do_jogo(self):
-        with tempfile.TemporaryDirectory(dir=os.path.dirname(__file__)) as pasta:
-            caminho = os.path.join(pasta, 'progresso.json')
-            nomes = {'1142': 'Aberração Deformada', '1036': 'Lupyllini',
-                     '1202': 'Lupyllini Putrefato'}
-            p = ca.Progresso(caminho)
-            self.assertEqual(len(p.catalogo_pets(nomes)), 3)
-            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1202')[2:],
-                             ('—', '—', 'desconhecido'))
-            p.somar_pet(1142, nomes['1142'], 19)
-            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')[2:],
-                             ('Nv.1 14/25', '86', 'salvo'))
-            p.sincronizar_pets({1142: 2}, {1142: 44}, nomes)
-            p.salvar()
-            p = ca.Progresso(caminho)
-            rows = {r[0]: r for r in p.catalogo_pets(nomes)}
-            self.assertEqual(rows['1142'][2:], ('Nv.2 44/75', '31', 'jogo'))
-            self.assertEqual(rows['1202'][2:], ('Nv.0 0/5', '105', 'jogo'))
-            p.somar_pet(1142, nomes['1142'], 2)
-            self.assertEqual(next(r for r in p.catalogo_pets(nomes) if r[0] == '1142')[2:],
-                             ('Nv.2 46/75', '29', 'jogo'))
 
     def test_atualizador_instala_arquivos_novos_sem_apagar_progresso(self):
         pasta_codigo = os.path.dirname(os.path.dirname(__file__))

@@ -52,6 +52,11 @@ function Testar-Python($exe) {
 
 function Achar-Python {
     $ErrorActionPreference = "Continue"
+    $gerenciado = Join-Path $env:LOCALAPPDATA "Python\bin\python.exe"
+    if (Test-Path $gerenciado) {
+        $r = Testar-Python $gerenciado
+        if ($r) { return $r }
+    }
     $tentativas = @()
     if (Get-Command py -ErrorAction SilentlyContinue) { $tentativas += ,@("py", "-3") }
     foreach ($t in $tentativas) {

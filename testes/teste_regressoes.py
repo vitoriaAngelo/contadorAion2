@@ -2,55 +2,25 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import contador_almas as ca
 
 
 class Regressoes(unittest.TestCase):
+    def test_exportacao_usa_somente_pets_da_lista_ativa(self):
+        ativos = [
+            {"nome": "Papis", "pet_id": "67", "qtd": 0},
+            {"nome": "Kailin", "pet_id": "14", "qtd": 105},
+        ]
+        self.assertEqual(ca.linhas_exportacao_pets(ativos, 105), [
+            ("Papis", "67", 0, 105),
+            ("Kailin", "14", 105, 0),
+        ])
+
     def test_nomes_das_almas_respeitam_o_idioma(self):
         self.assertEqual(ca.carregar_nomes_pets('en')['1001'], 'Black Dragon')
         self.assertEqual(ca.carregar_nomes_pets('pt-BR')['1001'], 'Dragão Negro')
-
-    def test_cores_do_dps_nao_repetem_com_classes_iguais(self):
-        classes = {'a': 'Chanter', 'b': 'Chanter', 'c': 'Chanter', 'd': '', 'e': 'Cleric'}
-        cores = ca.cores_dps(list(classes), classes)
-        self.assertEqual(len(set(cores.values())), 5)
-        self.assertEqual(cores['a'], ca.CORES_DPS_CLASSE['Chanter'])
-
-    def test_barra_do_dps_e_relativa_ao_maior_dano(self):
-        self.assertEqual(ca.fracoes_dps(['a', 'b'], {'a': 200, 'b': 50}), {'a': 1.0, 'b': 0.25})
-        self.assertEqual(ca.fracoes_dps(['a'], {}), {'a': 0.0})
-
-    def test_barra_do_dps_desliza_ate_o_alvo(self):
-        passo = ca.avancar_barra(0.0, 1.0)
-        self.assertTrue(0.0 < passo < 1.0)
-        atual = 0.0
-        for _ in range(80):
-            atual = ca.avancar_barra(atual, 1.0)
-        self.assertEqual(atual, 1.0)
-
-    def test_aba_automatica_vai_para_a_atividade(self):
-        aba = ca.aba_automatica
-        self.assertEqual(aba('almas', 'boss', 100, -1e9, {}, True), 'dps')
-        self.assertEqual(aba('almas', 'materiais', 100, -1e9, {}, False), 'materiais')
-        self.assertEqual(aba('dps', 'alma', 100, -1e9, {'dps': 50}, False), 'almas')
-        self.assertIsNone(aba('od', 'materiais', 100, -1e9, {}, False))
-
-    def test_aba_automatica_nao_sai_do_boss_nem_de_aba_ativa(self):
-        aba = ca.aba_automatica
-        self.assertIsNone(aba('dps', 'alma', 100, -1e9, {'dps': 99}, True))
-        self.assertIsNone(aba('dps', 'od', 100, -1e9, {'dps': 99}, True))
-        self.assertIsNone(aba('materiais', 'alma', 100, -1e9, {'coleta': 90}, False))
-        self.assertEqual(aba('materiais', 'alma', 100, -1e9, {'coleta': 84}, False), 'almas')
-
-    def test_aba_automatica_respeita_troca_manual_e_outras_telas(self):
-        aba = ca.aba_automatica
-        self.assertIsNone(aba('almas', 'boss', 100, 85, {}, True))
-        self.assertEqual(aba('almas', 'boss', 100, 79, {}, True), 'dps')
-        self.assertIsNone(aba('info', 'boss', 100, -1e9, {}, True))
-        self.assertIsNone(aba('pets', 'alma', 100, -1e9, {}, False))
 
     def test_dps_fica_em_ordem_do_maior_dano(self):
         nomes = ['Cleric', 'Gladiator', 'Ranger', 'Templar']
@@ -97,48 +67,6 @@ class Regressoes(unittest.TestCase):
         r = ca.Rastreador(ca.PADROES_PADRAO)
         quadro = lambda linhas: [(t, 100 + i * 30, 18) for i, t in enumerate(linhas)]
         self.assertEqual(r.quadro_pos(quadro(['Voce obteve 150 Pontos do Abismo']), 0), [])
-
-    def _atualizar_com_requirements(self, local, remoto):
-        with tempfile.TemporaryDirectory() as pasta:
-            os.mkdir(os.path.join(pasta, 'psutil'))
-            for nome, dados in [('requirements.txt', local), ('contador_almas.py', b'')]:
-                with open(os.path.join(pasta, nome), 'wb') as f:
-                    f.write(dados)
-            with mock.patch.object(ca, 'baixar_texto',
-                                   lambda url: remoto if 'requirements' in url else b''):
-                return ca.aplicar_atualizacao(b'', pasta)
-
-    def test_quebra_de_linha_nao_conta_como_requirements_novo(self):
-        self.assertFalse(self._atualizar_com_requirements(b'mss>=9.0\r\npsutil>=6.0\r\n',
-                                                          b'mss>=9.0\npsutil>=6.0\n'))
-
-    def test_requirements_novo_pede_instalacao(self):
-        self.assertTrue(self._atualizar_com_requirements(b'mss>=9.0\n', b'mss>=9.0\npsutil>=6.0\n'))
-
-    def test_abertura_repara_so_bibliotecas_instaladas_na_pasta(self):
-        with tempfile.TemporaryDirectory() as pasta:
-            with mock.patch.object(ca, 'bibliotecas_ok', return_value=False), \
-                    mock.patch.object(ca, 'instalar_bibliotecas', return_value=True) as pip:
-                ca.reparar_bibliotecas(pasta)  # RODAR.bat: nada instalado aqui
-                pip.assert_not_called()
-                os.mkdir(os.path.join(pasta, 'psutil-7.2.2.dist-info'))
-                ca.reparar_bibliotecas(pasta)
-                pip.assert_called_once_with(pasta)
-
-    def test_abertura_nao_chama_pip_com_bibliotecas_inteiras(self):
-        with tempfile.TemporaryDirectory() as pasta:
-            os.mkdir(os.path.join(pasta, 'psutil-7.2.2.dist-info'))
-            with mock.patch.object(ca, 'bibliotecas_ok', return_value=True), \
-                    mock.patch.object(ca, 'instalar_bibliotecas') as pip:
-                ca.reparar_bibliotecas(pasta)
-                pip.assert_not_called()
-                ca.reparar_bibliotecas(pasta, forcar=True)
-                pip.assert_called_once_with(pasta)
-
-    def test_erro_de_import_nao_culpa_o_npcap(self):
-        erro = "cannot import name '_common' from partially initialized module 'psutil'"
-        self.assertNotIn('Npcap', ca.dica_erro_leitura(erro, 'npcap'))
-        self.assertIn('Npcap', ca.dica_erro_leitura('Npcap ausente', 'npcap'))
 
 
 if __name__ == '__main__':

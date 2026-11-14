@@ -14,7 +14,7 @@ isso permite contar várias almas de uma vez sem reler o histórico do chat.
 - **Não** lê a memória do jogo, não envia pacotes e não pede login.
 - Almas, ganhos de Pontos do Abismo e aumentos de Kinah são lidos pelos eventos de rede; o contador não lê o chat. Os ganhos de AP e Kinah são somados desde que o contador foi aberto. Pacotes brutos não são salvos.
 - Aparece na stream (OBS / Discord) — dá para usar como fonte de **Captura de Janela**.
-- Na aba inicial, o painel do Abismo mostra os Pontos do Abismo e o Kinah ganhos durante a sessão, junto do cronômetro de farm.
+- O painel do Abismo também tem um cronômetro de farm com iniciar/pausar e zerar; ele mostra horas, minutos e segundos.
 
 > ⚠️ **Aviso:** é um programa de terceiros, não oficial. A compatibilidade com o jogo e seu anti-cheat não é garantida. Use por sua conta e risco.
 
@@ -34,8 +34,6 @@ Depois de instalado, a pasta que você extraiu pode ser apagada.
 - Abra o jogo em **Janela sem bordas** (em tela cheia exclusiva o overlay não aparece por cima).
 - Abra o contador. Ele aguarda a conexão do AION 2; o chat pode ficar fechado.
 - Mate monstros: cada alma soma no monstro certo.
-- Na aba inicial, os avisos do chat com ganho de Pontos do Abismo são somados durante a sessão; as almas continuam sendo lidas pelo Npcap.
-- O painel do Abismo também tem um cronômetro de farm com iniciar/pausar e zerar; ele mostra horas, minutos e segundos.
 
 Em cada monstro:
 
@@ -49,15 +47,6 @@ Em cada monstro:
 
 Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
 
-Ao entrar no personagem com o contador aberto, o Npcap traz o progresso de almas já
-registrado pelo jogo. A aba **Pets** mostra o catálogo completo; a aba inicial atualiza
-somente os bichos que você está acompanhando, com almas da estrela atual, total
-acumulado e quantas faltam para completar. Entrar novamente no personagem permite
-sincronizar esse histórico se o contador foi aberto depois do login. Fechar um bicho no
-✕ o mantém fora da lista até chegar um novo drop dele.
-Enquanto não receber o progresso inicial do jogo, o contador avisa para entrar novamente
-no personagem; os drops novos continuam sendo contados normalmente nesse intervalo.
-
 No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
 (fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,
 com base em <https://www.animoria.com.br/#agenda>: Shugo (toda hora :00), Invasão Dimensional (:30),
@@ -66,18 +55,8 @@ Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e S
 
 Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
 continua contando; clique no ícone dele para voltar) · ✕ fechar.
-O nome do personagem identificado pelo Npcap aparece ao lado do título e é atualizado
-ao trocar de personagem. Se o contador abrir depois do login, mostra o último nome
-salvo até receber uma nova identificação do jogo.
 
 Botão ◆ no topo: aba **OD** — o contador lê pelo Npcap os ODs recebidos no inventário (normal, fino, puro e radiante); os números também podem ser ajustados manualmente.
-
-Botão **Pets** no topo: aba com todos os pets catalogados, busca pelo nome,
-três estrelas de progresso por pet, almas na estrela atual e quantas faltam para completar. Antes de entrar no
-personagem, os valores conhecidos são os últimos salvos no computador; após a
-sincronização, a lista inclui os pets com zero diretamente do estado do jogo.
-A lista de farms na aba inicial **Almas** mostra somente os bichos em acompanhamento. A
-sincronização do catálogo não coloca todos eles na lista de farm.
 
 Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
 
@@ -119,6 +98,3 @@ Interface em `contador_almas.py`; decodificador em `pet_protocol.py`, adaptado d
 [aion2-pet-overlay](https://github.com/MartinLVila/aion2-pet-overlay) sob a licença
 em `LICENSE-PET-PROTOCOL.txt`. A tabela de nomes foi derivada de
 [aion2-pet-tracker](https://github.com/MikeZeen/aion2-pet-tracker).
-O catálogo de monstros e pets do radar usa dados de
-[Aion-DPS-Meter](https://github.com/SkeeveAN/Aion-DPS-Meter), licença MIT em
-`LICENSE-RADAR.txt`.

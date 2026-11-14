@@ -12,6 +12,7 @@ import ctypes
 import difflib
 import hashlib
 import json
+import math
 import os
 import queue
 import re
@@ -721,7 +722,7 @@ def formatar_tempo_farm(segundos):
 DPS_ALTURA_LINHA = 26  # altura de cada barra do DPS, em pixels antes da escala
 CORES_DPS_CLASSE = {"Gladiator": "#2f7486", "Templar": "#3f5a9e", "Ranger": "#2f7f62",
                     "Assassin": "#4f8040", "Elementalist": "#843f88", "Sorcerer": "#5f459c",
-                    "Cleric": "#857232", "Chanter": "#7d3f70", "Brawler": "#86353c"}
+                    "Cleric": "#857232", "Chanter": "#a07432", "Brawler": "#86353c"}
 CORES_DPS_EXTRA = ("#667032", "#3f578f", "#2f7468", "#80532f", "#70384c", "#4f4482", "#5a7632")
 
 
@@ -2654,6 +2655,26 @@ class LeitorRede(threading.Thread):
                     self.fila.put(("dps_damage", (evento[1], evento[2], time.monotonic())))
                 elif evento[0] == "combat_target" and self.ativo.is_set():
                     self.fila.put(("combat_target", (evento[1], evento[2])))
+                elif evento[0] == "pvp_target" and self.ativo.is_set():
+                    self.fila.put(("pvp_target", evento[1:]))
+                elif evento[0] == "pvp_duel_damage" and self.ativo.is_set():
+                    self.fila.put(("pvp_duel_damage", evento[1:]))
+                elif evento[0] in ("pvp_attacker", "pvp_attacker_name", "pvp_health", "pvp_resource") and self.ativo.is_set():
+                    self.fila.put((evento[0], evento[1:]))
+                elif evento[0] == "pvp_defeated" and self.ativo.is_set():
+                    self.fila.put(("pvp_defeated", evento[1]))
+                elif evento[0] == "abyss_instance":
+                    self.fila.put(("abyss_instance", evento[1:]))
+                elif evento[0] == "game_ping":
+                    self.fila.put(("game_ping", evento[1]))
+                elif evento[0] == "flight_stamina":
+                    self.fila.put(("flight_stamina", evento[1:]))
+                elif evento[0] in ("pvp_stats", "pvp_class") and self.ativo.is_set():
+                    self.fila.put((evento[0], evento[1:]))
+                elif evento[0] in ("abyss_rank", "abyss_rank_cached") and self.ativo.is_set():
+                    self.fila.put((evento[0], evento[1:]))
+                elif evento[0] == "rank_points_live" and self.ativo.is_set():
+                    self.fila.put(("rank_points_live", evento[1]))
                 elif evento[0] == "dps_reset":
                     self.fila.put(("dps_reset", None))
                 elif evento[0] == "boss_health":
@@ -2911,6 +2932,17 @@ def main():
             self._lbl_rodape = tk.Label(rod, text="", fg=COR["suave"],
                                         bg=COR["fundo"], font=self.f_peq, anchor="w")
             self._lbl_rodape.grid(row=1, column=0, sticky="w")
+            self._lbl_voo_rodape = tk.Frame(rod, bg=COR["fundo"])
+            self._voo_barra = tk.Canvas(self._lbl_voo_rodape, width=self.px(86), height=self.px(7),
+                                        bg=COR["barra"], highlightthickness=0, bd=0)
+            self._voo_barra.pack(side="left", padx=(0, self.px(4)))
+            self._voo_barra_fill = self._voo_barra.create_rectangle(0, 0, 0, self.px(7),
+                                                                      fill="#62c9d8", width=0)
+            self._voo_texto = tk.Label(self._lbl_voo_rodape, text="", fg=COR["suave"],
+                                       bg=COR["fundo"], font=self.f_peq, anchor="w")
+            self._voo_texto.pack(side="left")
+            self._lbl_voo_rodape.grid(row=3, column=0, sticky="w", padx=(0, self.px(8)))
+            self._lbl_voo_rodape.grid_remove()
             tk.Label(rod, text=f"v{VERSAO}", fg=COR["suave"], bg=COR["fundo"],
                      font=self.fontes["versao"]).grid(
                          row=1, column=1, padx=(self.px(5), self.px(8)))
@@ -2921,7 +2953,16 @@ def main():
             self._lbl_hora_local = tk.Label(
                 rod, text="", fg=COR["alma"], bg=COR["fundo"],
                 font=self.fontes["relogio"], width=6, anchor="center")
-            self._lbl_hora_local.grid(row=1, column=3, padx=(0, self.px(6)))
+            self._lbl_hora_local.grid(row=1, column=4, padx=(0, self.px(10)))
+            ping_local = tk.Frame(rod, bg=COR["fundo"])
+            ping_local.grid(row=1, column=3, padx=(0, self.px(5)))
+            self._ping_icon_local = tk.Canvas(ping_local, width=self.px(18), height=self.px(13),
+                                              bg=COR["fundo"], highlightthickness=0)
+            self._ping_icon_local.pack(side="left")
+            self._lbl_ping_local = tk.Label(ping_local, text="-- ms", fg=COR["suave"],
+                                            bg=COR["fundo"], font=self.f_peq)
+            self._lbl_ping_local.pack(side="left")
+            self._ping_local_frame = ping_local
             self._lbl_evento = tk.Label(rod, text="", fg=COR["ouro"],
                                         bg=COR["fundo"], font=self.fontes["evento"], anchor="w")
             self._lbl_evento.grid(row=2, column=0, columnspan=3, sticky="w",
@@ -3314,6 +3355,129 @@ def main():
             self._combate_info.pack(fill="x")
 
         def _mostrar_combate(self, vida, maxima, nome=""):
+            self._esconder_combate()
+
+        def _atualizar_target_abyss(self):
+            label = getattr(self, "_abyss_target_label", None)
+            if label is None or not label.winfo_exists():
+                return
+            vida, maxima, nome = getattr(self, "_abyss_target", (0, 0, ""))
+            hp = (f"HP: {int(vida):,}" if vida is not None else "HP indisponível")
+            classe = self.dps_classes.get(str(nome), "")
+            detalhe = f"{classe} · {hp}" if classe else hp
+            cp = getattr(self, "_pvp_cp", {}).get(nome)
+            cp_texto = f"{cp:,}" if cp is not None else "não recebido"
+            label.configure(text=nome or "Aguardando target", fg=COR["ouro"] if nome else COR["suave"])
+            icon_box = getattr(self, "_abyss_target_icon_box", None)
+            icon_key = (nome, classe)
+            if icon_box is not None and icon_key != getattr(self, "_abyss_target_icon_key", None):
+                self._abyss_target_icon_key = icon_key
+                for widget in icon_box.winfo_children():
+                    widget.destroy()
+                if nome and classe:
+                    self._icone_classe(icon_box, classe, tamanho=self.px(19)).pack()
+            self._abyss_target_class.configure(text=classe or "")
+            if classe:
+                self._abyss_target_class.pack(fill="x", padx=self.px(7), pady=(0, self.px(1)))
+            else:
+                self._abyss_target_class.pack_forget()
+            hp_texto = f"{int(vida):,}".replace(",", ".") if nome and vida is not None else "-"
+            medidor = getattr(self, "_abyss_target_hp", None)
+            if medidor is not None and medidor.winfo_exists():
+                teto = getattr(self, "_abyss_hp_max_observado", 0)
+                proporcao = max(0, min(1, vida / teto)) if nome and vida is not None and teto else 0
+                medidor.coords(self._abyss_hp_fill, 0, 0, int(medidor.winfo_width() * proporcao), self.px(22))
+                medidor.itemconfigure(self._abyss_hp_text, text=hp_texto)
+            self._abyss_target_cp.configure(text=cp_texto.replace(",", ".") if nome and cp is not None else "—")
+            gear = getattr(self, "_pvp_gear", {}).get(nome)
+            alvo_gear = getattr(self, "_abyss_target_gear", None)
+            if alvo_gear is not None:
+                alvo_gear.configure(text=f"{gear:,}".replace(",", ".") if gear else "-")
+
+        def _atualizar_dps_duelo(self, geracao=None):
+            if geracao is not None and geracao != getattr(self, "_abyss_duel_geracao", None):
+                return
+            labels = getattr(self, "_abyss_duel_labels", None)
+            if not labels or not labels[0].winfo_exists():
+                return
+            golpes = getattr(self, "_abyss_duel_hits", [])
+            agora = time.monotonic()
+            golpes[:] = [hit for hit in golpes if agora - hit[0] <= 5]
+            meu = sum(hit[2] for hit in golpes if hit[1] == "meu") / 5
+            inimigo = sum(hit[2] for hit in golpes if hit[1] == "inimigo") / 5
+            fmt = lambda n: f"{n:,.0f}".replace(",", ".")
+            labels[0].configure(text=f"MEU DPS\n{fmt(meu)}")
+            labels[1].configure(text=f"DPS INIMIGO\n{fmt(inimigo)}")
+            self.root.after(1000, lambda: self._atualizar_dps_duelo(
+                getattr(self, "_abyss_duel_geracao", None) if geracao is None else geracao))
+
+        def _atualizar_atacantes_abyss(self, geracao=None):
+            if geracao is not None and geracao != getattr(self, "_abyss_atacantes_geracao", None):
+                return
+            caixa = getattr(self, "_abyss_atacantes_box", None)
+            if caixa is None or not caixa.winfo_exists():
+                return
+            atacantes = getattr(self, "_abyss_atacantes", {})
+            agora = time.monotonic()
+            for entidade, (_, instante) in list(atacantes.items()):
+                if agora - instante > 6:
+                    del atacantes[entidade]
+            visiveis = [(nome or f"Jogador #{entidade}", entidade)
+                        for entidade, (nome, _) in atacantes.items()]
+            janela = self._abyss_atacantes_janela
+            mostrar = (bool(visiveis) and self.cfg.get("aba") == "abyss" and
+                       getattr(self, "_abyss_subaba", "sessao") == "pvp" and
+                       self.root.state() == "normal")
+            if mostrar:
+                self.root.update_idletasks()
+                largura = min(self.px(205), self.root.winfo_width())
+            elif janela.state() != "withdrawn":
+                janela.withdraw()
+            lista = self._abyss_atacantes_lista
+            linhas = tuple(sorted(((nome, getattr(self, "_pvp_cp", {}).get(nome),
+                                    getattr(self, "_pvp_gear", {}).get(nome),
+                                    self.dps_classes.get(nome, ""))
+                                   for nome, _ in visiveis), key=lambda item: item[0].casefold()))
+            if linhas != getattr(self, "_abyss_atacantes_linhas", None):
+                self._abyss_atacantes_linhas = linhas
+                for widget in lista.winfo_children():
+                    widget.destroy()
+            for nome, cp, gear, classe in (() if linhas == getattr(self, "_abyss_atacantes_renderizado", None) else linhas):
+                fundo = (misturar_cor(COR["painel"], CORES_DPS_CLASSE[classe], 0.32)
+                         if classe in CORES_DPS_CLASSE else COR["painel"])
+                linha = tk.Frame(lista, bg=fundo, cursor="fleur")
+                linha.pack(fill="x", pady=(0, self.px(2)))
+                self._ligar_arrasto_janela(self._abyss_atacantes_janela, linha)
+                self._icone_classe(linha, classe, fundo=fundo, tamanho=self.px(14)).pack(
+                    side="left", padx=(self.px(3), self.px(3)))
+                tk.Label(linha, text=nome, bg=fundo, fg=COR["texto"],
+                         font=self.f_peq, anchor="w").pack(side="left", fill="x", expand=True)
+                tk.Label(linha, text=f"CP {cp:,}".replace(",", ".") if cp else "CP —",
+                         bg=fundo, fg=COR["ouro"], font=self.f_peq).pack(side="right", padx=self.px(3))
+                tk.Label(linha, text=f"GS {gear:,}".replace(",", ".") if gear else "GS -",
+                         bg=fundo, fg=COR["suave"], font=self.f_peq).pack(side="right", padx=self.px(3))
+            self._abyss_atacantes_renderizado = linhas
+            if mostrar:
+                if not getattr(self, "_abyss_atacantes_posicionada", False):
+                    janela.geometry(f"{largura}x{caixa.winfo_reqheight()}+"
+                                   f"{self.root.winfo_x()}+"
+                                   f"{self.root.winfo_y() + self.root.winfo_height() + self.px(4)}")
+                if janela.state() == "withdrawn":
+                    janela.deiconify()
+            if geracao is not None:
+                self.root.after(1000, lambda: self._atualizar_atacantes_abyss(geracao))
+
+        def _ligar_arrasto_janela(self, janela, widget):
+            def inicio(event):
+                janela._drag_xy = (event.x_root - janela.winfo_x(), event.y_root - janela.winfo_y())
+            def mover(event):
+                ox, oy = getattr(janela, "_drag_xy", (0, 0))
+                janela.geometry(f"+{event.x_root - ox}+{event.y_root - oy}")
+                self._abyss_atacantes_posicionada = True
+            widget.bind("<ButtonPress-1>", inicio, add="+")
+            widget.bind("<B1-Motion>", mover, add="+")
+
+        def _mostrar_combate_legado(self, vida, maxima, nome=""):
             if not any((vida, maxima, nome)):
                 self._esconder_combate()
                 return
@@ -3373,6 +3537,14 @@ def main():
                                              bg=COR["painel"], font=self.fontes["relogio"],
                                              width=5, anchor="e")
             self._lbl_hora_header.pack(side="right", padx=(self.px(5), 0))
+            ping_header = tk.Frame(cab_info, bg=COR["painel"])
+            ping_header.pack(side="right", padx=(self.px(4), 0))
+            self._ping_icon_header = tk.Canvas(ping_header, width=self.px(18), height=self.px(13),
+                                               bg=COR["painel"], highlightthickness=0)
+            self._ping_icon_header.pack(side="left")
+            self._lbl_ping_header = tk.Label(ping_header, text="-- ms", fg=COR["suave"],
+                                             bg=COR["painel"], font=self.f_peq)
+            self._lbl_ping_header.pack(side="left")
             self._lbl_evento_header = tk.Label(cab_info, text="", fg=COR["ouro"],
                                                bg=COR["painel"], font=self.fontes["evento"],
                                                anchor="e")
@@ -3530,7 +3702,9 @@ def main():
                 # Conserva o relógio local e a margem do puxador. grid_remove
                 # guarda a posição dos demais campos para restaurar o rodapé.
                 for widget in rodape.winfo_children():
-                    if widget is self._lbl_hora_local:
+                    if widget in (self._lbl_hora_local, getattr(self, "_ping_local_frame", None)):
+                        continue
+                    if widget is getattr(self, "_lbl_voo_rodape", None):
                         continue
                     if widget in (getattr(self, "_lbl_evento", None),
                                   getattr(self, "_lbl_relogio", None)):
@@ -3550,6 +3724,7 @@ def main():
                     else:
                         conta.grid_remove()
                 rodape.pack_configure(pady=(self.px(1 if oculto else 4), 0))
+                self._atualizar_voo_rodape()
             canto = getattr(self, "_canto_resize", None)
             if canto is not None:
                 if self.cfg.get("travar_posicao", False):
@@ -3968,7 +4143,7 @@ def main():
                 pass
 
         # ---------------- DPS da PT ----------------
-        def _icone_classe(self, parent, classe):
+        def _icone_classe(self, parent, classe, fundo=None, tamanho=None):
             cores = {
                 "Gladiator": "#5fc0d6", "Templar": "#6e91ee",
                 "Ranger": "#4dbe90", "Assassin": "#6fc85f",
@@ -3978,8 +4153,9 @@ def main():
             siglas = {"Gladiator": "G", "Templar": "T", "Ranger": "R",
                       "Assassin": "A", "Elementalist": "E", "Sorcerer": "S",
                       "Cleric": "+", "Chanter": "C", "Brawler": "B"}
-            tamanho = self.px(17)
-            cor = cores.get(classe, COR["suave"])
+            tamanho = tamanho or self.px(17)
+            fundo = fundo or COR["painel"]
+            cor = CORES_DPS_CLASSE.get(classe, cores.get(classe, COR["suave"]))
             arquivo = CLASS_ICON_FILES.get(classe)
             caminho = os.path.join(BASE, "class_icons", arquivo) if arquivo else ""
             if caminho and os.path.isfile(caminho):
@@ -3993,13 +4169,14 @@ def main():
                         divisor = max(1, round(original.width() / tamanho))
                         imagem = original.subsample(divisor, divisor)
                         cache[chave] = imagem
-                    icone = tk.Label(parent, image=imagem, bg=COR["painel"],
-                                     bd=0, highlightthickness=0, padx=0, pady=0)
+                    icone = tk.Label(parent, image=imagem, bg=fundo,
+                                     bd=0, highlightthickness=max(1, self.px(1)),
+                                     highlightbackground=cor, padx=0, pady=0)
                     self.dica(icone, classe)
                     return icone
                 except tk.TclError:
                     pass
-            icone = tk.Canvas(parent, width=tamanho, height=tamanho, bg=COR["painel"],
+            icone = tk.Canvas(parent, width=tamanho, height=tamanho, bg=fundo,
                               highlightthickness=0, bd=0)
             margem = self.px(1)
             icone.create_oval(margem, margem, tamanho - margem, tamanho - margem,
@@ -4050,13 +4227,16 @@ def main():
             cores = cores_dps(self.dps_party, self.dps_classes)
             altura = self.px(DPS_ALTURA_LINHA)
             for posicao, name in enumerate(ordenar_dps(self.dps_party, self.dps_damage)):
+                classe = self.dps_classes.get(name, "")
+                fundo_classe = (misturar_cor(COR["painel"], CORES_DPS_CLASSE[classe], 0.18)
+                                if classe in CORES_DPS_CLASSE else COR["painel"])
                 card = tk.Frame(area, bg=COR["painel"], highlightthickness=1,
                                 highlightbackground=COR["barra"])
                 card.grid(row=posicao, column=0, sticky="ew", pady=(0, self.px(1)))
-                line = tk.Frame(card, bg=COR["painel"])
+                line = tk.Frame(card, bg=fundo_classe)
                 line.pack(fill="x", padx=self.px(4), pady=self.px(1))
                 line.columnconfigure(1, weight=1)
-                icone = self._icone_classe(line, self.dps_classes.get(name, ""))
+                icone = self._icone_classe(line, classe, fundo=fundo_classe)
                 icone.grid(row=0, column=0, padx=(0, self.px(4)))
                 barra = tk.Canvas(line, height=altura, bg=COR["painel"],
                                   highlightthickness=0, bd=0)
@@ -5505,6 +5685,30 @@ def main():
                 registrar("OD ZERADO PELO USUARIO")
                 self._atualizar_od()
 
+        def _atualizar_voo_rodape(self):
+            label = getattr(self, "_lbl_voo_rodape", None)
+            texto = getattr(self, "_voo_texto", None)
+            barra = getattr(self, "_voo_barra", None)
+            if label is None or texto is None or not label.winfo_exists():
+                return
+            current = getattr(self, "_voo_atual", None)
+            maximum = getattr(self, "_voo_maximo", None)
+            if (self.cfg.get("ocultar_rodape", False) or current is None or not maximum
+                    or current >= maximum or not getattr(self, "_voo_voando", False)):
+                label.grid_remove()
+                return
+            elapsed = time.monotonic() - getattr(self, "_voo_amostra_tempo", time.monotonic())
+            # Os valores do pacote são milissegundos de voo.
+            rate = getattr(self, "_voo_consumo", None)
+            remaining = max(0, current - rate * elapsed) if rate else current
+            percent = round(remaining * 100 / maximum)
+            seconds = max(0, math.ceil(remaining / 1000))
+            texto.configure(text=f"Voo {seconds}s", fg=COR["suave"])
+            if barra is not None:
+                barra.coords(self._voo_barra_fill, 0, 0,
+                             max(0, int(barra.winfo_width() * percent / 100)), self.px(7))
+            label.grid()
+
         def atualizar_evento(self, agendar=True):
             """Relogio do proximo evento: mm:ss, a cada meio segundo. No ultimo
             minuto fica vermelho e piscando. So mexe nesses dois textos."""
@@ -5514,6 +5718,7 @@ def main():
                 self._checar_aviso_som()
             except Exception:
                 pass
+            self._atualizar_voo_rodape()
             hora_local = getattr(self, "_lbl_hora_local", None)
             if hora_local is not None:
                 try:
@@ -6935,6 +7140,7 @@ def main():
                                 self.kinah_abismo += quantidade
                                 nome = "Kinah"
                                 total = self.kinah_abismo
+                                self._atualizar_farm_kinah()
                             self._atualizar_abismo()
                             registrar(f"NPCAP: +{quantidade} {nome} no Abismo (sessão: {total})")
                     elif tipo == "od_gain":
@@ -7029,10 +7235,77 @@ def main():
                         zona = int(dado)
                         anterior = getattr(self, "_zona_rede", None)
                         self._zona_rede = zona
+                        # Reshanta aparece como zona 20 nos pacotes de entrada.
+                        if zona in (20, 23) and anterior != zona:
+                            self._iniciar_sessao_pvp(zona)
+                        elif anterior != zona:
+                            self._pvp_sessao_zona = None
+                            self._abyss_instancia = None
+                        if anterior is not None and anterior != zona:
+                            self._pvp_health = {}
+                            self._pvp_cp = {}
+                            self._abyss_atacantes = {}
+                            self._atualizar_atacantes_abyss()
                         if anterior is not None and anterior != zona:
                             # O jogo reenvia o roster logo após carregar uma DG.
                             # Só esse par de sinais pode abrir DPS automaticamente.
                             self._aguardando_roster_dg_ate = time.monotonic() + 15
+                    elif tipo == "abyss_instance":
+                        zona_instancia, identificador = dado
+                        chave_instancia = (zona_instancia, identificador)
+                        if chave_instancia != getattr(self, "_abyss_instancia", None):
+                            self._abyss_instancia = chave_instancia
+                            self._iniciar_sessao_pvp(zona_instancia)
+                    elif tipo == "game_ping":
+                        texto_ping = f"{dado} ms" if dado is not None else "-- ms"
+                        for icone in (getattr(self, "_ping_icon_header", None),
+                                      getattr(self, "_ping_icon_local", None)):
+                            if icone is not None and icone.winfo_exists():
+                                icone.delete("all")
+                                cor = "#58dc63" if dado is not None else COR["suave"]
+                                for i in range(4):
+                                    x = self.px(2 + i * 4)
+                                    icone.create_rectangle(x, self.px(11 - i * 3),
+                                                           x + self.px(2), self.px(13),
+                                                           fill=cor, width=0)
+                        for widget in (getattr(self, "_lbl_ping_header", None),
+                                       getattr(self, "_lbl_ping_local", None)):
+                            if widget is not None and widget.winfo_exists():
+                                widget.configure(text=texto_ping,
+                                                 fg=COR["alma"] if dado is not None else COR["suave"])
+                    elif tipo == "flight_stamina":
+                        current, maximum = dado
+                        now = time.monotonic()
+                        previous = getattr(self, "_voo_atual", None)
+                        previous_time = getattr(self, "_voo_amostra_tempo", None)
+                        if maximum is not None and maximum > 0:
+                            if maximum != getattr(self, "_voo_maximo", None):
+                                self._voo_consumo = None
+                            self._voo_maximo = maximum
+                        if current is None and maximum is None:
+                            self._voo_atual = self._voo_maximo = self._voo_consumo = None
+                            self._voo_voando = False
+                        elif current is not None:
+                            if previous is not None and current < previous and previous_time is not None:
+                                delta = now - previous_time
+                                if 0.15 <= delta <= 15:
+                                    rate = (previous - current) / delta
+                                    old = getattr(self, "_voo_consumo", None)
+                                    self._voo_consumo = (rate if old is None else old * 0.6 + rate * 0.4)
+                                self._voo_voando = True
+                            elif previous is not None and current > previous:
+                                self._voo_voando = False
+                                self._voo_consumo = None
+                            self._voo_atual = current
+                            self._voo_amostra_tempo = now
+                        self._atualizar_voo_rodape()
+                    elif tipo == "pvp_defeated":
+                        if getattr(self, "_pvp_sessao_zona", None) is not None:
+                            if dado == "kill":
+                                self._abyss_kills = getattr(self, "_abyss_kills", 0) + 1
+                            else:
+                                self._abyss_mortes = getattr(self, "_abyss_mortes", 0) + 1
+                            self._atualizar_rank_abyss()
                     elif tipo == "dps_classes":
                         novas = {str(nome): str(classe) for nome, classe in dado.items() if nome and classe}
                         if any(self.dps_classes.get(nome) != classe for nome, classe in novas.items()):
@@ -7050,6 +7323,154 @@ def main():
                             self.dps_started = now
                         self.dps_last_hit = now
                         self.dps_damage[name] = self.dps_damage.get(name, 0) + max(0, amount)
+                    elif tipo == "rank_points_live":
+                        if getattr(self, "_rank_live_total", None) is None:
+                            anterior_salvo = self.cfg.get("rank_points_ultima_leitura", {})
+                            if (isinstance(anterior_salvo, dict) and
+                                    anterior_salvo.get("personagem") == self.personagem):
+                                self._rank_live_total = anterior_salvo.get("total")
+                        if getattr(self, "_rank_live_inicio", None) is None:
+                            self._rank_live_inicio = int(dado)
+                        anterior = getattr(self, "_rank_live_total", None)
+                        if anterior is not None:
+                            diferenca = int(dado) - anterior
+                            if diferenca > 0:
+                                self._rank_ganhos = getattr(self, "_rank_ganhos", 0) + diferenca
+                            elif diferenca < 0:
+                                self._rank_perdas = getattr(self, "_rank_perdas", 0) - diferenca
+                        self._rank_live_total = int(dado)
+                        if self.personagem:
+                            self.cfg["rank_points_ultima_leitura"] = {
+                                "personagem": self.personagem, "total": int(dado)}
+                            self.salvar_cfg()
+                        self._atualizar_rank_abyss()
+                    elif tipo == "abyss_rank_cached":
+                        if getattr(self, "_abyss_rank", None) is None or self._abyss_rank[0] != dado[0]:
+                            self._abyss_rank = dado[:3]
+                            self._abyss_rank_cached_hora = dado[3]
+                            self._rank_publicado_base = int(dado[2])
+                            self._atualizar_rank_abyss()
+                    elif tipo == "abyss_rank":
+                        anterior_rank = getattr(self, "_abyss_rank", None)
+                        self._abyss_rank = dado
+                        self._abyss_rank_cached_hora = None
+                        if anterior_rank is None or anterior_rank[2] != dado[2]:
+                            # A publicação consolida o período anterior. Só compensamos
+                            # o total ao vivo se a publicação chegou mais adiantada.
+                            self._rank_publicado_base = int(dado[2])
+                            ao_vivo = getattr(self, "_rank_live_total", None)
+                            self._rank_publicado_live = (ao_vivo if ao_vivo is not None
+                                                         and dado[2] > ao_vivo else None)
+                        self._atualizar_rank_abyss()
+                    elif tipo == "pvp_stats":
+                        nome, cp = dado[:2]
+                        gear = dado[2] if len(dado) > 2 else None
+                        if not hasattr(self, "_pvp_cp"):
+                            self._pvp_cp = {}
+                        if cp:
+                            self._pvp_cp[nome] = cp
+                        if gear:
+                            self._pvp_gear = getattr(self, "_pvp_gear", {})
+                            self._pvp_gear[nome] = gear
+                        self._atualizar_target_abyss()
+                        self._atualizar_atacantes_abyss()
+                    elif tipo == "pvp_class":
+                        nome, classe = dado
+                        if self.dps_classes.get(nome) != classe:
+                            self.dps_classes[nome] = classe
+                            self._atualizar_atacantes_abyss()
+                            if nome in self.dps_party and self.cfg.get("aba") == "dps":
+                                self._reconstruir_lista_dps()
+                    elif tipo == "pvp_attacker":
+                        entidade, nome = dado
+                        if nome:
+                            self._iniciar_sessao_pvp(getattr(self, "_zona_rede", None))
+                        atacantes = getattr(self, "_abyss_atacantes", None)
+                        if atacantes is None:
+                            self._abyss_atacantes = atacantes = {}
+                        anterior = atacantes.get(entidade, ("", 0))[0]
+                        atacantes[entidade] = (nome or anterior, time.monotonic())
+                        self._atualizar_atacantes_abyss()
+                    elif tipo == "pvp_attacker_name":
+                        entidade, nome = dado
+                        atacantes = getattr(self, "_abyss_atacantes", {})
+                        if entidade in atacantes:
+                            self._iniciar_sessao_pvp(getattr(self, "_zona_rede", None))
+                            atacantes[entidade] = (nome, atacantes[entidade][1])
+                            self._atualizar_atacantes_abyss()
+                    elif tipo == "pvp_health":
+                        entidade, nome, vida, maxima = dado
+                        if not hasattr(self, "_pvp_health"):
+                            self._pvp_health = {}
+                        self._pvp_health[nome] = (vida, maxima)
+                        if nome == getattr(self, "_abyss_target", (None, None, None))[2]:
+                            self._abyss_target = (vida, maxima, nome)
+                            self._abyss_hp_max_observado = maxima
+                            self._atualizar_target_abyss()
+                    elif tipo == "pvp_resource":
+                        entidade, nome, vida, maxima = dado
+                        if not hasattr(self, "_pvp_health"):
+                            self._pvp_health = {}
+                        prior = self._pvp_health.get(nome, (None, 0))
+                        vida = prior[0] if vida is None else vida
+                        maxima = prior[1] if maxima is None else maxima
+                        self._pvp_health[nome] = (vida, maxima)
+                        if nome == getattr(self, "_abyss_target", (None, None, None))[2]:
+                            self._abyss_target = (vida, maxima, nome)
+                            self._abyss_hp_max_observado = max(maxima, getattr(self, "_abyss_hp_max_observado", 0))
+                            self._atualizar_target_abyss()
+                    elif tipo == "pvp_target":
+                        nome, vida = dado
+                        if nome:
+                            self._iniciar_sessao_pvp(getattr(self, "_zona_rede", None))
+                            health = getattr(self, "_pvp_health", {}).get(nome)
+                            if health and vida is None:
+                                vida = health[0]
+                        vida_anterior, _, nome_anterior = getattr(self, "_abyss_target", (None, 0, ""))
+                        if nome != nome_anterior:
+                            self._abyss_hp_max_observado = health[1] if nome and health else 0
+                            self._abyss_duel_hits = []
+                            self._abyss_cura_minha = 0
+                            self._abyss_cura_inimiga = 0
+                        elif vida is None:
+                            vida = vida_anterior
+                        if nome == nome_anterior and vida == vida_anterior:
+                            continue
+                        if vida is not None:
+                            self._abyss_hp_max_observado = max(getattr(self, "_abyss_hp_max_observado", 0), vida)
+                        self._abyss_target = (vida, health[1] if nome and health else 0, nome)
+                        self._atualizar_target_abyss()
+                    elif tipo == "pvp_duel_damage":
+                        alvo_id, lado, quantidade = dado[:3]
+                        if lado in ("cura_minha", "cura_inimiga"):
+                            continue
+                        curador = dado[3] if len(dado) > 3 else ("Você" if lado == "cura_minha" else "Inimigo")
+                        skill = dado[4] if len(dado) > 4 else 0
+                        quantidade = max(0, int(quantidade))
+                        self._abyss_ultimo_combate = time.monotonic()
+                        if lado == "cura_minha":
+                            self._abyss_cura_minha = getattr(self, "_abyss_cura_minha", 0) + quantidade
+                        elif lado == "cura_inimiga":
+                            self._abyss_cura_inimiga = getattr(self, "_abyss_cura_inimiga", 0) + quantidade
+                        if lado in ("cura_minha", "cura_inimiga"):
+                            nome_skill = getattr(self, "_skill_names", {}).get(skill)
+                            origem = ("Auto ataque" if not skill else
+                                      (nome_skill or f"Skill #{skill}"))
+                            eventos = getattr(self, "_abyss_cura_eventos", [])
+                            eventos.append(f"{curador}  +{quantidade:,}".replace(",", ".") + f"  ({origem})")
+                            self._abyss_cura_eventos = eventos[-6:]
+                            caixa_log = getattr(self, "_abyss_cura_log", None)
+                            if caixa_log is not None and caixa_log.winfo_exists():
+                                caixa_log.configure(text="CURAS\n" + "\n".join(reversed(eventos[-5:])))
+                            janela_log = getattr(self, "_abyss_cura_janela", None)
+                            if janela_log is not None and janela_log.state() == "withdrawn":
+                                janela_log.geometry(f"+{self.root.winfo_x() + self.root.winfo_width() + self.px(6)}+{self.root.winfo_y()}")
+                                janela_log.deiconify()
+                        golpes = getattr(self, "_abyss_duel_hits", None)
+                        if golpes is None:
+                            self._abyss_duel_hits = golpes = []
+                        if lado not in ("cura_minha", "cura_inimiga"):
+                            golpes.append((time.monotonic(), lado, quantidade))
                     elif tipo == "combat_target":
                         alvo_id, nome_alvo = dado
                         nome_alvo = str(nome_alvo or f"Alvo #{alvo_id}")
@@ -7108,6 +7529,16 @@ def main():
                         self._personagem_candidato = ""
                         self._assinatura_personagem_candidato = None
                         if dado != self.personagem:
+                            if self.personagem and self.personagem != dado:
+                                self._abyss_rank = None
+                                self._abyss_rank_cached_hora = None
+                                self._rank_live_total = None
+                                self._rank_publicado_base = None
+                            salvo_rank = self.cfg.get("rank_points_ultima_leitura", {})
+                            if (isinstance(salvo_rank, dict)
+                                    and salvo_rank.get("personagem") == dado
+                                    and getattr(self, "_rank_live_total", None) is None):
+                                self._rank_live_total = salvo_rank.get("total")
                             self.personagem = dado
                             self.cfg["personagem"] = dado
                             if self._assinatura_estado_atual:
@@ -7115,6 +7546,7 @@ def main():
                             self.salvar_cfg()
                             self._atualizar_personagem()
                             registrar("NPCAP: personagem identificado: " + dado)
+                            self._atualizar_rank_abyss()
                         self.atualizar_status()
                     elif tipo == "personagem_limpar":
                         self.personagem = ""
@@ -7397,6 +7829,191 @@ def main():
             self._atualizar_abismo()
 
         def _montar_abismo(self):
+            seletores = tk.Frame(self.corpo, bg=COR["fundo"])
+            seletores.pack(fill="x", pady=(0, self.px(3)))
+            sessao = tk.Frame(self.corpo, bg=COR["fundo"])
+            area_pvp = tk.Frame(self.corpo, bg=COR["fundo"])
+            paineis = {"sessao": sessao, "pvp": area_pvp}
+            botoes = {}
+
+            def selecionar(destino):
+                self._abyss_subaba = destino
+                for chave, painel in paineis.items():
+                    painel.pack_forget()
+                    botoes[chave].configure(fg=COR["alma"] if chave == destino else COR["suave"])
+                paineis[destino].pack(fill="both", expand=True)
+
+            for coluna, (chave, titulo) in enumerate((("sessao", "Sessão Abyss"), ("pvp", "PvP Target"))):
+                botao = self.botao(seletores, titulo,
+                                   lambda e, destino=chave: selecionar(destino), fonte=self.f_peq)
+                botao.configure(highlightthickness=1, highlightbackground=COR["barra"])
+                botao.bind("<Leave>", lambda e, destino=chave, b=botao:
+                           b.configure(fg=COR["alma"] if destino == self._abyss_subaba else COR["suave"]))
+                botao.grid(row=0, column=coluna, sticky="ew", padx=self.px(1))
+                seletores.columnconfigure(coluna, weight=1, uniform="abyss_tabs")
+                botoes[chave] = botao
+            pvp = tk.Frame(area_pvp, bg=COR["painel"], highlightthickness=1,
+                           highlightbackground=misturar_cor(COR["painel"], COR["alma"], .30))
+            pvp.pack(fill="x", pady=self.px(2))
+            tk.Frame(pvp, bg=COR["alma"], height=self.px(1)).pack(fill="x")
+            rank_box = tk.Frame(area_pvp, bg=COR["painel"], highlightthickness=1,
+                                highlightbackground=COR["barra"])
+            self._abyss_rank_box = rank_box
+            rank_box.pack(fill="x", pady=self.px(2))
+            cab_rank = tk.Frame(rank_box, bg=COR["painel"])
+            cab_rank.pack(fill="x", padx=self.px(7), pady=(self.px(3), 0))
+            tk.Label(cab_rank, text="RANKING ABYSS", bg=COR["painel"], fg=COR["alma"],
+                     font=self.f_nome, anchor="w").pack(side="left")
+            self._abyss_rank_num_label = tk.Label(cab_rank, text="#-", bg=COR["painel"],
+                                                  fg=COR["ouro"], font=self.f_nome, anchor="w")
+            self._abyss_rank_num_label.pack(side="left", padx=(self.px(6), 0))
+            self.botao(cab_rank, "↻", lambda e: self._zerar_saldo_rank(),
+                       fonte=self.f_peq, dica="Atualizar e zerar KDA, entrada e saída de pontos").pack(side="right")
+            self._abyss_kda_label = tk.Label(cab_rank, bg=COR["painel"], fg=COR["suave"],
+                                             font=self.fontes["evento"], anchor="e")
+            self._abyss_kda_label.pack(side="right", padx=self.px(7))
+            resumo_rank = tk.Frame(rank_box, bg=COR["painel"])
+            resumo_rank.pack(fill="x", padx=self.px(7), pady=(0, self.px(4)))
+            self._abyss_rank_label = tk.Label(resumo_rank, bg=COR["painel"], fg=COR["texto"],
+                                             font=self.f_nome, justify="left", anchor="w")
+            self._abyss_rank_label.pack(side="left", fill="x", expand=True)
+            self._abyss_previsao_label = tk.Label(resumo_rank, bg=COR["painel"], fg=COR["ouro"],
+                                                 font=self.f_nome, justify="right", anchor="e")
+            self._abyss_previsao_label.pack(side="right")
+            self._atualizar_rank_abyss()
+            alvo_topo = tk.Frame(pvp, bg=COR["painel"])
+            alvo_topo.pack(fill="x", padx=self.px(7), pady=self.px(3))
+            self._abyss_target_icon_box = tk.Frame(alvo_topo, bg=COR["painel"])
+            self._abyss_target_icon_box.pack(side="left", padx=(0, self.px(5)))
+            self._abyss_target_label = tk.Label(alvo_topo, bg=COR["painel"], fg=COR["texto"],
+                                                font=self.fontes["titulo"], anchor="w", justify="left")
+            self._abyss_target_label.pack(side="left", fill="x", expand=True)
+            self._abyss_target_class = tk.Label(pvp, bg=COR["painel"], fg=COR["suave"], font=self.f_peq, anchor="w")
+            stats = tk.Frame(pvp, bg=COR["painel"])
+            stats.pack(fill="x", padx=self.px(5), pady=(0, self.px(3)))
+            for coluna, (titulo, atributo, cor) in enumerate((("VIDA ATUAL", "_abyss_target_hp", COR["alma"]),
+                                                            ("COMBAT POWER", "_abyss_target_cp", COR["ouro"]),
+                                                            ("GEAR SCORE", "_abyss_target_gear", COR["suave"]))):
+                stats.columnconfigure(coluna, weight=1, uniform="pvp_stats")
+                card = tk.Frame(stats, bg=COR["fundo"])
+                card.grid(row=0, column=coluna, sticky="nsew", padx=self.px(2))
+                tk.Label(card, text=titulo, bg=COR["fundo"], fg=COR["suave"], font=self.f_peq,
+                         anchor="w").pack(fill="x", padx=self.px(5), pady=(self.px(2), 0))
+                if atributo == "_abyss_target_hp":
+                    valor = tk.Canvas(card, height=self.px(22), bg=COR["fundo"],
+                                      highlightthickness=0, bd=0)
+                    self._abyss_hp_fill = valor.create_rectangle(0, 0, 0, self.px(22),
+                                                                  fill="#9e343e", width=0)
+                    self._abyss_hp_text = valor.create_text(self.px(5), self.px(11), text="-",
+                                                             anchor="w", fill=COR["texto"], font=self.f_nome)
+                    valor.bind("<Configure>", lambda e: self._atualizar_target_abyss())
+                else:
+                    valor = tk.Label(card, text="-", bg=COR["fundo"], fg=cor, font=self.f_nome, anchor="w")
+                valor.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
+                setattr(self, atributo, valor)
+            duelo = tk.Frame(pvp, bg=COR["painel"])
+            duelo.pack(fill="x", padx=self.px(7), pady=(0, self.px(3)))
+            self._abyss_duel_labels = []
+            for coluna in range(2):
+                duelo.columnconfigure(coluna, weight=1, uniform="duelo")
+                valor = tk.Label(duelo, bg=COR["painel"], fg=COR["texto"],
+                                 font=self.f_peq, justify="left", anchor="w")
+                valor.grid(row=0, column=coluna, sticky="ew")
+                self._abyss_duel_labels.append(valor)
+            self._abyss_duel_geracao = getattr(self, "_abyss_duel_geracao", 0) + 1
+            self._atualizar_dps_duelo(self._abyss_duel_geracao)
+            janela_atacantes = tk.Toplevel(self.root)
+            janela_atacantes.overrideredirect(True)
+            janela_atacantes.attributes("-topmost", True)
+            janela_atacantes.withdraw()
+            self._abyss_atacantes_janela = janela_atacantes
+            self._abyss_atacantes_box = tk.Frame(janela_atacantes, bg=COR["painel"],
+                                                 highlightthickness=1, highlightbackground=COR["barra"])
+            self._abyss_atacantes_box.pack(fill="both", expand=True)
+            self._ligar_arrasto_janela(janela_atacantes, self._abyss_atacantes_box)
+            tk.Label(self._abyss_atacantes_box, text="ATACANDO VOCÊ", bg=COR["painel"],
+                     fg=COR["alma"], font=self.f_peq).pack(anchor="w", padx=self.px(7), pady=self.px(3))
+            self._abyss_atacantes_lista = tk.Frame(self._abyss_atacantes_box, bg=COR["painel"])
+            self._abyss_atacantes_lista.pack(fill="x", padx=self.px(7), pady=(0, self.px(4)))
+            self._abyss_atacantes_geracao = getattr(self, "_abyss_atacantes_geracao", 0) + 1
+            self._atualizar_atacantes_abyss(self._abyss_atacantes_geracao)
+            self._atualizar_target_abyss()
+            corpo = self.corpo
+            try:
+                self.corpo = sessao
+                self._montar_sessao_abismo()
+            finally:
+                self.corpo = corpo
+            selecionar(getattr(self, "_abyss_subaba", "sessao"))
+
+        def _montar_sessao_abismo(self):
+            self._montar_sessao_abismo_conteudo()
+
+        def _zerar_saldo_rank(self):
+            self._rank_ganhos = 0
+            self._rank_perdas = 0
+            self._abyss_cura_minha = 0
+            self._abyss_cura_inimiga = 0
+            self._abyss_kills = 0
+            self._abyss_mortes = 0
+            self._abyss_assistencias = 0
+            self._abyss_entrada_hora = "aguardando entrada"
+            self._pvp_sessao_zona = None
+            self._rank_live_inicio = getattr(self, "_rank_live_total", None)
+            self._atualizar_rank_abyss()
+
+        def _iniciar_sessao_pvp(self, zona):
+            if zona is None or zona == getattr(self, "_pvp_sessao_zona", None):
+                return
+            self._pvp_sessao_zona = zona
+            self._abyss_entrada_hora = time.strftime("%H:%M")
+            self._abyss_kills = 0
+            self._abyss_mortes = 0
+            self._abyss_assistencias = 0
+            self._rank_ganhos = 0
+            self._rank_perdas = 0
+            self._rank_live_inicio = getattr(self, "_rank_live_total", None)
+            self._atualizar_rank_abyss()
+
+        def _atualizar_rank_abyss(self):
+            label = getattr(self, "_abyss_rank_label", None)
+            if label is None or not label.winfo_exists():
+                return
+            dados = getattr(self, "_abyss_rank", None)
+            total = getattr(self, "_rank_live_total", None)
+            fmt = lambda valor: f"{valor:,}".replace(",", ".")
+            ganhos = getattr(self, "_rank_ganhos", 0)
+            perdas = getattr(self, "_rank_perdas", 0)
+            entrada = getattr(self, "_abyss_entrada_hora", "aguardando entrada")
+            rank = str(dados[1]) if dados else "—"
+            pontos_atuais = dados[2] if dados else None
+            rank_num = getattr(self, "_abyss_rank_num_label", None)
+            if rank_num is not None and rank_num.winfo_exists():
+                rank_num.configure(text=f"#{rank}")
+            label.configure(text=(f"Pontos atuais  {fmt(pontos_atuais) if pontos_atuais is not None else '—'}\n"
+                                  f"Ganhos  +{fmt(ganhos)}     Perdas  −{fmt(perdas)}     Entrada  {entrada}"))
+            kda = getattr(self, "_abyss_kda_label", None)
+            if kda is not None and kda.winfo_exists():
+                kda.configure(text=(f"KDA  "
+                                    f"{getattr(self, '_abyss_kills', 0)} / "
+                                    f"{getattr(self, '_abyss_mortes', 0)} / —"))
+            previsao = getattr(self, "_abyss_previsao_label", None)
+            if previsao is not None and previsao.winfo_exists():
+                previsto = None
+                if dados:
+                    base = getattr(self, "_rank_publicado_base", dados[2])
+                    ancora = getattr(self, "_rank_publicado_live", None)
+                    if total is not None and ancora is not None:
+                        previsto = base + total - ancora
+                    elif total is not None:
+                        previsto = total
+                    else:
+                        previsto = base
+                elif total is not None:
+                    previsto = total
+                previsao.configure(text=f"A atualizar\n{fmt(previsto)}" if previsto is not None else "A atualizar\n—")
+
+        def _montar_sessao_abismo_conteudo(self):
             rosa = "#f4b8d8"
             lilas = "#d7c3fa"
             painel_meta = misturar_cor(COR["painel"], rosa, .10)
@@ -7507,9 +8124,22 @@ def main():
                               highlightthickness=0, bd=0)
             barra.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
             preenchimento = barra.create_rectangle(0, 0, 0, self.px(3), fill=cor, width=0)
+            if nome == "kina" and self.cfg.get("aba") == "farm":
+                self._farm_kinah_label = tk.Label(
+                    caixa, text="", fg=COR["ouro"], bg=COR["painel"],
+                    font=self.fontes["material"], anchor="w")
+                self._farm_kinah_label.pack(fill="x", padx=self.px(5), pady=(0, self.px(2)))
+                self._atualizar_farm_kinah()
             self._limite_ui = (nome, titulo, texto, restante, barra, preenchimento)
             barra.bind("<Configure>", lambda e: self._atualizar_limites())
             self._atualizar_limites()
+
+        def _atualizar_farm_kinah(self):
+            label = getattr(self, "_farm_kinah_label", None)
+            if label is not None and label.winfo_exists():
+                total = f"{self.kinah_abismo:,}".replace(",", ".")
+                label.configure(text=self.tr(f"Kinah coletada: +{total}",
+                                             f"Kinah collected: +{total}"))
 
         def _atualizar_limites(self):
             import datetime as dt

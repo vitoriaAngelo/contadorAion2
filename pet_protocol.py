@@ -126,7 +126,7 @@ GATHER_ITEM_TYPES.update({
 HEAL_SKILL_BASES = {
     10000000, 11110000, 11120000, 11260000, 11270000, 11380000, 11720000,
     11730000, 12110000, 12230000, 12250000, 12260000, 12320000, 12720000,
-    13080000, 13260000, 13710000, 13790000, 14260000, 14710000, 14790000,
+    13080000, 13260000, 13710000, 13790000, 14710000, 14790000,
     15240000, 15410000, 15790000, 16190000, 16200000, 16270000, 16750000,
     16770000, 16790000, 16990000, 17090000, 17100000, 17120000, 17160000,
     17240000, 17270000, 17290000, 17320000, 17390000, 17720000, 17800000,
@@ -155,6 +155,56 @@ KNOWN_OPS = {bytes.fromhex(h) for h in (
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
 KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER, OP_ITEM_ACQUIRED))
 KNOWN_OPS.update(DAILY_LIMIT_OPS)
+KNOWN_OPS.add(b"\x57\x8d")
+KNOWN_OPS.add(b"\x73\xe2")
+
+
+def parse_rank_points_live(payload):
+    if len(payload) == 9 and payload[0] == 0:
+        return struct.unpack_from("<Q", payload, 1)[0]
+    return None
+
+
+def parse_abyss_rank(payload):
+    """Registro individual de ranking (578d), observado no painel Rank."""
+    try:
+        name_len = payload[16]
+        end = 17 + name_len
+        name = payload[17:end].decode("utf-8")
+        guild_len = payload[end]
+        points_at = end + 1 + guild_len + 11
+        points = struct.unpack_from("<Q", payload, points_at)[0]
+        # O registro normal traz a posição na lista (ex.: 78). O registro
+        # destacado "Meu Rank" (tipo 04) traz o rank real (ex.: 8).
+        if payload[3] != 4:
+            return None
+        rank = struct.unpack_from("<I", payload, 4)[0]
+        if not name or points > 10**12:
+            return None
+        return name, rank, points
+    except (IndexError, UnicodeDecodeError, struct.error):
+        return None
+
+
+def recent_abyss_rank(name):
+    """Último 'Meu Rank' registrado hoje, caso o portal não reenvie o painel."""
+    today = time.strftime("%Y-%m-%d")
+    latest = None
+    try:
+        with open(PROFESSION_TRACE_FILE, "r", encoding="ascii", errors="ignore") as trace:
+            for line in trace:
+                fields = line.split()
+                if len(fields) < 5 or fields[0] != today or fields[2] != "578d":
+                    continue
+                try:
+                    rank = parse_abyss_rank(bytes.fromhex(fields[4]))
+                except ValueError:
+                    continue
+                if rank and rank[0].casefold() == name.casefold():
+                    latest = rank + (fields[1][:5],)
+    except OSError:
+        pass
+    return latest
 
 
 def log(*parts):
@@ -441,6 +491,43 @@ def parse_player_nickname(payload):
     return None
 
 
+def parse_player_health(payload, name):
+    """HP explícito do perfil remoto, com as duas variantes de cabeçalho."""
+    try:
+        encoded = name.encode("utf-8")
+        marker = bytes((len(encoded),)) + encoded
+        start = payload.find(marker)
+        if start < 0:
+            return None
+        after = start + len(marker)
+        code = struct.unpack_from("<I", payload, after)[0]
+        if not 5 <= code <= 36 or payload[after + 4] not in (1, 2):
+            return None
+        matches = []
+        for at in (after + 6, after + 7):
+            if at + 20 > len(payload):
+                continue
+            flags = struct.unpack_from("<H", payload, at)[0]
+            if flags & ~63:
+                continue
+            p = at + 20
+            for bit, size in ((1, 12), (2, 4), (4, 2), (8, 12), (16, 12), (32, 4)):
+                if flags & bit:
+                    p += size
+            if p >= len(payload) or payload[p] > 3:
+                continue
+            p += 1
+            current, p = read_varint(payload, p)
+            maximum, p = read_varint(payload, p)
+            if 0 < maximum <= 1_000_000_000 and current <= maximum and p + 52 <= len(payload):
+                mp, mp_max = struct.unpack_from("<II", payload, p)
+                if 0 < mp_max <= 10_000_000 and mp <= mp_max:
+                    matches.append((current, maximum))
+        return matches[0] if len(matches) == 1 else None
+    except (IndexError, ValueError, struct.error):
+        return None
+
+
 CLASS_NAMES = {
     1: "Gladiator", 2: "Templar", 3: "Ranger", 4: "Assassin",
     5: "Elementalist", 6: "Sorcerer", 7: "Cleric", 8: "Chanter", 9: "Brawler",
@@ -472,6 +559,7 @@ def parse_party_roster_details(payload):
         for index in range(count):
             if p + 11 > len(payload):
                 break
+            mask = payload[p]
             slot = payload[p + 1]
             server = struct.unpack_from("<H", payload, p + 8)[0]
             size = payload[p + 10]
@@ -483,10 +571,24 @@ def parse_party_roster_details(payload):
             p += 11 + size
             cls = class_from_wire(struct.unpack_from("<I", payload, p)[0])
             level = struct.unpack_from("<I", payload, p + 4)[0]
+            gear = struct.unpack_from("<I", payload, p + 8)[0]
             if not 1 <= level <= 200:
                 break
             p += 12
-            members.append((name, cls))
+            if mask & 0x01 and gear < 100 and p + 4 <= len(payload):
+                shifted = struct.unpack_from("<I", payload, p)[0]
+                if 100 <= shifted <= 50_000:
+                    gear = shifted
+                    p += 4
+            anchor = next((at for at in range(p, min(p + 11, len(payload) - 1))
+                           if struct.unpack_from("<H", payload, at)[0] == server), -1)
+            power = 0
+            if anchor >= 0 and anchor + 13 <= len(payload):
+                power = struct.unpack_from("<Q", payload, anchor + 5)[0]
+                if power > 10_000_000:
+                    power = 0
+                p = anchor + 13
+            members.append((name, cls, gear if 1 <= gear <= 50_000 else 0, power))
             if index + 1 == count:
                 break
             found = -1
@@ -521,7 +623,7 @@ def parse_party_roster_details(payload):
                 payload[after + 1:after + 4] == b"\0\0\0" and
                 1 <= payload[after + 4] <= 60 and
                 payload[after + 5:after + 8] == b"\0\0\0"):
-            members.append((name, ""))
+            members.append((name, "", 0, 0))
             i = after + 8
         else:
             i += 1
@@ -529,7 +631,7 @@ def parse_party_roster_details(payload):
 
 
 def parse_party_roster(payload):
-    return [name for name, _ in parse_party_roster_details(payload)]
+    return [detail[0] for detail in parse_party_roster_details(payload)]
 
 
 def parse_summon_owner(payload):
@@ -570,6 +672,104 @@ def parse_nickname(payload):
         return nome
     except (IndexError, UnicodeDecodeError, ValueError, struct.error):
         return None
+
+
+def parse_flight_points(payload):
+    """Campos 6 (voo atual) e 13 (máximo) do recurso 0x008d."""
+    try:
+        actor, p = read_varint(payload, 0)
+        flags = payload[p]
+        p += 1
+        if flags > 3:
+            return None
+        current = maximum = None
+        for width, enabled in ((4, flags & 1), (8, flags & 2)):
+            if not enabled:
+                continue
+            count, p = read_varint(payload, p)
+            if count > (len(payload) - p) // (width + 1):
+                return None
+            for _ in range(count):
+                kind = payload[p]
+                p += 1
+                value = int.from_bytes(payload[p:p + width], "little", signed=True)
+                p += width
+                if width == 4 and kind == 6 and 0 <= value <= 100_000_000:
+                    current = value
+                elif width == 4 and kind == 13 and 0 < value <= 100_000_000:
+                    maximum = value
+        return (actor, current, maximum) if p == len(payload) else None
+    except (IndexError, ValueError):
+        return None
+
+
+def parse_resource_health(payload):
+    """HP atual/máximo identificado pelos tipos 0/7 de 64 bits no 0x008d."""
+    try:
+        actor, p = read_varint(payload, 0)
+        flags = payload[p]
+        p += 1
+        if flags > 3:
+            return None
+        current = maximum = None
+        for width, enabled in ((4, flags & 1), (8, flags & 2)):
+            if not enabled:
+                continue
+            count, p = read_varint(payload, p)
+            if count > (len(payload) - p) // (width + 1):
+                return None
+            for _ in range(count):
+                kind = payload[p]
+                p += 1
+                value = int.from_bytes(payload[p:p + width], "little", signed=True)
+                p += width
+                if width == 8 and kind == 0 and 0 <= value <= 1_000_000_000:
+                    current = value
+                elif width == 8 and kind == 7 and 0 < value <= 1_000_000_000:
+                    maximum = value
+        return (actor, current, maximum) if p == len(payload) else None
+    except (IndexError, ValueError):
+        return None
+
+
+def parse_profile_flight(payload, name):
+    """Lê o par atual/máximo no bloco de recursos validado do perfil próprio."""
+    try:
+        encoded = name.encode("utf-8")
+        marker = bytes((len(encoded),)) + encoded
+        at = payload.find(marker)
+        if at < 0:
+            return None
+        after = at + len(marker) + 2
+        code = struct.unpack_from("<I", payload, after)[0]
+        if not 5 <= code <= 36 or payload[after + 4] not in (1, 2):
+            return None
+        for state_at in (after + 160, after + 161):
+            if state_at + 20 >= len(payload):
+                continue
+            flags = struct.unpack_from("<H", payload, state_at)[0]
+            if flags & ~63:
+                continue
+            p = state_at + 20
+            for bit, size in ((1, 12), (2, 4), (4, 2), (8, 12), (16, 12), (32, 4)):
+                if flags & bit:
+                    p += size
+            if p >= len(payload) or payload[p] > 3:
+                continue
+            p += 1
+            hp, p = read_varint(payload, p)
+            hp_max, p = read_varint(payload, p)
+            if not 0 < hp_max <= 1_000_000_000 or hp > hp_max or p + 52 > len(payload):
+                continue
+            mp, mp_max = struct.unpack_from("<II", payload, p)
+            if not 0 < mp_max <= 10_000_000 or mp > mp_max:
+                continue
+            current, maximum = struct.unpack_from("<II", payload, p + 44)
+            if 0 < maximum <= 100_000_000 and current <= maximum:
+                return current, maximum
+    except (IndexError, ValueError, struct.error):
+        pass
+    return None
 
 
 def parse_zone(payload):
@@ -851,6 +1051,7 @@ class Decoder:
         self.inventory_first_gain = {}
         self.farm_recent_gain = {}  # item -> (quantidade já emitida, instante)
         self.farm_recent_acquired = {}
+        self.last_monster_combat = 0.0
         if inventory_state_file:
             try:
                 with open(inventory_state_file, "r", encoding="utf-8") as f:
@@ -901,12 +1102,30 @@ class Decoder:
                         self._profession_trace_counts = {}
                     trace_count = self._profession_trace_counts.get(op, 0)
                     limite = 2000 if op in (OP_ABYSS_PROGRESS, OP_INVENTORY_CHANGE) else 40
+                    # Janela de diagnóstico renovável para capturar variações PvP
+                    # mesmo após longas sessões; dano e HP continuam excluídos abaixo.
+                    agora_trace = time.monotonic()
+                    if agora_trace - getattr(self, "_trace_window", 0) >= 60:
+                        self._profession_trace_counts = {}
+                        self._trace_window = agora_trace
+                        trace_count = 0
                     if trace_count < limite and op not in (OP_DAMAGE, OP_DOT, OP_REMAIN_HP):
                         self._profession_trace_counts[op] = trace_count + 1
                         with open(PROFESSION_TRACE_FILE, "a", encoding="ascii") as trace:
                             trace.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
-                                        f"{op.hex()} {len(payload)} {payload[:96].hex()}\n")
-                    if op == OP_GAIN:
+                                        f"{op.hex()} {len(payload)} {payload[:4096].hex()}\n")
+                    if op == b"\x73\xe2":
+                        total = parse_rank_points_live(payload)
+                        if total is not None:
+                            self.emit(("rank_points_live", total))
+                    elif op == b"\x57\x8d":
+                        rank = parse_abyss_rank(payload)
+                        if rank:
+                            self.latest_abyss_ranks = getattr(self, "latest_abyss_ranks", {})
+                            self.latest_abyss_ranks[rank[0].casefold()] = rank
+                            if self.own_name and rank[0].casefold() == self.own_name.casefold():
+                                self.emit(("abyss_rank",) + rank)
+                    elif op == OP_GAIN:
                         for pid, amount in parse_gain(payload):
                             if 0 < amount <= 100:
                                 self.emit(("gain", pid, amount))
@@ -964,11 +1183,20 @@ class Decoder:
                                 elif (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
                                       and not is_pet_soul_item(item)
                                       and not tracked_collection and self.own_name):
-                                    # Alterações de inventário não informam a origem:
-                                    # craft, compra, recompensa e drop podem chegar
-                                    # pelo mesmo opcode. O FARM só aceita o evento
-                                    # explícito de aquisição tratado abaixo.
-                                    pass
+                                    # Alguns drops do Abismo só chegam como alteração
+                                    # de inventário. Aceite-os durante a coleta após
+                                    # combate com monstro; fora dela, compras e craft
+                                    # não entram no FARM.
+                                    if time.monotonic() - self.last_monster_combat < 12:
+                                        farm_gain = (quantity if kind == 0 and previous is None else
+                                                     quantity - old_quantity if old_quantity is not None else 0)
+                                        if farm_gain > 0:
+                                            recente = self.farm_recent_acquired.pop(item, None)
+                                            ja_contado = (recente[0] if recente and
+                                                          time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
+                                            if farm_gain > ja_contado:
+                                                self.emit(("farm_gain", item, farm_gain - ja_contado))
+                                            self.farm_recent_gain[item] = (farm_gain, time.monotonic())
                     elif op in DAILY_LIMIT_OPS:
                         valor = parse_daily_limit(payload)
                         if valor is not None:
@@ -996,9 +1224,21 @@ class Decoder:
                             self.own_entity, _ = read_varint(payload, 0)
                             self.identity_port = conn[2]
                             self.own_name = nome
+                            rank = getattr(self, "latest_abyss_ranks", {}).get(nome.casefold())
+                            if rank:
+                                self.emit(("abyss_rank",) + rank)
+                            elif nome.casefold() not in getattr(self, "_rank_cache_checked", set()):
+                                self._rank_cache_checked = getattr(self, "_rank_cache_checked", set())
+                                self._rank_cache_checked.add(nome.casefold())
+                                cached = recent_abyss_rank(nome)
+                                if cached:
+                                    self.emit(("abyss_rank_cached",) + cached)
                             self.entity_names[self.own_entity] = nome
                             log("nickname decoded", nome)
                             self.emit(("nickname", nome))
+                            flight = parse_profile_flight(payload, nome)
+                            if flight:
+                                self.emit(("flight_stamina", flight[0], flight[1]))
                             try:
                                 _, at = read_varint(payload, 0)
                                 at += 5
@@ -1017,6 +1257,30 @@ class Decoder:
                         player = parse_player_nickname(payload)
                         if player:
                             self.entity_names[player[0]] = player[1]
+                            self.emit(("pvp_attacker_name", player[0], player[1]))
+                            health = parse_player_health(payload, player[1])
+                            if health:
+                                self.emit(("pvp_health", player[0], player[1], health[0], health[1]))
+                            encoded_name = player[1].encode("utf-8")
+                            name_marker = bytes((len(encoded_name),)) + encoded_name
+                            name_at = payload.find(name_marker)
+                            job_at = name_at + len(name_marker)
+                            if name_at >= 0 and job_at < len(payload):
+                                classe = class_from_wire(payload[job_at])
+                                if classe:
+                                    self.emit(("pvp_class", player[1], classe))
+                            if player[0] == getattr(self, "pvp_target_pending", None):
+                                self.pvp_target = player[0]
+                                self.pvp_target_pending = None
+                                self.emit(("pvp_target", player[1], health[0] if health else None))
+                            # Layout de snapshot documentado pelo parser nickname.rs.
+                            marker = payload.rfind(b"\xf4\xcb\x1f")
+                            if marker >= 0:
+                                for offset in range(marker + 11, len(payload) - 7):
+                                    cp, trailing = struct.unpack_from("<II", payload, offset)
+                                    if 1 <= cp <= 10_000_000 and trailing == 0:
+                                        self.emit(("pvp_stats", player[1], cp))
+                                        break
                     elif op == OP_PARTY_ROSTER:
                         details = parse_party_roster_details(payload)
                         def nome_jogador(nome):
@@ -1025,7 +1289,7 @@ class Decoder:
                                 return False
                             alnum = sum(ch.isalnum() for ch in texto)
                             return alnum >= 2 and texto.count("|") < max(2, len(texto) // 2)
-                        members = [name for name, _ in details if nome_jogador(name)]
+                        members = [detail[0] for detail in details if nome_jogador(detail[0])]
                         # Durante um teleport interno o jogo pode enviar um roster vazio ou parcial.
                         if not members:
                             # Roster vazio confirmado pelo jogo: fica solo para
@@ -1039,9 +1303,12 @@ class Decoder:
                         log("party roster", len(members), "after_tp", self.party_unconfirmed,
                             "party", len(self.party_names))
                         self.party_unconfirmed = False
-                        classes = {name: classe for name, classe in details if classe}
+                        classes = {name: classe for name, classe, _, _ in details if classe}
                         if classes:
                             self.emit(("dps_classes", classes))
+                        for name, _, gear, power in details:
+                            if nome_jogador(name) and (gear or power):
+                                self.emit(("pvp_stats", name, power or None, gear or None))
                         shown = members or ([self.own_name] if self.own_name else [])
                         if shown:
                             self.emit(("dps_party", shown))
@@ -1049,11 +1316,50 @@ class Decoder:
                         hit = parse_damage(payload) if op == OP_DAMAGE else parse_dot_damage(payload)
                         if hit:
                             actor, target, amount, skill = hit
-                            alvo_nome = (self.boss_names.get(target) or
-                                         self.entity_names.get(target) or "")
-                            self.emit(("combat_target", target, alvo_nome))
-                            if skill // 10000 * 10000 in HEAL_SKILL_BASES or 2_000_000 <= skill < 3_000_000:
+                            if (actor == self.own_entity and target in self.mob_codes and
+                                    skill // 10000 * 10000 not in HEAL_SKILL_BASES):
+                                self.last_monster_combat = time.monotonic()
+                            # O intervalo inteiro de 2M--3M também contém golpes
+                            # ofensivos. Só os prefixos confirmados como cura entram
+                            # no contador de cura PvP.
+                            duel_target = getattr(self, "pvp_target", None)
+                            healing = (skill // 10000 * 10000 in HEAL_SKILL_BASES and
+                                       target in (actor, self.own_entity, duel_target))
+                            if healing:
+                                if duel_target and actor == self.own_entity:
+                                    self.emit(("pvp_duel_damage", duel_target, "cura_minha", round(amount * 0.8),
+                                               self.own_name or "Você", skill))
+                                elif duel_target and actor == duel_target:
+                                    self.emit(("pvp_duel_damage", duel_target, "cura_inimiga", round(amount * 0.8),
+                                               self.entity_names.get(actor, "Inimigo"), skill))
                                 continue
+                            if actor == self.own_entity:
+                                player_name = self.entity_names.get(target, "")
+                                if target != self.own_entity and target not in self.mob_codes:
+                                    if player_name:
+                                        self.last_pvp_combat = time.monotonic()
+                                        mudou_alvo = self.pvp_target != target
+                                        self.pvp_target = target
+                                        self.pvp_target_pending = None
+                                        if mudou_alvo:
+                                            self.emit(("pvp_target", player_name, None))
+                                    else:
+                                        self.pvp_target_pending = target
+                            duel_target = getattr(self, "pvp_target", None)
+                            if target == self.own_entity and actor != self.own_entity and actor not in self.mob_codes:
+                                if actor in self.entity_names:
+                                    self.last_pvp_combat = time.monotonic()
+                                self.emit(("pvp_attacker", actor, self.entity_names.get(actor, "")))
+                                if actor in self.entity_names and not duel_target:
+                                    self.pvp_target = actor
+                                    duel_target = actor
+                                    self.emit(("pvp_target", self.entity_names[actor], None))
+                                elif actor not in self.entity_names and not duel_target:
+                                    self.pvp_target_pending = actor
+                            if duel_target and target == duel_target and actor == self.own_entity:
+                                self.emit(("pvp_duel_damage", duel_target, "meu", amount))
+                            elif duel_target and target == self.own_entity and actor == duel_target:
+                                self.emit(("pvp_duel_damage", duel_target, "inimigo", amount))
                             if target in self.boss_entities:
                                 # Adds resistentes também podem ultrapassar o
                                 # limite de vida de boss. Não troque de encontro
@@ -1092,6 +1398,8 @@ class Decoder:
                     elif op == OP_ZONE:
                         zone = parse_zone(payload)
                         if zone:
+                            if zone[0] in (20, 23) and len(payload) >= 4:
+                                self.emit(("abyss_instance", zone[0], struct.unpack_from("<I", payload)[0]))
                             if zone[0] != self.zone_id:
                                 if self.zone_id is not None:
                                     self.emit(("dps_reset",))
@@ -1101,7 +1409,13 @@ class Decoder:
                                 self.mob_codes.clear()
                                 self.current_boss = None
                                 self.emit(("boss_health", 0, 0))
-                                self.own_entity = None
+                                # O portal pode não reenviar o perfil local de imediato.
+                                # Mantém o ator local até um novo 0x3336 substituí-lo.
+                                self.entity_names = ({self.own_entity: self.own_name}
+                                                     if self.own_entity is not None and self.own_name else {})
+                                self.pvp_target = None
+                                self.pvp_target_pending = None
+                                self.emit(("pvp_target", "", None))
                             self.zone_id = zone[0]
                             # Teleport pode manter, trocar ou desfazer a PT, mas o
                             # jogo pode só reenviar o roster depois do chefe. Mantém
@@ -1142,9 +1456,31 @@ class Decoder:
                         if mob:
                             self.emit(("mob_spawn",) + mob)
                     elif op == OP_REMAIN_HP:
+                        flight = parse_flight_points(payload)
+                        if flight and flight[0] == self.own_entity and any(v is not None for v in flight[1:]):
+                            self.emit(("flight_stamina", flight[1], flight[2]))
+                        resource = parse_resource_health(payload)
+                        if resource and resource[0] in self.entity_names and resource[0] != self.own_entity:
+                            actor_id, current_hp, maximum_hp = resource
+                            if current_hp is not None or maximum_hp is not None:
+                                self.emit(("pvp_resource", actor_id, self.entity_names[actor_id],
+                                           current_hp, maximum_hp))
                         vida = parse_remain_hp(payload)
                         if vida:
                             target, current = vida
+                            if target == self.own_entity or target == getattr(self, "pvp_target", None):
+                                previous_hp = getattr(self, "_duel_hp", {}).get(target)
+                                if not hasattr(self, "_duel_hp"):
+                                    self._duel_hp = {}
+                                self._duel_hp[target] = current
+                                if (current == 0 and previous_hp is not None and previous_hp > 0
+                                        and time.monotonic() - getattr(self, "last_pvp_combat", 0) < 20
+                                        and (target == self.own_entity or target in self.entity_names)):
+                                    self.emit(("pvp_defeated", "morte" if target == self.own_entity else "kill"))
+                            if target in self.entity_names and target not in self.mob_codes:
+                                if target == getattr(self, "pvp_target", None):
+                                    self.emit(("pvp_target", self.entity_names[target], current))
+                                continue
                             anterior = self.boss_health.get(target, (0, 0))
                             maximum = max(anterior[1], current)
                             # O pacote não traz o tipo de unidade. Vida alta ou
@@ -1208,6 +1544,7 @@ def run_sniffer(emit, stop_event=None):
     game_ports = set()
     decoder_ref = [None]
     connection_active = [False]
+    ping_host = [None]
 
     def watch_game():
         while stop_event is None or not stop_event.is_set():
@@ -1217,6 +1554,10 @@ def run_sniffer(emit, stop_event=None):
                 # the game through 127.0.0.1, so that is where the plain stream shows up.
                 ports = {c.laddr[1] for c in psutil.net_connections(kind="tcp")
                          if c.pid in pids and c.raddr and c.raddr[1] not in (80, 443)}
+                peers = [c.raddr.ip for c in psutil.net_connections(kind="tcp")
+                         if c.pid in pids and c.raddr and c.raddr[1] not in (80, 443)
+                         and c.raddr.ip not in ("127.0.0.1", "::1")]
+                ping_host[0] = peers[0] if peers else None
                 game_ports.clear()
                 game_ports.update(ports)
                 connected = bool(ports)
@@ -1230,6 +1571,7 @@ def run_sniffer(emit, stop_event=None):
                     decoder_atual.identity_port = None
                     decoder_atual.party_names.clear()
                     decoder_atual.entity_names.clear()
+                    emit(("flight_stamina", None, None))
                     emit(("identity_reset",))
                 if decoder_atual is not None and not connected:
                     decoder_atual.reset_connection()
@@ -1240,6 +1582,31 @@ def run_sniffer(emit, stop_event=None):
             time.sleep(2)
 
     threading.Thread(target=watch_game, daemon=True).start()
+    def medir_ping():
+        import subprocess
+        import re
+        while stop_event is None or not stop_event.is_set():
+            host = ping_host[0]
+            valor = None
+            if host:
+                try:
+                    cmd = ["ping", "-n", "1", "-w", "900", host]
+                    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    resposta = subprocess.run(cmd, capture_output=True, timeout=3,
+                                              creationflags=flags)
+                    texto = resposta.stdout.decode("utf-8", errors="replace")
+                    match = re.search(r"(?:time|tempo)\s*[=<]\s*(\d+)\s*ms", texto, re.I)
+                    if resposta.returncode == 0 and match:
+                        valor = int(match.group(1))
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            emit(("game_ping", valor))
+            if stop_event is not None and stop_event.wait(5):
+                return
+            if stop_event is None:
+                time.sleep(5)
+
+    threading.Thread(target=medir_ping, daemon=True).start()
     # Aguarda a conexão do jogo antes de abrir o Npcap. Capturar todo o TCP de
     # todas as interfaces causava um pico grande ao iniciar o contador.
     limite_portas = time.monotonic() + 8.0
