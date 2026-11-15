@@ -1,0 +1,33 @@
+name: Publicar instalador
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o projeto
+        uses: actions/checkout@v4
+
+      - name: Instalar o gerador do instalador
+        shell: powershell
+        run: choco install innosetup --yes --no-progress
+
+      - name: Gerar ContadorDeAlmas-Setup.exe
+        shell: powershell
+        run: .\package.ps1
+
+      - name: Publicar na página de Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Contador de Almas ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/ContadorDeAlmas-Setup.exe

@@ -2,13 +2,19 @@
 # Instala só para o seu usuário (não precisa ser administrador),
 # cria atalhos e registra em Configurações > Aplicativos para poder desinstalar.
 
+param(
+    [switch]$Silencioso,
+    [switch]$AbrirAoFinal
+)
+
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Nome    = "Contador de Almas"
-$Versao  = "1.9.39"
 $Origem  = $PSScriptRoot
+$ArquivoVersao = Join-Path $Origem "version.txt"
+$Versao  = if (Test-Path $ArquivoVersao) { (Get-Content $ArquivoVersao -Raw).Trim() } else { "1.0.0" }
 $Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
 $ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
 $UrlPortugues = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/por.traineddata"
@@ -166,9 +172,12 @@ try {
     Passo 4 $total "Copiando o programa para $Destino ..."
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     foreach ($arq in @("contador_almas.py", "pet_protocol.py", "pet_nomes_npcap.json",
-                      "LICENSE-PET-PROTOCOL.txt", "LICENSE-BOSS-CATALOG.txt",
-                      "boss_nomes.json", "material_icons.png", "icone.ico", "desinstalar.ps1",
-                      "requirements.txt", "LICENSE", "README.md")) {
+                      "LICENSE-PET-PROTOCOL.txt", "LICENSE-BOSS-CATALOG.txt", "LICENSE-RADAR.txt",
+                      "boss_nomes.json", "material_icons.png", "class_icons.zip",
+                      "radar_mapa_abyss.jpg", "radar_mapa_altgard.jpg", "radar_mapa_verteron.jpg",
+                      "radar_mascotes.json", "radar_pontos.json", "aviso_12.wav", "aviso_50.wav",
+                      "icone.ico", "desinstalar.ps1", "requirements.txt", "version.txt",
+                      "LICENSE", "README.md")) {
         $de = Join-Path $Origem $arq
         if (Test-Path $de) { Copy-Item $de -Destination $Destino -Force }
     }
@@ -220,8 +229,12 @@ try {
     Write-Host "   Use o ícone '$Nome' na Área de Trabalho."     -ForegroundColor Green
     Write-Host "==============================================" -ForegroundColor DarkGreen
     Write-Host ""
-    $r = Read-Host "Abrir o contador agora? (S/N)"
-    if ($r -match "^[sSyY]") {
+    $abrir = $AbrirAoFinal
+    if (-not $Silencioso -and -not $AbrirAoFinal) {
+        $r = Read-Host "Abrir o contador agora? (S/N)"
+        $abrir = $r -match "^[sSyY]"
+    }
+    if ($abrir) {
         Start-Process -FilePath $pyw -ArgumentList $argumentos -WorkingDirectory $Destino
     }
 }

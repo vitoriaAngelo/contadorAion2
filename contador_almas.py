@@ -31,10 +31,15 @@ VERSAO = "1.9.199"
 REPO_RAW = "https://raw.githubusercontent.com/vitoriaAngelo/contadorAion2/main/"
 # arquivos que a atualizacao troca (os que nao existirem na pasta sao ignorados,
 # menos o programa, que e obrigatorio)
-ARQUIVOS_ATUALIZAR = ["contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
-                     "pet_protocol.py", "pet_nomes_npcap.json",
-                     "LICENSE-PET-PROTOCOL.txt", "material_icons.png",
-                     "boss_nomes.json", "LICENSE-BOSS-CATALOG.txt"]
+ARQUIVOS_ATUALIZAR = [
+    "contador_almas.py", "icone.ico", "desinstalar.ps1", "requirements.txt",
+    "pet_protocol.py", "pet_nomes_npcap.json", "LICENSE-PET-PROTOCOL.txt",
+    "material_icons.png", "boss_nomes.json", "LICENSE-BOSS-CATALOG.txt",
+    "LICENSE-RADAR.txt", "class_icons.zip", "radar_mapa_abyss.jpg",
+    "radar_mapa_altgard.jpg", "radar_mapa_verteron.jpg", "radar_mascotes.json",
+    "radar_pontos.json", "aviso_12.wav", "aviso_50.wav", "version.txt",
+]
+ARQUIVOS_OBRIGATORIOS = set(ARQUIVOS_ATUALIZAR) - {"icone.ico", "desinstalar.ps1"}
 # testado em outro processo: um import falho aqui deixaria a DLL presa e o pip
 # nao conseguiria mais trocar a biblioteca
 TESTE_BIBLIOTECAS = "import mss, PIL.Image, psutil, pytesseract, scapy"
@@ -100,16 +105,11 @@ def aplicar_atualizacao(dados_py, pasta):
     compile(dados_py, "contador_almas.py", "exec")  # erro aqui = nao troca nada
     extras = {}
     for nome in ARQUIVOS_ATUALIZAR[1:]:
-        if os.path.exists(os.path.join(pasta, nome)) or nome in (
-                "pet_protocol.py", "pet_nomes_npcap.json",
-                "LICENSE-PET-PROTOCOL.txt", "material_icons.png",
-                "boss_nomes.json", "LICENSE-BOSS-CATALOG.txt"):
+        if os.path.exists(os.path.join(pasta, nome)) or nome in ARQUIVOS_OBRIGATORIOS:
             try:
                 extras[nome] = baixar_texto(REPO_RAW + nome)
             except Exception:
-                if nome in ("pet_protocol.py", "pet_nomes_npcap.json",
-                            "LICENSE-PET-PROTOCOL.txt", "material_icons.png",
-                            "boss_nomes.json", "LICENSE-BOSS-CATALOG.txt"):
+                if nome in ARQUIVOS_OBRIGATORIOS:
                     raise
     alvo = os.path.join(pasta, "contador_almas.py")
     if os.path.exists(alvo):

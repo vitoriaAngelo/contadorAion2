@@ -54,14 +54,11 @@ O Npcap observa os eventos de rede que o AION 2 já envia ao seu PC. O programa 
 
 ## Instalação
 
-1. Na página do projeto, clique em **Code → Download ZIP**.
-2. Extraia o ZIP em uma pasta.
-3. Dê dois cliques em **`INSTALAR.bat`**.
-4. Se o Windows mostrar uma proteção, escolha **Mais informações → Executar assim mesmo**.
-5. Instale o [Npcap](https://npcap.com/) com as opções padrão quando solicitado.
-6. Abra pelo atalho **Contador de Almas** criado na Área de Trabalho ou no Menu Iniciar.
-
-Depois da instalação, a pasta extraída pode ser apagada.
+1. Abra a página de [**Releases**](https://github.com/vitoriaAngelo/contadorAion2/releases/latest).
+2. Baixe somente **`ContadorDeAlmas-Setup.exe`** — não é necessário baixar o repositório.
+3. Abra o instalador. Se o Windows mostrar uma proteção, escolha **Mais informações → Executar assim mesmo**.
+4. Instale o [Npcap](https://npcap.com/) com as opções padrão quando solicitado.
+5. Abra pelo atalho **Contador de Almas** criado na Área de Trabalho ou no Menu Iniciar.
 
 ## Como usar
 
@@ -103,7 +100,9 @@ O rodapé mostra o próximo evento em horário de Brasília e fica vermelho pisc
 
 ## Atualizar
 
-Abra `⚙ → Procurar atualização`. O programa baixa a versão mais recente, reinicia e mantém seu progresso. Quando há uma atualização disponível, o botão **⬆** aparece no topo.
+O programa verifica novas versões sozinho. Quando há uma atualização disponível, o botão **⬆ Atualizar** aparece no topo. Clique nele, confirme e aguarde: os arquivos são baixados, o programa reinicia e seu progresso é mantido.
+
+Também é possível verificar manualmente em `⚙ → Procurar atualização`.
 
 ## Problemas comuns
 
