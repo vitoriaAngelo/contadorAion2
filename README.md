@@ -1,100 +1,144 @@
-# ✦ Contador de Almas — Aion 2
+<div align="center">
 
-Overlay para **Aion 2** que conta sozinho as almas de cada monstro que você farma e mostra o progresso de cada estrela (5 → 25 → 75 almas, dá para mudar em ⚙ → Almas por estrela), sem precisar abrir o menu de monstros.
+# ✦ Contador de Almas — AION 2 ✦
 
-![Overlay](docs/overlay.png)
+### Overlay de farm, almas, DPS, Abismo, materiais e eventos
+
+[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.199-f4a7bb?style=for-the-badge)](version.txt)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-9bd8cf?style=for-the-badge&logo=windows)](#requisitos)
+[![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-c9b6e4?style=for-the-badge)](LICENSE)
+
+Criado por **@misttylol** · [Twitch](https://www.twitch.tv/misttylol)
+
+</div>
+
+O **Contador de Almas** acompanha sua sessão no AION 2 sem precisar manter menus do jogo abertos. Ele lê passivamente, pelo **Npcap**, as informações que o jogo recebe no seu próprio computador e mostra tudo em um overlay leve sobre a janela do AION 2.
+
+![Contador de Almas aberto sobre o AION 2](docs/contador-em-jogo.jpg)
+
+<p align="center">
+  <img src="docs/overlay-atual.png" alt="Overlay compacto do Contador de Almas" width="420">
+</p>
+
+## O que o programa tem
+
+| Área | O que mostra |
+| --- | --- |
+| **Almas / Pets** | Almas obtidas, progresso das estrelas, total acumulado e quanto falta para completar cada pet. |
+| **DPS** | Dano e desempenho recebidos nos eventos da sessão. |
+| **Abyss** | Pontos do Abismo, Kinah ganho e cronômetro de farm com iniciar, pausar e zerar. |
+| **Materiais** | ODs normal, fino, puro e radiante, além dos materiais de coleta identificados. |
+| **Radar de mascotes** | Mostra mascotes próximos e pontos conhecidos em Verteron, Altgard e Abismo. |
+| **Agenda** | Próximo evento do servidor SA com contagem regressiva e aviso sonoro opcional. |
+| **Info** | Tempo restante para o reset diário das 04:00 e o reset semanal de quarta-feira às 04:00. |
+
+Também inclui:
+
+- modos normal, compacto e ultracompacto;
+- cores, opacidade e tamanho da fonte ajustáveis;
+- identificação do personagem conectado;
+- atualização automática sem perder o progresso;
+- relatório de suporte com logs e configuração;
+- exibição em stream pelo OBS ou Discord;
+- progresso salvo somente no computador da pessoa.
 
 ## Como funciona
 
-O contador lê passivamente, pelo **Npcap**, os eventos de alma que o AION 2 recebe
-no seu próprio PC. Cada evento traz o identificador do pet e a quantidade recebida;
-isso permite contar várias almas de uma vez sem reler o histórico do chat.
+O Npcap observa os eventos de rede que o AION 2 já envia ao seu PC. O programa interpreta eventos de alma, inventário, combate, Pontos do Abismo, Kinah, posição e outros dados usados pelas abas.
 
-- Farmando em grupo: as almas que caem para outra pessoa ("Fulano obteve Alma: X (Vinculado)…") **não** contam para você.
-- **Não** lê a memória do jogo, não envia pacotes e não pede login.
-- Almas, ganhos de Pontos do Abismo e aumentos de Kinah são lidos pelos eventos de rede; o contador não lê o chat. Os ganhos de AP e Kinah são somados desde que o contador foi aberto. Pacotes brutos não são salvos.
-- Aparece na stream (OBS / Discord) — dá para usar como fonte de **Captura de Janela**.
-- O painel do Abismo também tem um cronômetro de farm com iniciar/pausar e zerar; ele mostra horas, minutos e segundos.
+- Não lê nem altera a memória do jogo.
+- Não injeta código, não envia comandos ao servidor e não pede login.
+- Não salva pacotes brutos da sua conexão.
+- Em grupo, uma alma recebida por outra pessoa não entra no seu progresso.
+- O chat do jogo pode ficar fechado.
 
-> ⚠️ **Aviso:** é um programa de terceiros, não oficial. A compatibilidade com o jogo e seu anti-cheat não é garantida. Use por sua conta e risco.
+> **Aviso:** este é um programa de terceiros e não oficial. A compatibilidade com o jogo e com futuras atualizações do anti-cheat não é garantida. Use por sua conta e risco.
 
-## Instalar
+## Instalação
 
-1. Baixe o projeto: em <https://github.com/vitoriaAngelo/contadorAion2>, botão verde **Code → Download ZIP**, e extraia em qualquer pasta.
-2. Dê dois cliques em **`INSTALAR.bat`**.
-   - Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
-3. Instale o [Npcap](https://npcap.com/) com as opções padrão e espere o instalador
-   instalar o Python e as bibliotecas necessárias.
-4. Pronto: use o ícone **Contador de Almas** na Área de Trabalho (também fica no Menu Iniciar).
+1. Na página do projeto, clique em **Code → Download ZIP**.
+2. Extraia o ZIP em uma pasta.
+3. Dê dois cliques em **`INSTALAR.bat`**.
+4. Se o Windows mostrar uma proteção, escolha **Mais informações → Executar assim mesmo**.
+5. Instale o [Npcap](https://npcap.com/) com as opções padrão quando solicitado.
+6. Abra pelo atalho **Contador de Almas** criado na Área de Trabalho ou no Menu Iniciar.
 
-Depois de instalado, a pasta que você extraiu pode ser apagada.
+Depois da instalação, a pasta extraída pode ser apagada.
 
-## Usar
+## Como usar
 
-- Abra o jogo em **Janela sem bordas** (em tela cheia exclusiva o overlay não aparece por cima).
-- Abra o contador. Ele aguarda a conexão do AION 2; o chat pode ficar fechado.
-- Mate monstros: cada alma soma no monstro certo.
+1. Abra o AION 2 em **Janela sem bordas**.
+2. Abra o Contador de Almas antes de entrar no personagem.
+3. Entre no personagem e aguarde a identificação no topo do painel.
+4. Comece a jogar normalmente. As informações aparecem nas abas correspondentes.
 
-Em cada monstro:
+Se o contador for aberto depois do login, entre novamente no personagem para receber o progresso completo salvo pelo jogo. Os novos ganhos continuam sendo contados enquanto isso.
 
-| | |
-|---|---|
-| ★★☆ | estrelas: douradas = completas, contorno dourado = a que você está fazendo. **Clique numa estrela** para dizer em qual você está. |
-| `71/75` | almas da estrela atual |
-| **tenho** [ ] | digite quantas almas você já tem **naquela estrela** e aperte Enter |
-| − + | corrigir na mão |
-| ✕ | tirar o monstro da lista |
+### Progresso de almas
 
-Exemplo: no jogo você está na **3ª estrela** e tem **70**. Clique na 3ª estrela, digite **70**, Enter → `70/75`.
+Em cada pet, as estrelas douradas estão completas e a estrela contornada é a atual. Clique em uma estrela para escolher a etapa. O campo **tenho** ajusta o valor inicial daquela estrela; os botões **−** e **+** fazem correções manuais.
 
-No rodapé aparece o **próximo evento** do jogo em dourado, com relógio em minutos:segundos
-(fica **vermelho piscando** no último minuto). Agenda do servidor SA, horário de Brasília,
-com base em <https://www.animoria.com.br/#agenda>: Shugo (toda hora :00), Invasão Dimensional (:30),
-Fenda Espaço-Temporal (02h, 05h… 23h), Vigilante Kairah (01h, 04h… 22h) e Senhor Guardião Nahma
-(21h, sexta e domingo). Dá para mudar a lista em `config.json` → `eventos`.
+Exemplo: se você está na terceira estrela e possui 70 almas, clique na terceira estrela, digite `70` no campo **tenho** e pressione Enter. O painel passa a mostrar `70/75`.
 
-Botões do topo: ⏸ pausar · ⚙ menu · ▾ recolher · **–** minimizar (vai para a barra de tarefas e
-continua contando; clique no ícone dele para voltar) · ✕ fechar.
+### Botões principais
 
-Botão ◆ no topo: aba **OD** — o contador lê pelo Npcap os ODs recebidos no inventário (normal, fino, puro e radiante); os números também podem ser ajustados manualmente.
+| Botão | Ação |
+| --- | --- |
+| `⏸` | Pausar ou continuar a leitura. |
+| `⚙` | Abrir aparência, som, atualização e suporte. |
+| `≡ / ▤` | Alternar o tamanho do painel. |
+| `♪` | Ligar ou silenciar o aviso dos eventos. |
+| `▾` | Recolher o conteúdo. |
+| `—` | Minimizar e continuar contando. |
+| `×` | Fechar o programa. |
 
-Botão ◷ no topo: aba **Info** com quanto falta para o reset diário (04:00) e o semanal (quarta 04:00).
+## Eventos do servidor
 
-Botão ≡ / ▤ no topo: modo normal ou compacto (uma linha por bicho). Botão ♪: liga/desliga o som 1 minuto antes dos eventos (riscado = mudo).
+O rodapé mostra o próximo evento em horário de Brasília e fica vermelho piscando no último minuto. A agenda padrão inclui Shugo Festa, Invasão Dimensional, Fenda Espaço-Temporal, Vigilante Kairah e Senhor Guardião Nahma. A lista pode ser personalizada em `config.json` na seção `eventos`.
 
-Menu ⚙: cor de destaque, tamanho da letra, som antes dos eventos, opacidade e visibilidade na stream.
+## Mostrar no OBS
 
-## OBS
+1. Adicione uma fonte **Captura de Janela**.
+2. Selecione **`[pythonw.exe]: Contador de Almas`**.
+3. Use o método **Windows 10 (1903 e superior)**.
+4. No menu `⚙`, confirme que a visibilidade na stream está ligada.
 
-Fonte **Captura de Janela** → janela **[pythonw.exe]: Contador de Almas** → método de captura **Windows 10 (1903 e superior)**.
+## Atualizar
+
+Abra `⚙ → Procurar atualização`. O programa baixa a versão mais recente, reinicia e mantém seu progresso. Quando há uma atualização disponível, o botão **⬆** aparece no topo.
+
+## Problemas comuns
+
+- **Não conta nada:** confirme que o Npcap está instalado e abra o contador enquanto o AION 2 estiver conectado.
+- **Valor incorreto:** ajuste com `−`, `+` ou pelo campo **tenho**.
+- **Pet aparece como `Alma #ID`:** o evento foi recebido, mas o nome ainda não está no catálogo.
+- **Overlay não fica sobre o jogo:** use Janela sem bordas; tela cheia exclusiva impede a sobreposição.
+- **Precisa de ajuda:** use `⚙ → Gerar relatório para suporte`. O arquivo `ContadorDeAlmas-relatorio.zip` será criado na Área de Trabalho.
+
+Os detalhes de captura ficam em `diagnostico.log` na pasta instalada.
 
 ## Desinstalar
 
-**Configurações → Aplicativos → Contador de Almas → Desinstalar.**
-Ele pergunta se você quer guardar uma cópia do seu progresso na Área de Trabalho.
-(O Python e o Npcap continuam instalados.)
-
-## Problemas
-
-- **Não conta nada** → confirme que o Npcap está instalado e que o contador está aberto enquanto o AION 2 está conectado. Um erro de captura aparece no topo e no `diagnostico.log` da pasta do programa.
-- **Contou errado** → use − / + ou a caixinha **tenho**.
-- Se o nome de um pet ainda não estiver na tabela, ele aparece como `Alma #ID` sem misturar com outro pet.
-- **Pedir ajuda:** ⚙ → *Gerar relatório para suporte*. Ele cria `ContadorDeAlmas-relatorio.zip` na Área de Trabalho (log, capturas e configuração) — mande esse arquivo para quem estiver ajudando.
-- **Atualizar:** ⚙ → *Procurar atualização*. Ele baixa a versão nova daqui do GitHub, fecha e abre de novo sozinho, mantendo o progresso. Quando tem versão nova, aparece **⬆** no topo do overlay (clique nele). Versões antigas (antes da 1.5.0) não têm essa opção: baixe o ZIP de novo e rode o `INSTALAR.bat` uma vez.
+Abra **Configurações do Windows → Aplicativos → Contador de Almas → Desinstalar**. O desinstalador oferece a opção de guardar uma cópia do progresso na Área de Trabalho. Python e Npcap permanecem instalados.
 
 ## Requisitos
 
-- Windows 10 ou 11
-- Npcap instalado e acesso à captura de pacotes no Windows
+- Windows 10 ou Windows 11;
+- AION 2 em Janela sem bordas;
+- Npcap instalado;
+- acesso à captura de rede no Windows.
 
-## Para quem quer mexer no código
+## Desenvolvimento
 
-```
+```powershell
 pip install -r requirements.txt
-RODAR.bat        (ou: pythonw contador_almas.py)
+./RODAR.bat
 ```
 
-Interface em `contador_almas.py`; decodificador em `pet_protocol.py`, adaptado de
-[aion2-pet-overlay](https://github.com/MartinLVila/aion2-pet-overlay) sob a licença
-em `LICENSE-PET-PROTOCOL.txt`. A tabela de nomes foi derivada de
-[aion2-pet-tracker](https://github.com/MikeZeen/aion2-pet-tracker).
+A interface está em `contador_almas.py`. O decodificador `pet_protocol.py` foi adaptado de [aion2-pet-overlay](https://github.com/MartinLVila/aion2-pet-overlay), conforme `LICENSE-PET-PROTOCOL.txt`. Dados adicionais vêm de [aion2-pet-tracker](https://github.com/MikeZeen/aion2-pet-tracker) e [Aion-DPS-Meter](https://github.com/SkeeveAN/Aion-DPS-Meter), com as licenças correspondentes incluídas no projeto.
+
+<div align="center">
+
+♡ feito com carinho para a comunidade de AION 2 ♡
+
+</div>
