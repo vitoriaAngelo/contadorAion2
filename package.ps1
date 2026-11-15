@@ -18,11 +18,11 @@ if (-not $Iscc -or -not (Test-Path $Iscc)) {
 
 $Saida = Join-Path $Raiz "release"
 New-Item -ItemType Directory -Force -Path $Saida | Out-Null
-Remove-Item (Join-Path $Saida "ContadorDeAlmas-Setup.exe") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $Saida "AionTrack-Setup.exe") -Force -ErrorAction SilentlyContinue
 
 & $Iscc "/DMyAppVersion=$Versao" (Join-Path $Raiz "installer\ContadorDeAlmas.iss")
 if ($LASTEXITCODE -ne 0) { throw "Falha ao gerar o instalador." }
 
-$Instalador = Join-Path $Saida "ContadorDeAlmas-Setup.exe"
+$Instalador = Join-Path $Saida "AionTrack-Setup.exe"
 if (-not (Test-Path $Instalador)) { throw "O instalador não foi gerado." }
 Write-Host "Instalador pronto: $Instalador"

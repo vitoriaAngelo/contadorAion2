@@ -2,7 +2,7 @@
   #define MyAppVersion "1.0.0"
 #endif
 
-#define MyAppName "Contador de Almas"
+#define MyAppName "AionTrack"
 #define MyAppPublisher "@misttylol"
 #define MyAppURL "https://github.com/vitoriaAngelo/contadorAion2"
 
@@ -14,13 +14,13 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases/latest
-DefaultDirName={localappdata}\ContadorDeAlmas
+DefaultDirName={localappdata}\AionTrack
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 Uninstallable=no
 OutputDir=..\release
-OutputBaseFilename=ContadorDeAlmas-Setup
+OutputBaseFilename=AionTrack-Setup
 SetupIconFile=..\icone.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -58,4 +58,4 @@ Source: "..\LICENSE-BOSS-CATALOG.txt"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: 
 Source: "..\LICENSE-RADAR.txt"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\ContadorDeAlmas\instalar.ps1"" -Silencioso -AbrirAoFinal"; StatusMsg: "Instalando o Contador de Almas e os componentes necessários..."; Flags: waituntilterminated runhidden
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\ContadorDeAlmas\instalar.ps1"" -Silencioso -AbrirAoFinal"; StatusMsg: "Instalando o AionTrack e os componentes necessários..."; Flags: waituntilterminated runhidden

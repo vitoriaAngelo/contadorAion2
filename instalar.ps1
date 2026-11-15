@@ -1,4 +1,4 @@
-# Instalador do Contador de Almas (Aion 2)
+# Instalador do AionTrack (Aion 2)
 # Instala só para o seu usuário (não precisa ser administrador),
 # cria atalhos e registra em Configurações > Aplicativos para poder desinstalar.
 
@@ -11,12 +11,14 @@ $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Nome    = "Contador de Almas"
+$Nome    = "AionTrack"
 $Origem  = $PSScriptRoot
 $ArquivoVersao = Join-Path $Origem "version.txt"
 $Versao  = if (Test-Path $ArquivoVersao) { (Get-Content $ArquivoVersao -Raw).Trim() } else { "1.0.0" }
-$Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
-$ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
+$Destino = Join-Path $env:LOCALAPPDATA "AionTrack"
+$DestinoAntigo = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
+$ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AionTrack"
+$ChaveAntiga = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
 $UrlPortugues = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/por.traineddata"
 
 function Passo($n, $total, $texto) {
@@ -155,6 +157,14 @@ try {
     # o pip nao apaga DLL de contador aberto e deixaria a biblioteca pela metade
     Fechar-Contador
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
+    # Migra o progresso e as preferências de quem usava o nome anterior.
+    foreach ($dado in @("progresso.json", "config.json")) {
+        $antigo = Join-Path $DestinoAntigo $dado
+        $novo = Join-Path $Destino $dado
+        if ((Test-Path $antigo) -and -not (Test-Path $novo)) {
+            Copy-Item $antigo $novo -Force
+        }
+    }
     $cod = Rodar $py @("-m", "pip", "install", "--target", $Destino, "--upgrade", "--disable-pip-version-check", "-q", "-r", (Join-Path $Origem "requirements.txt"))
     if ($cod -ne 0) { throw "Falha ao instalar as bibliotecas do Python" }
     Ok "Bibliotecas instaladas"
@@ -208,7 +218,7 @@ try {
     $props = @{
         "DisplayName"     = $Nome
         "DisplayVersion"  = $Versao
-        "Publisher"       = "Contador de Almas"
+        "Publisher"       = "@misttylol"
         "DisplayIcon"     = $icone
         "InstallLocation" = $Destino
         "UninstallString" = $desinstalar
@@ -221,6 +231,9 @@ try {
     New-ItemProperty -Path $ChaveDesinstalar -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $ChaveDesinstalar -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $ChaveDesinstalar -Name "EstimatedSize" -Value $tamanhoKb -PropertyType DWord -Force | Out-Null
+    Remove-Item $ChaveAntiga -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $desk "Contador de Almas.lnk") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $menu "Contador de Almas.lnk") -Force -ErrorAction SilentlyContinue
     Ok "Registrado em Configurações > Aplicativos (para desinstalar)"
 
     Write-Host ""

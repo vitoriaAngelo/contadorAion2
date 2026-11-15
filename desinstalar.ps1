@@ -6,9 +6,9 @@ param([switch]$Silencioso)
 $ErrorActionPreference = "SilentlyContinue"
 Add-Type -AssemblyName System.Windows.Forms
 
-$Nome    = "Contador de Almas"
-$Destino = Join-Path $env:LOCALAPPDATA "ContadorDeAlmas"
-$ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ContadorDeAlmas"
+$Nome    = "AionTrack"
+$Destino = Join-Path $env:LOCALAPPDATA "AionTrack"
+$ChaveDesinstalar = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AionTrack"
 $Sim = [System.Windows.Forms.DialogResult]::Yes
 
 if (-not $Silencioso) {
@@ -27,7 +27,7 @@ if (-not $Silencioso) {
             [System.Windows.Forms.MessageBoxIcon]::Question)
         if ($r -eq $Sim) {
             $desk = [Environment]::GetFolderPath("Desktop")
-            Copy-Item $progresso (Join-Path $desk "ContadorDeAlmas-progresso.json") -Force
+            Copy-Item $progresso (Join-Path $desk "AionTrack-progresso.json") -Force
         }
     }
 }
