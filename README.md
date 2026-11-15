@@ -14,8 +14,6 @@ Criado por **@misttylol** · [Twitch](https://www.twitch.tv/misttylol)
 
 O **Contador de Almas** acompanha sua sessão no AION 2 sem precisar manter menus do jogo abertos. Ele lê passivamente, pelo **Npcap**, as informações que o jogo recebe no seu próprio computador e mostra tudo em um overlay leve sobre a janela do AION 2.
 
-![Contador de Almas aberto sobre o AION 2](docs/contador-em-jogo.jpg)
-
 <p align="center">
   <img src="docs/overlay-atual.png" alt="Overlay compacto do Contador de Almas" width="420">
 </p>
