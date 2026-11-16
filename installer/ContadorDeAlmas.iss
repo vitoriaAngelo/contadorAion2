@@ -34,6 +34,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 
 [Files]
 Source: "..\contador_almas.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
+Source: "..\obs_local.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\pet_protocol.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\pet_nomes_npcap.json"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\boss_nomes.json"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall

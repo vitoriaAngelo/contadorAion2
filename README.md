@@ -4,7 +4,7 @@
 
 ### Overlay de farm, almas, DPS, Abismo, materiais e eventos
 
-[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.202-f4a7bb?style=for-the-badge)](version.txt)
+[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.203-f4a7bb?style=for-the-badge)](version.txt)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-9bd8cf?style=for-the-badge&logo=windows)](#requisitos)
 [![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-c9b6e4?style=for-the-badge)](LICENSE)
 
@@ -38,6 +38,7 @@ Também inclui:
 - atualização automática sem perder o progresso;
 - relatório de suporte com logs e configuração;
 - exibição em stream pelo OBS ou Discord;
+- barrinha separada com atalhos, limites diários e avisos de Shugo, Loja e Invasão;
 - progresso salvo somente no computador da pessoa.
 
 ## Como funciona
@@ -64,8 +65,9 @@ O Npcap observa os eventos de rede que o AION 2 já envia ao seu PC. O programa 
 
 1. Abra o AION 2 em **Janela sem bordas**.
 2. Abra o AionTrack antes de entrar no personagem.
-3. Entre no personagem e aguarde a identificação no topo do painel.
-4. Comece a jogar normalmente. As informações aparecem nas abas correspondentes.
+3. Entre no personagem e aguarde o nome aparecer na barrinha.
+4. Clique nos ícones da barrinha para abrir Pets, DPS, Abyss, Materiais ou FARM. Clique novamente no ícone para fechar a caixa.
+5. O ícone de moeda abre os limites diários abaixo da barrinha.
 
 Se o contador for aberto depois do login, entre novamente no personagem para receber o progresso completo salvo pelo jogo. Os novos ganhos continuam sendo contados enquanto isso.
 
@@ -93,14 +95,15 @@ O rodapé mostra o próximo evento em horário de Brasília e fica vermelho pisc
 
 ## Mostrar no OBS
 
-1. Adicione uma fonte **Captura de Janela**.
-2. Selecione **`[pythonw.exe]: AionTrack`**.
-3. Use o método **Windows 10 (1903 e superior)**.
-4. No menu `⚙`, confirme que a visibilidade na stream está ligada.
+1. No OBS, adicione uma **Fonte de navegador** com o endereço `http://127.0.0.1:18742/`.
+2. Defina largura **950** e altura **650**. O fundo da página é transparente.
+3. Deixe o AionTrack aberto enquanto transmite. A página mostra a barrinha, os dados da seção aberta, os limites diários e os avisos.
+
+A página do OBS reproduz os dados principais em um layout próprio. Ela não é uma captura exata de todos os detalhes das caixas do Windows. O endereço funciona somente no próprio computador, enquanto o AionTrack estiver aberto.
 
 ## Atualizar
 
-O programa verifica novas versões sozinho. Quando há uma atualização disponível, o botão **⬆ Atualizar** aparece no topo. Clique nele, confirme e aguarde: os arquivos são baixados, o programa reinicia e seu progresso é mantido.
+O programa verifica novas versões sozinho. Quando há uma atualização disponível, abra `⚙ → Procurar atualização` e aguarde a instalação. Os arquivos são baixados, o programa reinicia e seu progresso é mantido.
 
 Também é possível verificar manualmente em `⚙ → Procurar atualização`.
 
