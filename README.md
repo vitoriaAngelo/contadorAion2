@@ -4,7 +4,7 @@
 
 ### Overlay de farm, almas, DPS, Abismo, materiais e eventos
 
-[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.201-f4a7bb?style=for-the-badge)](version.txt)
+[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.202-f4a7bb?style=for-the-badge)](version.txt)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-9bd8cf?style=for-the-badge&logo=windows)](#requisitos)
 [![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-c9b6e4?style=for-the-badge)](LICENSE)
 

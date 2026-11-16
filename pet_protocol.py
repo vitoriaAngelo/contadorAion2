@@ -208,6 +208,16 @@ def recent_abyss_rank(name):
 
 
 def log(*parts):
+    try:
+        if os.path.getsize(LOG_FILE) > 4 * 1024 * 1024:
+            with open(LOG_FILE, "rb") as previous:
+                previous.seek(-1024 * 1024, os.SEEK_END)
+                previous.readline()
+                recent = previous.read()
+            with open(LOG_FILE, "wb") as current:
+                current.write(recent)
+    except OSError:
+        pass
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(time.strftime("%H:%M:%S ") + " ".join(map(str, parts)) + "\n")
 
@@ -1111,6 +1121,16 @@ class Decoder:
                         trace_count = 0
                     if trace_count < limite and op not in (OP_DAMAGE, OP_DOT, OP_REMAIN_HP):
                         self._profession_trace_counts[op] = trace_count + 1
+                        try:
+                            if os.path.getsize(PROFESSION_TRACE_FILE) > 8 * 1024 * 1024:
+                                with open(PROFESSION_TRACE_FILE, "rb") as previous:
+                                    previous.seek(-2 * 1024 * 1024, os.SEEK_END)
+                                    previous.readline()
+                                    recent = previous.read()
+                                with open(PROFESSION_TRACE_FILE, "wb") as current:
+                                    current.write(recent)
+                        except OSError:
+                            pass
                         with open(PROFESSION_TRACE_FILE, "a", encoding="ascii") as trace:
                             trace.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
                                         f"{op.hex()} {len(payload)} {payload[:4096].hex()}\n")
