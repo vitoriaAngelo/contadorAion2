@@ -1316,7 +1316,8 @@ class Decoder:
                         hit = parse_damage(payload) if op == OP_DAMAGE else parse_dot_damage(payload)
                         if hit:
                             actor, target, amount, skill = hit
-                            if (actor == self.own_entity and target in self.mob_codes and
+                            if (actor == self.own_entity and target != self.own_entity and
+                                    target not in self.entity_names and
                                     skill // 10000 * 10000 not in HEAL_SKILL_BASES):
                                 self.last_monster_combat = time.monotonic()
                             # O intervalo inteiro de 2M--3M também contém golpes
