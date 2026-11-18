@@ -1,0 +1,7 @@
+Black Cloud Merchant item-to-pet mapping
+
+Derived from the public PetTracker project:
+https://github.com/0Fox2Give/PetTracker
+
+The source project and this project are distributed under GNU GPL v3.
+Original game names, identifiers and assets belong to NCSOFT.

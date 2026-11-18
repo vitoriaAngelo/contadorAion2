@@ -182,6 +182,7 @@ try {
     Passo 4 $total "Copiando o programa para $Destino ..."
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
     foreach ($arq in @("contador_almas.py", "obs_local.py", "pet_protocol.py", "pet_nomes_npcap.json",
+                      "market_pet_items.json", "LICENSE-MERCHANT-DATA.txt",
                       "LICENSE-PET-PROTOCOL.txt", "LICENSE-BOSS-CATALOG.txt", "LICENSE-RADAR.txt",
                       "boss_nomes.json", "material_icons.png", "class_icons.zip",
                       "radar_mapa_abyss.jpg", "radar_mapa_altgard.jpg", "radar_mapa_verteron.jpg",

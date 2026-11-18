@@ -146,6 +146,12 @@ OP_REMAIN_HP = b"\x00\x8d"
 OP_PLAYER_NICKNAME = b"\x45\x36"
 OP_PARTY_ROSTER = b"\x02\x97"
 OP_LZ4 = b"\xff\xff"
+OP_COUNTERS_FULL = b"\x0b\x61"
+CUBE_KEY_ITEM_IDS = frozenset((600900001, 600900002, 600900003, 610900001, 630900003, 660900003))
+OP_COUNTER_UPDATE = b"\x0c\x61"
+ODYLE_ENERGY_ID = 60_000_001
+OP_MARKET_STOCK = b"\x91\x56"
+OP_MARKET_CLOSE = b"\x93\x56"
 
 # Opcodes seen in the stream. Used to find the next frame boundary after a lost
 # segment; grows as new opcodes show up.
@@ -155,8 +161,155 @@ KNOWN_OPS = {bytes.fromhex(h) for h in (
     "1e56 4736 1f37 2156 2037 0d90 3237 048d 2237 3536 0090 3336 2136 3c37 4236").split()}
 KNOWN_OPS.update((OP_DAMAGE, OP_DOT, OP_PLAYER_NICKNAME, OP_PARTY_ROSTER, OP_ITEM_ACQUIRED))
 KNOWN_OPS.update(DAILY_LIMIT_OPS)
+KNOWN_OPS.update((OP_COUNTERS_FULL, OP_COUNTER_UPDATE, OP_MARKET_STOCK, OP_MARKET_CLOSE))
 KNOWN_OPS.add(b"\x57\x8d")
 KNOWN_OPS.add(b"\x73\xe2")
+
+
+def _parse_counter_entry(payload, at):
+    """Decodifica uma entrada do contador genérico do jogo."""
+    if at + 5 > len(payload):
+        return None
+    flags = payload[at]
+    if flags & ~0x0F:
+        return None
+    counter_id = int.from_bytes(payload[at + 1:at + 5], "little")
+    at += 5
+    values = [0, 0]
+    for slot, flag in ((0, 0x01), (1, 0x02)):
+        if flags & flag:
+            if at + 8 > len(payload):
+                return None
+            values[slot] = int.from_bytes(payload[at:at + 8], "little")
+            at += 8
+    for slot, flag in ((0, 0x04), (1, 0x08)):
+        if flags & flag:
+            try:
+                values[slot], at = read_varint(payload, at)
+            except IndexError:
+                return None
+            if values[slot] > 1_000_000_000:
+                return None
+    return counter_id, values[0], values[1], at
+
+
+def parse_game_counters(opcode, payload):
+    """Retorna {id: (valor normal, valor bônus)} para 0B61/0C61 válidos."""
+    if opcode == OP_COUNTER_UPDATE:
+        if len(payload) < 7 or payload[0] > 1:
+            return None
+        found = _parse_counter_entry(payload, 1)
+        if found is None or len(payload) - found[3] != (5 if payload[0] else 1):
+            return None
+        return {found[0]: (found[1], found[2])}
+    if opcode != OP_COUNTERS_FULL:
+        return None
+    try:
+        count, at = read_varint(payload, 0)
+    except IndexError:
+        return None
+    if not 1 <= count <= 1024:
+        return None
+    counters = {}
+    for _ in range(count):
+        found = _parse_counter_entry(payload, at)
+        if found is None:
+            return None
+        counter_id, normal, bonus, at = found
+        counters[counter_id] = (normal, bonus)
+    return counters if at == len(payload) else None
+
+
+def _load_market_items():
+    for base in (APP_DIR, RES_DIR):
+        try:
+            with open(os.path.join(base, "market_pet_items.json"), encoding="utf-8") as f:
+                rows = json.load(f)
+            return {int(row["ItemId"]): int(row["PetId"]) for row in rows}
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+    return {}
+
+
+MARKET_PET_ITEMS = _load_market_items()
+
+
+def recent_market_purchases(offer_items, expiry_ms, trace_file=None):
+    """Recupera compras da oferta atual após reiniciar o aplicativo."""
+    from datetime import datetime
+    offer_items = set(offer_items)
+    gains = {}
+    purchases = {}
+    try:
+        with open(trace_file or PROFESSION_TRACE_FILE, encoding="ascii", errors="ignore") as trace:
+            for line in trace:
+                fields = line.split()
+                if len(fields) < 5 or fields[2] not in ("0d90", "1b56"):
+                    continue
+                try:
+                    when = datetime.strptime(fields[0] + " " + fields[1],
+                                             "%Y-%m-%d %H:%M:%S").timestamp() * 1000
+                    if not expiry_ms - 3_600_000 <= when <= expiry_ms:
+                        continue
+                    payload = bytes.fromhex(fields[4])
+                except (ValueError, OverflowError):
+                    continue
+                if fields[2] == "0d90":
+                    for pet_id, amount in parse_gain(payload):
+                        if 0 < amount <= 100:
+                            gains[pet_id] = (amount, when)
+                else:
+                    change = parse_inventory_change(payload)
+                    if not change:
+                        continue
+                    kind, instance, item, quantity = change
+                    pet_id = MARKET_PET_ITEMS.get(item)
+                    gain = gains.get(pet_id)
+                    if (kind == 2 and item in offer_items and gain
+                            and 0 <= when - gain[1] <= 5000):
+                        purchases[item] = purchases.get(item, 0) + gain[0]
+                        gains.pop(pet_id, None)
+    except OSError:
+        pass
+    return purchases
+
+
+def parse_market_stock(payload, now=None):
+    """Estoque observado nas abas Special (101) e Pets (104)."""
+    now = time.time() if now is None else float(now)
+    # Em algumas sessões o jogo identifica as mesmas abas como 201/204.
+    # Os três bytes entre os blocos de ofertas também mudam a cada resposta.
+    aba = {101: 101, 104: 104, 201: 101, 204: 104}.get(payload[0]) if payload else None
+    if (len(payload) != 357 or aba is None or payload[1] != 10 or
+            payload[310] != 5 or
+            int.from_bytes(payload[353:357], "little", signed=True) != 0):
+        return None
+    expiry_ms = int.from_bytes(payload[345:353], "little", signed=True)
+    if not now * 1000 < expiry_ms <= (now + 7200) * 1000:
+        return None
+    offers, offer_ids = [], set()
+    offset = 2
+    discounts = {0: 90, 1: 80, 2: 70, 3: 50}
+    for index in range(10):
+        if index in (1, 5, 9):
+            offset += 1
+        entry = payload[offset:offset + 34]
+        offset += 34
+        offer_id = int.from_bytes(entry[0:4], "little", signed=True)
+        item_id = int.from_bytes(entry[4:8], "little", signed=True)
+        quantity = int.from_bytes(entry[8:16], "little", signed=True)
+        original = int.from_bytes(entry[18:26], "little", signed=True)
+        price = int.from_bytes(entry[26:34], "little", signed=True)
+        discount = discounts.get(entry[16])
+        if (offer_id <= 0 or item_id <= 0 or offer_id in offer_ids or quantity != 1 or
+                entry[17] != 0x5D or not discount or not 0 < original <= 1_000_000_000 or
+                price <= 0 or price != original * discount // 100):
+            return None
+        offer_ids.add(offer_id)
+        pet_id = MARKET_PET_ITEMS.get(item_id)
+        if pet_id is not None:
+            offers.append((pet_id, item_id, price))
+    return aba, expiry_ms, offers
 
 
 def parse_rank_points_live(payload):
@@ -1050,6 +1203,8 @@ class Decoder:
         self.boss_names = {}
         self.mob_codes = {}
         self.current_boss = None
+        self.market_offer_items = set()
+        self.recent_market_gains = {}
         self.inventory_state_file = inventory_state_file
         self.inventory_instances = {}
         # O arquivo persistido pode estar desatualizado quando materiais foram
@@ -1138,6 +1293,17 @@ class Decoder:
                         total = parse_rank_points_live(payload)
                         if total is not None:
                             self.emit(("rank_points_live", total))
+                    elif op in (OP_COUNTERS_FULL, OP_COUNTER_UPDATE):
+                        counters = parse_game_counters(op, payload)
+                        if counters and ODYLE_ENERGY_ID in counters:
+                            self.emit(("energy",) + counters[ODYLE_ENERGY_ID])
+                    elif op == OP_MARKET_STOCK:
+                        stock = parse_market_stock(payload)
+                        if stock is not None:
+                            self.market_offer_items.update(item for pet, item, price in stock[2])
+                            self.emit(("market_stock",) + stock)
+                    elif op == OP_MARKET_CLOSE:
+                        self.emit(("market_close",))
                     elif op == b"\x57\x8d":
                         rank = parse_abyss_rank(payload)
                         if rank:
@@ -1148,6 +1314,7 @@ class Decoder:
                     elif op == OP_GAIN:
                         for pid, amount in parse_gain(payload):
                             if 0 < amount <= 100:
+                                self.recent_market_gains[pid] = (amount, time.monotonic())
                                 self.emit(("gain", pid, amount))
                     elif op == OP_STATE:
                         try:
@@ -1173,14 +1340,27 @@ class Decoder:
                         if change:
                             kind, instance, item, quantity = change
                             previous = self.inventory_instances.get(instance)
+                            cube_key_changed = item in CUBE_KEY_ITEM_IDS or (previous and previous[0] in CUBE_KEY_ITEM_IDS)
                             seen_session = instance in self.inventory_seen_session
                             if kind == 2 or quantity == 0:
                                 self.inventory_instances.pop(instance, None)
                                 self.inventory_seen_session.discard(instance)
                                 self._save_inventory()
+                                pet_id = MARKET_PET_ITEMS.get(item)
+                                ganho_recente = self.recent_market_gains.get(pet_id)
+                                if (item in self.market_offer_items and ganho_recente
+                                        and time.monotonic() - ganho_recente[1] <= 5):
+                                    self.recent_market_gains.pop(pet_id, None)
+                                    self.emit(("market_pet_acquired", item))
+                                    self.emit(("market_pet_quantity", item, ganho_recente[0]))
                             else:
                                 self.inventory_instances[instance] = (item, quantity)
                                 self.inventory_seen_session.add(instance)
+                                if item in CUBE_KEY_ITEM_IDS:
+                                    self._save_inventory()
+                                if (item in MARKET_PET_ITEMS and self.own_name and
+                                        kind == 0 and previous is None and quantity > 0):
+                                    self.emit(("market_pet_acquired", item))
                                 if item in OD_ITEM_TYPES or item in GATHER_ITEM_TYPES:
                                     self._save_inventory()
                                 old_quantity = previous[1] if previous and previous[0] == item else None
@@ -1217,6 +1397,11 @@ class Decoder:
                                             if farm_gain > ja_contado:
                                                 self.emit(("farm_gain", item, farm_gain - ja_contado))
                                             self.farm_recent_gain[item] = (farm_gain, time.monotonic())
+                            if cube_key_changed:
+                                total = sum(qty for instance_id, (key_item, qty) in self.inventory_instances.items()
+                                            if instance_id in self.inventory_seen_session
+                                            and key_item in CUBE_KEY_ITEM_IDS)
+                                self.emit(("cube_keys", total))
                     elif op in DAILY_LIMIT_OPS:
                         valor = parse_daily_limit(payload)
                         if valor is not None:
@@ -1225,6 +1410,9 @@ class Decoder:
                         acquired = parse_item_acquired(payload)
                         if acquired and acquired[1] > 0:  # zero: aviso sem item recebido
                             item, recebido = acquired
+                            if item in MARKET_PET_ITEMS and self.own_name:
+                                self.emit(("market_pet_acquired", item))
+                                self.emit(("market_pet_quantity", item, recebido))
                             if (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
                                     and not is_pet_soul_item(item)
                                     and item not in OD_ITEM_TYPES and item not in GATHER_ITEM_TYPES):

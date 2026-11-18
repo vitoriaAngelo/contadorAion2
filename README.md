@@ -4,7 +4,7 @@
 
 ### Overlay de farm, almas, DPS, Abismo, materiais e eventos
 
-[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.203-f4a7bb?style=for-the-badge)](version.txt)
+[![Versão](https://img.shields.io/badge/vers%C3%A3o-1.9.204-f4a7bb?style=for-the-badge)](version.txt)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-9bd8cf?style=for-the-badge&logo=windows)](#requisitos)
 [![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-c9b6e4?style=for-the-badge)](LICENSE)
 
@@ -27,6 +27,8 @@ O **AionTrack** acompanha sua sessão no AION 2 sem precisar manter menus do jog
 | **Abyss** | Pontos do Abismo, Kinah ganho e cronômetro de farm com iniciar, pausar e zerar. |
 | **Materiais** | ODs normal, fino, puro e radiante, além dos materiais de coleta identificados. |
 | **Radar de mascotes** | Mostra mascotes próximos e pontos conhecidos em Verteron, Altgard e Abismo. |
+| **Black Cloud · Pets** | Lista pets à venda, progresso da coleção e marca quantas almas foram compradas na oferta atual. |
+| **Mapa de pets** | Filtra pets incompletos, permite buscar por nome e recentralizar no personagem. |
 | **Agenda** | Próximo evento do servidor SA com contagem regressiva e aviso sonoro opcional. |
 | **Info** | Tempo restante para o reset diário das 04:00 e o reset semanal de quarta-feira às 04:00. |
 
@@ -68,6 +70,8 @@ O Npcap observa os eventos de rede que o AION 2 já envia ao seu PC. O programa 
 3. Entre no personagem e aguarde o nome aparecer na barrinha.
 4. Clique nos ícones da barrinha para abrir Pets, DPS, Abyss, Materiais ou FARM. Clique novamente no ícone para fechar a caixa.
 5. O ícone de moeda abre os limites diários abaixo da barrinha.
+
+As caixas permanecem na aba escolhida por você. Coletar almas ou materiais atualiza os números sem mudar de aba.
 
 Se o contador for aberto depois do login, entre novamente no personagem para receber o progresso completo salvo pelo jogo. Os novos ganhos continuam sendo contados enquanto isso.
 

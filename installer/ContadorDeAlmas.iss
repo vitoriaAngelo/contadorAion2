@@ -37,6 +37,8 @@ Source: "..\contador_almas.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deletea
 Source: "..\obs_local.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\pet_protocol.py"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\pet_nomes_npcap.json"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
+Source: "..\market_pet_items.json"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
+Source: "..\LICENSE-MERCHANT-DATA.txt"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\boss_nomes.json"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\material_icons.png"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall
 Source: "..\class_icons.zip"; DestDir: "{tmp}\ContadorDeAlmas"; Flags: deleteafterinstall

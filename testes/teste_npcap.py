@@ -23,10 +23,50 @@ def frame(op, payload):
 
 
 class LeituraNpcap(unittest.TestCase):
+    def test_item_de_pet_recebido_confirma_compra(self):
+        item_id = next(iter(pp.MARKET_PET_ITEMS))
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.own_name = 'Mistty'
+        payload = b'\x00\x00\x00' + struct.pack('<III', item_id, 5, 0)
+        dec.segment('jogo', 1000, frame(pp.OP_ITEM_ACQUIRED, payload))
+        self.assertIn(('market_pet_acquired', item_id), eventos)
+        self.assertIn(('market_pet_quantity', item_id, 5), eventos)
+
+    def test_compra_de_pet_confirma_almas_e_retirada_da_oferta(self):
+        item_id, pet_id = next(iter(pp.MARKET_PET_ITEMS.items()))
+        eventos = []
+        dec = pp.Decoder(eventos.append)
+        dec.market_offer_items.add(item_id)
+        ganho = b'\x01' + struct.pack('<II', pet_id, 5)
+        remocao = (b'\x01\x02\x00' + struct.pack('<I', 123456) + b'\x00' * 4 +
+                   struct.pack('<I', item_id) + struct.pack('<Q', 0) + b'\x00' * 18)
+        dec.segment('jogo', 1000, frame(pp.OP_GAIN, ganho) +
+                    frame(pp.OP_INVENTORY_CHANGE, remocao))
+        self.assertIn(('market_pet_acquired', item_id), eventos)
+        self.assertIn(('market_pet_quantity', item_id, 5), eventos)
+
+    def test_loja_aceita_abas_atuais_e_separadores_variaveis(self):
+        item_id, pet_id = next(iter(pp.MARKET_PET_ITEMS.items()))
+        for aba, normalizada in ((201, 101), (204, 104)):
+            payload = bytearray((aba, 10))
+            for indice in range(10):
+                if indice in (1, 5, 9):
+                    payload.append((0x57, 0x75, 5)[(1, 5, 9).index(indice)])
+                payload += struct.pack('<iiqBBqq', indice + 1, item_id, 1,
+                                       1, 0x5d, 100_000, 80_000)
+            payload += struct.pack('<qi', 1_800_000_000_000, 0)
+            resultado = pp.parse_market_stock(payload, now=1_799_999_000)
+            self.assertIsNotNone(resultado)
+            self.assertEqual(resultado[0], normalizada)
+            self.assertEqual(len(resultado[2]), 10)
+            self.assertEqual(resultado[2][0], (pet_id, item_id, 80_000))
+
     def test_farm_conta_item_do_inventario_sem_aviso_de_aquisicao(self):
         eventos = []
         dec = pp.Decoder(eventos.append)
         dec.own_name = 'Mistty'
+        dec.last_monster_combat = __import__('time').monotonic()
         item = 120000001
         payload = (b'\x01\x00\x00' + struct.pack('<I', 527628) + b'\x00' * 4 +
                    struct.pack('<I', item) + struct.pack('<Q', 1) + b'\x00' * 18)
