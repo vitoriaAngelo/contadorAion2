@@ -813,7 +813,171 @@ def parse_summon_owner(payload):
         return None
 
 
-def parse_nickname(payload):
+# Slot order and spawn coordinates from SkeeveAN/Aion-DPS-Meter field_bosses.json.
+FIELD_BOSS_MAPS = {'altgard': (1110,
+             [('Melted Danar', -79655, -74913),
+              ('Black Warrior Aed', -152945, -113071),
+              ('Faithful Rajit', -170253, -17688),
+              ('Berserker Vargor', -179952, -4813),
+              ('Predator Garsan', -3697, 41042),
+              ('Blood Warrior Lannar', -34000, 41050),
+              ('Deceiver Trid', 18965, -33343),
+              ('Blue Wave Kelpina', 22380, -70980),
+              ('High Overseer Nutah', 62629, -144426),
+              ('Advisor Resana', 65036, -180552),
+              ('Special Operations Leader Linx', 142792, -111184),
+              ('Desecrator Newbold', 198909, -117642),
+              ('Specter Archon Axios', 164579, -63932),
+              ('Addicted Hardirun', 126913, 32185),
+              ('Executioner Barthien', 123597, 96521),
+              ('Drakan Battalion Weapon Guruta', 180791, 117339),
+              ('Veteran Shujakan', 108458, 161280),
+              ('Visionary Karuka', 69841, 157163),
+              ('Dark Shadow Vishwada', -5096, 157792),
+              ('Sharp Shylak', 148455, 177722),
+              ('Immortal Gartua', -199307, 227277),
+              ('High Commander Lagta', -24415, 156144),
+              ('Soul Ruler Kashapa', 147735, 72495),
+              ('Silent Dartan', 119635, -108526)]),
+ 'chaotic lower reshanta': (0,
+                            [('Argo, the Spirit King', 61218, 29738),
+                             ('Guardian Lord Nahma', 3055, 2881),
+                             ('Watcher Kaira', 32625, -11726),
+                             ('Guardian Lord Nahma', -13863, 35374),
+                             ('Guardian Lord Nahma', 20235, -41189),
+                             ('Executor Tamasa', 3477, -3049),
+                             ('Executor Argo', 23900, 36440),
+                             ('Executor Kaira', -17728, -30749)]),
+ 'chaotic middle reshanta': (0,
+                             [('Enraged Guardian Lord Nahma', 16545, -47627),
+                              ('Enraged Guardian Lord Nahma', -16581, 44157),
+                              ('Executioner Dramos', 2374, 1821),
+                              ('Turncoat Ducal', -4535, 53621),
+                              ('Ravager Marakha', 4180, -50454)]),
+ 'eltnen': (0,
+            [('Agglomerated Verenom', -95467, -116438),
+             ('Old Boss Vigor', -93574, -158021),
+             ('Severed Wings Zvein', -106981, -69450),
+             ('Gluttonous Egetis', -5579, -99183),
+             ('Superbia, Sacred Beast of Life', -12157, -74827),
+             ('Rotten Root Meltlim', -75038, -7095),
+             ('Rabid Nihogg', 48427, -19241),
+             ("First Test Subject K'tima", 80568, -23411),
+             ('Three-Horned Mino', -38554, -49965),
+             ('Lamphus of Agony', -14990, -9929),
+             ('Third Unit Captain Karkoti', 47722, -116523),
+             ('Deputy Commander Vivajra', 67082, 6307)]),
+ 'morheim': (0,
+             [('Edgewalker Pargon', -63789, -179754),
+              ('Predator Colossus Balakh', -107347, -172345),
+              ('Crimson Blizzard Renulf', -121738, -135097),
+              ('Frostarmor Harkhan', -128042, -95515),
+              ('Azure Tear Glacia', -167365, -106702),
+              ('Wings of Hellfire Fios', -9854, -93971),
+              ('Lava Heart Batu', 31128, -71915),
+              ('Elite Inquisitor Verant', 18425, -95214),
+              ('Mad Watcher Bulagan', 35301, -35946),
+              ('Vulcanarch Grymnir', -24144, -11314),
+              ('Third Unit Captain Minasara', -193415, -43855),
+              ('Deputy Commander Sarvakha', -47039, -120972)]),
+ 'verteron': (1010,
+              [('Neikel of the East', -57517, -85173),
+               ('Rotten Kutar', -27290, -80782),
+               ('Kernon of the West', -94204, -43535),
+               ('Kusan the Mad Gladiator', -18107, -10451),
+               ('Ritualist Garshim', -27017, 19935),
+               ('Bodyguard Teegant', 18601, -205),
+               ('Blooming Korin', -34622, -36461),
+               ('Furious Saursus', -57863, 82629),
+               ('Bloodfang Pnyn', -58488, 55832),
+               ('Heretic Layla', 18723, 95025),
+               ('Black Tentacle Lawa', 98412, 74390),
+               ('Phantasm Kasia', 84130, 178452),
+               ('Centurion Demiros', 124957, 11064),
+               ('Divine Ansas', 143395, 35371),
+               ('Harvest Manager Moshav', 117274, -96444),
+               ("Sentinel K'nash", 130818, -78338),
+               ('Scholar Aulla', -46187, 99792),
+               ('Forest Warrior Aullamu', -25718, 132156),
+               ('Chaser Taulo', -63800, 118621),
+               ('Researcher Setram', 159231, -130981),
+               ('Eternal Gartua', -219621, 243711),
+               ('Silent Dartan', 14627, 141980),
+               ('Soul Ruler Kashapa', 138089, 71986),
+               ('High Commander Lagta', 72491, -66806)])}
+
+
+def parse_field_boss_board(payload):
+    """Decode a complete map snapshot; an unrecognised slot layout is ignored."""
+    if len(payload) < 7 or payload[:2] != bytes(2):
+        return None
+    map_id, count = struct.unpack_from("<IB", payload, 2)
+    if not 1 <= count <= 99:
+        return None
+    def header(pos):
+        if pos >= len(payload) or payload[pos] not in (0, 1):
+            return None
+        place, after = read_varint(payload, pos + 1)
+        slot = place - map_id * 100
+        if 1 <= slot <= 99:
+            return slot, bool(payload[pos]), after
+    pos = 7
+    slots = {}
+    try:
+        for index in range(count):
+            record = header(pos)
+            if not record:
+                return None
+            slot, alive, pos = record
+            if slot in slots:
+                return None
+            xy = None
+            if alive:
+                xy = struct.unpack_from("<ff", payload, pos)
+                pos += 12
+            for padding in (0, 1):
+                start = pos + padding
+                end = start + 8
+                if end > len(payload):
+                    continue
+                stamp = struct.unpack_from("<q", payload, start)[0]
+                if not 946684800000 <= stamp < 4102444800000:
+                    continue
+                fits = (len(payload)-end <= 8 and not any(payload[end:])) if index+1 == count else header(end)
+                if fits:
+                    slots[slot] = (alive, stamp / 1000, xy)
+                    pos = end
+                    break
+            else:
+                return None
+    except (IndexError, struct.error):
+        return None
+    matches = []
+    for zone, (known_id, bosses) in FIELD_BOSS_MAPS.items():
+        if known_id and known_id != map_id or max(slots) > len(bosses):
+            continue
+        if not known_id:
+            positions = [(bosses[i-1], xy) for i, (_, _, xy) in slots.items() if xy]
+            if len(bosses) != count or not positions or not all(
+                    (b[1]-xy[0])**2 + (b[2]-xy[1])**2 < 1000**2 for b, xy in positions):
+                continue
+        matches.append((zone,bosses))
+        if known_id == map_id:
+            matches = [(zone,bosses)]
+            break
+    if len(matches) != 1:
+        return None
+    zone, bosses = matches[0]
+    board = {}
+    for i,(alive,stamp,_) in slots.items():
+        key = zone + "/" + bosses[i-1][0]
+        old = board.get(key)
+        if old is None or alive and not old[0] or alive == old[0] and stamp < old[1]:
+            board[key] = (alive, stamp)
+    return board
+
+
+def parse_character_identity(payload):
     """Nome do personagem local em 0x3336; ignora outras formas desse opcode."""
     try:
         entity, i = read_varint(payload, 0)
@@ -832,9 +996,14 @@ def parse_nickname(payload):
         classe = payload[i + 2]
         if not servidor or classe > 48:  # 48 é o limite de class_from_wire
             return None
-        return nome
+        return nome, servidor
     except (IndexError, UnicodeDecodeError, ValueError, struct.error):
         return None
+
+
+def parse_nickname(payload):
+    identity = parse_character_identity(payload)
+    return identity[0] if identity else None
 
 
 def parse_flight_points(payload):
@@ -1217,6 +1386,8 @@ class Decoder:
         self.farm_recent_gain = {}  # item -> (quantidade já emitida, instante)
         self.farm_recent_acquired = {}
         self.last_monster_combat = 0.0
+        self.last_abyss_reward = 0.0
+        self.pending_abyss_items = []
         if inventory_state_file:
             try:
                 with open(inventory_state_file, "r", encoding="utf-8") as f:
@@ -1297,6 +1468,10 @@ class Decoder:
                         counters = parse_game_counters(op, payload)
                         if counters and ODYLE_ENERGY_ID in counters:
                             self.emit(("energy",) + counters[ODYLE_ENERGY_ID])
+                    elif op == b"\x01\x91" and self.own_name and conn[2] == self.identity_port:
+                        board = parse_field_boss_board(payload)
+                        if board:
+                            self.emit(("field_boss_board", self.field_server, board))
                     elif op == OP_MARKET_STOCK:
                         stock = parse_market_stock(payload)
                         if stock is not None:
@@ -1375,28 +1550,29 @@ class Decoder:
                                 if item == ABYSS_CURRENCY_ID:
                                     self.abyss_currency_seen = True
                                     if ganho > 0:
+                                        self.last_abyss_reward = time.monotonic()
                                         self.emit(("abyss_points", ganho))
+                                        for loot_item, loot_qty, when in self.pending_abyss_items:
+                                            if self.last_abyss_reward - when <= 2:
+                                                self.emit(("farm_gain", loot_item, loot_qty))
+                                        self.pending_abyss_items.clear()
                                 if item in KINAH_ITEM_IDS and ganho > 0:
                                     self.emit(("kinah_gain", ganho))
                                 elif tracked_collection and ganho > 0:
                                     self._emit_collection(item, ganho)
-                                elif (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
-                                      and not is_pet_soul_item(item)
-                                      and not tracked_collection and self.own_name):
-                                    # Alguns drops do Abismo só chegam como alteração
-                                    # de inventário. Aceite-os durante a coleta após
-                                    # combate com monstro; fora dela, compras e craft
-                                    # não entram no FARM.
-                                    if time.monotonic() - self.last_monster_combat < 12:
-                                        farm_gain = (quantity if kind == 0 and previous is None else
-                                                     quantity - old_quantity if old_quantity is not None else 0)
-                                        if farm_gain > 0:
-                                            recente = self.farm_recent_acquired.pop(item, None)
-                                            ja_contado = (recente[0] if recente and
-                                                          time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
-                                            if farm_gain > ja_contado:
-                                                self.emit(("farm_gain", item, farm_gain - ja_contado))
-                                            self.farm_recent_gain[item] = (farm_gain, time.monotonic())
+                                elif (not tracked_collection and item not in KINAH_ITEM_IDS
+                                      and item != ABYSS_CURRENCY_ID and not is_pet_soul_item(item)
+                                      and item not in CUBE_KEY_ITEM_IDS and item not in MARKET_PET_ITEMS):
+                                    delta = quantity - old_quantity if old_quantity is not None else (
+                                        quantity if kind == 0 else 0)
+                                    if delta > 0:
+                                        now = time.monotonic()
+                                        if now - self.last_abyss_reward <= 2:
+                                            self.emit(("farm_gain", item, delta))
+                                        else:
+                                            self.pending_abyss_items = [
+                                                row for row in self.pending_abyss_items if now - row[2] <= 2]
+                                            self.pending_abyss_items.append((item, delta, now))
                             if cube_key_changed:
                                 total = sum(qty for instance_id, (key_item, qty) in self.inventory_instances.items()
                                             if instance_id in self.inventory_seen_session
@@ -1416,19 +1592,24 @@ class Decoder:
                             if (item not in KINAH_ITEM_IDS and item != ABYSS_CURRENCY_ID
                                     and not is_pet_soul_item(item)
                                     and item not in OD_ITEM_TYPES and item not in GATHER_ITEM_TYPES):
-                                recente = self.farm_recent_gain.pop(item, None)
-                                ja_contado = (recente[0] if recente and
-                                              time.monotonic() - recente[1] < ITEM_ACQUIRED_WINDOW else 0)
-                                if recebido > ja_contado:
-                                    self.emit(("farm_gain", item, recebido - ja_contado))
-                                self.farm_recent_acquired[item] = (recebido, time.monotonic())
+                                # O aviso de loot identifica a entidade que originou o item.
+                                # Inventário isolado também muda em compras e abertura de cubos.
+                                source, _ = read_varint(payload, 2)
+                                if payload[1] == 0x3A and source in self.mob_codes:
+                                    self.emit(("farm_gain", item, recebido))
                             contado = self.inventory_first_gain.pop(item, None)
                             if (contado and recebido > contado[0] and
                                     time.monotonic() - contado[1] < ITEM_ACQUIRED_WINDOW):
                                 self._emit_collection(item, recebido - contado[0])
                     elif op == OP_NICKNAME:
-                        nome = parse_nickname(payload)
-                        if nome:
+                        identity = parse_character_identity(payload)
+                        if identity:
+                            nome, server = identity
+                            if (self.own_name, getattr(self, "field_server", None)) != identity:
+                                self.market_offer_items.clear()
+                                self.recent_market_gains.clear()
+                            self.field_server = server
+                            self.emit(("agenda_server", nome, server))
                             self.own_entity, _ = read_varint(payload, 0)
                             self.identity_port = conn[2]
                             self.own_name = nome
@@ -1761,12 +1942,15 @@ def run_sniffer(emit, stop_event=None):
                 pids = {p.pid for p in psutil.process_iter(["name"]) if (p.info["name"] or "").lower() == "aion2.exe"}
                 # Loopback peers are kept on purpose: ExitLag and similar boosters proxy
                 # the game through 127.0.0.1, so that is where the plain stream shows up.
-                ports = {c.laddr[1] for c in psutil.net_connections(kind="tcp")
-                         if c.pid in pids and c.raddr and c.raddr[1] not in (80, 443)}
-                peers = [c.raddr.ip for c in psutil.net_connections(kind="tcp")
-                         if c.pid in pids and c.raddr and c.raddr[1] not in (80, 443)
-                         and c.raddr.ip not in ("127.0.0.1", "::1")]
-                ping_host[0] = peers[0] if peers else None
+                conexoes = [c for c in psutil.net_connections(kind="tcp")
+                            if c.pid in pids and c.raddr and c.raddr.port not in (80, 443)]
+                ports = {c.laddr.port for c in conexoes}
+                identidade = getattr(decoder_ref[0], "identity_port", None)
+                candidatas = [c for c in conexoes if c.status == psutil.CONN_ESTABLISHED
+                              and c.raddr.ip not in ("127.0.0.1", "::1")]
+                principal = next((c for c in candidatas if c.laddr.port == identidade),
+                                 candidatas[0] if candidatas else None)
+                ping_host[0] = (principal.raddr.ip, principal.raddr.port) if principal else None
                 game_ports.clear()
                 game_ports.update(ports)
                 connected = bool(ports)
@@ -1777,6 +1961,8 @@ def run_sniffer(emit, stop_event=None):
                 if perdeu_identidade:
                     decoder_atual.own_entity = None
                     decoder_atual.own_name = None
+                    decoder_atual.market_offer_items.clear()
+                    decoder_atual.recent_market_gains.clear()
                     decoder_atual.identity_port = None
                     decoder_atual.party_names.clear()
                     decoder_atual.entity_names.clear()
@@ -1792,6 +1978,7 @@ def run_sniffer(emit, stop_event=None):
 
     threading.Thread(target=watch_game, daemon=True).start()
     def medir_ping():
+        import socket
         import subprocess
         import re
         while stop_event is None or not stop_event.is_set():
@@ -1799,16 +1986,25 @@ def run_sniffer(emit, stop_event=None):
             valor = None
             if host:
                 try:
-                    cmd = ["ping", "-n", "1", "-w", "900", host]
+                    cmd = ["ping", "-n", "1", "-w", "900", host[0]]
                     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                     resposta = subprocess.run(cmd, capture_output=True, timeout=3,
                                               creationflags=flags)
                     texto = resposta.stdout.decode("utf-8", errors="replace")
-                    match = re.search(r"(?:time|tempo)\s*[=<]\s*(\d+)\s*ms", texto, re.I)
+                    match = re.search(r"[=<]\s*(\d+)\s*ms", texto, re.I)
                     if resposta.returncode == 0 and match:
                         valor = int(match.group(1))
                 except (OSError, subprocess.TimeoutExpired):
                     pass
+                if valor is None:
+                    inicio = time.perf_counter()
+                    try:
+                        with socket.create_connection(host, timeout=0.9):
+                            valor = max(1, round((time.perf_counter() - inicio) * 1000))
+                    except OSError:
+                        pass
+            if host != ping_host[0]:
+                valor = None
             emit(("game_ping", valor))
             if stop_event is not None and stop_event.wait(5):
                 return
